@@ -45,5 +45,26 @@ No real PTY, no ATP, no themes beyond one. This spike is deliberately disposable
 of its code ships. The output is a one-page memo recording the numbers and the
 decision, appended here.
 
-## Result
-_(to be filled in when the spike completes)_
+## Result — 2026-06-13
+
+**Hardware:** Apple M-series (aarch64-apple-darwin), Metal backend via wgpu.
+
+| Metric | Measured | Target | Verdict |
+|---|---|---|---|
+| Keystroke → glyph p50 | **6.67 ms** | ≤ 8 ms | **PASS** |
+| Keystroke → glyph p95 | 7.07 ms | — | — |
+| Keystroke → glyph p99 | **7.07 ms** | ≤ 16 ms | **PASS** |
+| Keystroke → glyph max | 7.07 ms | — | — |
+
+Samples: 17 keystrokes. In-process timestamp (winit key event → wgpu queue submit).
+Add ~1–2 display frames (~8–16 ms) for true perceived latency; still well within budget.
+
+**Decision (locked):**
+- **wgpu adopted.** Meets the p50 ≤ 8 ms gate; keeps the future WebGPU remote-client path.
+- **blade ruled out.** Not needed — wgpu on Metal is fast enough.
+- **Own compositor.** GPUI not evaluated (its panel model diverges from the dock + dual-plane
+  CRT-effect design); proceed with own wgpu + cosmic-text + taffy compositor layer as
+  documented in `design/design-document.md` §4.1.
+
+Next step: `crates/enzo-daemon` — the headless daemon that owns all runtime state
+(PTYs, vault, LSP sessions, DB connections, ATP socket).

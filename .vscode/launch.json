@@ -1,0 +1,23 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "lldb-dap",
+      "request": "launch",
+      "name": "Debug tests: enzo-redact",
+      "program": "${workspaceFolder}/target/debug/test-enzo-redact",
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "preLaunchTask": "cargo test build: enzo-redact"
+    },
+    {
+      "type": "lldb-dap",
+      "request": "launch",
+      "name": "Debug tests: enzo-vault",
+      "program": "${workspaceFolder}/target/debug/test-enzo-vault",
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "preLaunchTask": "cargo test build: enzo-vault"
+    }
+  ]
+}

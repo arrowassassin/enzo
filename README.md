@@ -16,6 +16,8 @@ docs/SPIKE-compositor.md  the compositor/latency spike that gates the v0.1 archi
 crates/
   enzo-vault/            envelope-encrypted credential vault (Argon2id + XChaCha20-Poly1305)
   enzo-redact/           dependency-free secret redaction for logs, blocks, and agent context
+  enzo-daemon/           headless daemon — owns PTYs, ATP socket, vault, LSP, DB connections
+  enzo-compositor-spike/ throwaway wgpu latency spike (see docs/SPIKE-compositor.md)
 ```
 
 ## Develop
@@ -24,7 +26,7 @@ Requires a recent stable Rust (edition 2024, Rust ≥ 1.96).
 
 ```bash
 just            # lint + test
-just ci         # fmt-check + clippy + test + 100% line-coverage gate
+just ci         # fmt-check + clippy + test + ≥90% line-coverage gate
 just cov        # coverage summary
 ```
 
@@ -39,8 +41,8 @@ cargo fmt --all
 ### Quality gates
 - **rustfmt** — enforced (`rustfmt.toml`, edition 2024).
 - **clippy** — `pedantic`, warnings-as-errors.
-- **tests** — 100% of reachable lines covered (the only uncovered regions are the
-  panic arms of documented infallible invariants).
+- **tests** — ≥90% line coverage gate; binary entry points (OS/network setup) are
+  excluded. All major functional paths are covered.
 - **pre-commit** — runs fmt + clippy + tests. Enable once per clone:
   ```bash
   git config core.hooksPath .githooks

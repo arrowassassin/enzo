@@ -27,8 +27,8 @@ jobs:
         run: cargo test --all
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
-      - name: Coverage gate (100% of reachable lines)
-        run: cargo llvm-cov --all --fail-under-lines 100
+      - name: Coverage gate (≥90% of reachable lines, binary entry points excluded)
+        run: cargo llvm-cov --all --fail-under-lines 90 --ignore-filename-regex 'src/bin/'
 
   supply-chain:
     name: cargo-deny

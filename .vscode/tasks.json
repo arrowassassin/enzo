@@ -1,0 +1,21 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "cargo test build: enzo-redact",
+      "type": "shell",
+      "command": "cargo test --package enzo-redact --no-run && ln -sf $(ls -t target/debug/deps/enzo_redact-* | grep -v '\\.d$' | head -1) target/debug/test-enzo-redact",
+      "group": "build",
+      "presentation": { "reveal": "silent", "panel": "shared" },
+      "problemMatcher": "$rustc"
+    },
+    {
+      "label": "cargo test build: enzo-vault",
+      "type": "shell",
+      "command": "cargo test --package enzo-vault --no-run && ln -sf $(ls -t target/debug/deps/enzo_vault-* | grep -v '\\.d$' | head -1) target/debug/test-enzo-vault",
+      "group": "build",
+      "presentation": { "reveal": "silent", "panel": "shared" },
+      "problemMatcher": "$rustc"
+    }
+  ]
+}
