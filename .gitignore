@@ -8,3 +8,6 @@
 # never commit a real credential vault
 vault.enc
 *.vault.enc
+
+# VS Code — local machine paths; each dev gets their own
+.vscode/settings.json
