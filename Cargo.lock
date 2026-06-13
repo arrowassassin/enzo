@@ -127,6 +127,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "enzo-redact"
+version = "0.1.0"
+
+[[package]]
 name = "enzo-vault"
 version = "0.1.0"
 dependencies = [
