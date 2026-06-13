@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Enzo — IDE</title>
+<link href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.7.0/dist/tabler-icons.min.css">
+<style>body{margin:0;background:#0e0c14;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:18px;box-sizing:border-box;}</style>
+</head><body>
+<div style="display:flex; background:#16131f; border:3px solid #3a3450; border-radius:10px; overflow:hidden; height:440px; width:720px; font-family:'JetBrains Mono',monospace;">
+  <div style="width:46px; background:#120f1a; border-right:2px solid #3a3450; display:flex; flex-direction:column; align-items:center; padding-top:12px; gap:16px; color:#5f5e6e; font-size:18px;">
+    <i class="ti ti-terminal-2"></i><i class="ti ti-code" style="color:#5dcaa5;"></i><i class="ti ti-world"></i><i class="ti ti-database"></i>
+    <i class="ti ti-robot" style="margin-top:auto;"></i><i class="ti ti-settings" style="margin-bottom:12px;"></i>
+  </div>
+  <div style="width:142px; background:#1a1626; border-right:2px solid #3a3450; padding:10px 0; font-size:11px;">
+    <div style="font-family:'Silkscreen'; font-size:8px; color:#7f77dd; padding:0 12px 8px;">EXPLORER</div>
+    <div style="color:#9f97c4; padding:0 10px;">
+      <div style="padding:3px 0;"><i class="ti ti-chevron-down" style="font-size:11px;"></i> src</div>
+      <div style="padding:3px 0 3px 14px; color:#5dcaa5;">renderer.rs</div>
+      <div style="padding:3px 0 3px 14px;">pty.rs</div>
+      <div style="padding:3px 0 3px 14px;">atp.rs</div>
+      <div style="padding:3px 0;"><i class="ti ti-chevron-right" style="font-size:11px;"></i> tests</div>
+      <div style="padding:3px 0;">Cargo.toml</div>
+    </div>
+  </div>
+  <div style="flex:1; display:flex; flex-direction:column;">
+    <div style="display:flex; align-items:center; gap:6px; padding:7px 12px; background:#221d30; border-bottom:2px solid #3a3450; font-family:'Silkscreen'; font-size:8px; color:#9f97c4;">
+      <span style="background:#16131f; padding:4px 8px; border-radius:3px; color:#5dcaa5;">renderer.rs</span><span>pty.rs</span>
+      <span style="margin-left:auto; color:#ef9f27;"><i class="ti ti-player-pause" style="font-size:11px;vertical-align:-1px;"></i> PAUSED</span>
+    </div>
+    <div style="flex:1; padding:10px 0; font-size:12px; line-height:1.55;">
+      <div style="display:grid; grid-template-columns:34px 1fr;">
+        <span style="color:#5f5e6e; text-align:right; padding-right:8px;">10</span><span><span style="color:#afa9ec;">impl</span> <span style="color:#5dcaa5;">Renderer</span> {</span>
+        <span style="color:#5f5e6e; text-align:right; padding-right:8px;">11</span><span>&nbsp;&nbsp;<span style="color:#afa9ec;">fn</span> <span style="color:#85b7eb;">present</span>(&<span style="color:#afa9ec;">mut</span> self) {</span>
+        <span style="color:#e24b4a; text-align:right; padding-right:8px;">●12</span><span style="background:#2a1f12;">&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#afa9ec;">let</span> dirty = self.damage.<span style="color:#85b7eb;">take</span>();</span>
+        <span style="color:#5f5e6e; text-align:right; padding-right:8px;">13</span><span>&nbsp;&nbsp;&nbsp;&nbsp;self.gpu.<span style="color:#85b7eb;">draw</span>(dirty);&nbsp;&nbsp;<span style="color:#5f5e6e;">// damage-tracked</span></span>
+        <span style="color:#5f5e6e; text-align:right; padding-right:8px;">14</span><span>&nbsp;&nbsp;&nbsp;&nbsp;self.<span style="color:#85b7eb;">swap_buffers</span>();</span>
+        <span style="color:#5f5e6e; text-align:right; padding-right:8px;">15</span><span>&nbsp;&nbsp;}</span>
+      </div>
+      <div style="margin:8px 10px 0; background:#1d1a28; border:1px solid #3a3450; border-radius:5px; padding:6px 9px; color:#f09595; font-size:11px;"><i class="ti ti-alert-triangle" style="font-size:12px;vertical-align:-1px;"></i> rust-analyzer: `damage` may be uninitialized</div>
+    </div>
+    <div style="background:#1a1626; border-top:2px solid #3a3450; padding:7px 12px;">
+      <div style="font-family:'Silkscreen'; font-size:8px; color:#7f77dd; margin-bottom:5px;">DEBUGGER · VARIABLES &nbsp;·&nbsp; CALL STACK</div>
+      <div style="display:flex; gap:18px; font-size:11px; color:#c9c4dc;">
+        <div><span style="color:#5dcaa5;">dirty</span> = Rect{0,0,80,24}<br><span style="color:#5dcaa5;">self</span> = Renderer{..}</div>
+        <div style="border-left:1px solid #3a3450; padding-left:18px; color:#888780;">▸ present() :12<br>&nbsp;&nbsp;render_frame() :88<br>&nbsp;&nbsp;main() :14</div>
+      </div>
+    </div>
+    <div style="display:flex; gap:14px; padding:6px 12px; background:#221d30; border-top:2px solid #3a3450; font-family:'Silkscreen'; font-size:8px; color:#9f97c4;">
+      <span style="color:#5dcaa5;">● rust-analyzer</span><span style="color:#ef9f27;">⚠ 1</span><span>Rust</span><span style="margin-left:auto; color:#5f5e6e;">Ln 12 · ⌘K</span>
+    </div>
+  </div>
+</div>
+</body></html>

@@ -1,0 +1,32 @@
+# cargo-deny configuration — supply-chain gate.
+# Run: cargo deny check
+
+[advisories]
+version = 2
+yanked = "deny"
+
+[licenses]
+version = 2
+# Only permissive, $0 licenses — see design/design-document.md and
+# design/security-credentials.md.
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-3.0",
+    "Zlib",
+]
+confidence-threshold = 0.9
+# Keep a forward-looking allowlist without warning about not-yet-used licenses.
+unused-allowed-license = "allow"
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

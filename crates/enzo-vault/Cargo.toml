@@ -1,0 +1,21 @@
+[package]
+name = "enzo-vault"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Envelope-encrypted credential vault for Enzo (Argon2id + XChaCha20-Poly1305)."
+
+[lints]
+workspace = true
+
+[dependencies]
+argon2 = "0.5"
+chacha20poly1305 = "0.10"
+zeroize = "1"
+getrandom = "0.2"
+base64 = "0.22"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"

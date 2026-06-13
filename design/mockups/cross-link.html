@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Enzo — Cross-surface references</title>
+<link href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=JetBrains+Mono:wght@400;500&family=Inter:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.7.0/dist/tabler-icons.min.css">
+<style>body{margin:0;background:#0e0c14;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:18px;box-sizing:border-box;}</style>
+</head><body>
+<div style="display:flex; background:#16131f; border:3px solid #3a3450; border-radius:10px; overflow:hidden; height:450px; width:720px; font-family:'JetBrains Mono',monospace; position:relative;">
+  <div style="width:46px; background:#120f1a; border-right:2px solid #3a3450; display:flex; flex-direction:column; align-items:center; padding-top:12px; gap:16px; color:#5f5e6e; font-size:18px;">
+    <i class="ti ti-terminal-2"></i><i class="ti ti-code"></i><i class="ti ti-world" style="color:#5dcaa5;"></i><i class="ti ti-database"></i>
+    <i class="ti ti-robot" style="color:#afa9ec; margin-top:auto;"></i><i class="ti ti-settings" style="margin-bottom:12px;"></i>
+  </div>
+  <div style="flex:1.05; display:flex; flex-direction:column; border-right:3px solid #3a3450;">
+    <div style="display:flex; align-items:center; gap:8px; padding:7px 10px; background:#221d30; border-bottom:2px solid #3a3450; color:#9f97c4; font-size:11px;">
+      <i class="ti ti-world" style="color:#5dcaa5; font-size:14px;"></i>
+      <span style="flex:1; background:#16131f; border:1px solid #3a3450; border-radius:4px; padding:3px 8px; color:#85b7eb; font-size:10px;">localhost:5173</span>
+      <span style="font-family:'Silkscreen'; font-size:7px; color:#26215c; background:#afa9ec; padding:3px 6px; border-radius:3px;">⊹ PICKING</span>
+    </div>
+    <div style="flex:1; background:#faf9f5; padding:14px; font-family:'Inter',sans-serif;">
+      <div style="font-size:15px; font-weight:500; color:#26215c;">Dashboard</div>
+      <div style="margin-top:12px; background:#fff; border:2px solid #534ab7; border-radius:8px; padding:12px; position:relative;">
+        <div style="font-size:10px; color:#888;">Revenue</div><div style="font-size:18px; font-weight:500; color:#1d1a28;">$48,210</div>
+        <div style="position:absolute; top:-10px; left:8px; font-family:'JetBrains Mono'; font-size:8px; background:#534ab7; color:#eeedfe; padding:2px 6px; border-radius:3px;">div.card.revenue</div>
+      </div>
+      <div style="margin-top:8px; background:#fff; border:1px solid #e5e3da; border-radius:8px; padding:12px;"><div style="font-size:10px; color:#888;">Users</div><div style="font-size:18px; font-weight:500;">1,204</div></div>
+    </div>
+    <div style="padding:5px 10px; background:#221d30; border-top:2px solid #3a3450; font-family:'Silkscreen'; font-size:8px; color:#9f97c4;"><span style="color:#5dcaa5;">● CEF</span> <span style="color:#5f5e6e;">drag element → AI ►</span></div>
+  </div>
+  <div style="flex:1.1; display:flex; flex-direction:column; background:#15121d;">
+    <div style="display:flex; align-items:center; gap:8px; padding:7px 10px; background:#221d30; border-bottom:2px solid #3a3450; font-family:'Silkscreen'; font-size:9px; color:#afa9ec;">
+      <i class="ti ti-robot" style="font-size:13px;"></i> CLAUDE <span style="margin-left:auto; color:#5dcaa5;">● 3 REFS LINKED</span>
+    </div>
+    <div style="flex:1; padding:10px 11px; font-size:11px; color:#c9c4dc; line-height:1.5;">
+      <div style="color:#888780;">You linked a 401 from /api/me. Tracing it now —</div>
+      <div style="margin-top:5px;">found the guard in <span style="color:#5dcaa5;">auth.rs:42</span>; it rejects users whose <span style="color:#ef9f27;">plan</span> is null, but pro users have it set. Likely a stale join.</div>
+    </div>
+    <div style="margin:0 10px 8px; background:#1d1a28; border:1px solid #3a3450; border-radius:7px; padding:8px;">
+      <div style="font-family:'Silkscreen'; font-size:7px; color:#7f77dd; margin-bottom:6px;">CONTEXT · 3 REFERENCES</div>
+      <div style="display:flex; align-items:center; gap:6px; background:#15301a; border-left:3px solid #97c459; border-radius:0 4px 4px 0; padding:4px 7px; margin-bottom:4px; font-size:10px;">
+        <i class="ti ti-code" style="color:#97c459; font-size:12px;"></i><span style="color:#97c459;">renderer.rs</span><span style="color:#888780;">:12-15</span><span style="margin-left:auto; color:#5dcaa5; font-size:8px;">● live</span>
+      </div>
+      <div style="display:flex; align-items:center; gap:6px; background:#2a1f12; border-left:3px solid #ef9f27; border-radius:0 4px 4px 0; padding:4px 7px; margin-bottom:4px; font-size:10px;">
+        <i class="ti ti-table" style="color:#ef9f27; font-size:12px;"></i><span style="color:#ef9f27;">users</span><span style="color:#888780;">· 4 rows · plan=pro</span><span style="margin-left:auto; color:#5dcaa5; font-size:8px;">● live</span>
+      </div>
+      <div style="display:flex; align-items:center; gap:6px; background:#2e1414; border-left:3px solid #f09595; border-radius:0 4px 4px 0; padding:4px 7px; font-size:10px;">
+        <i class="ti ti-arrows-left-right" style="color:#f09595; font-size:12px;"></i><span style="color:#f09595;">GET /api/me</span><span style="color:#888780;">· 401</span><span style="margin-left:auto; color:#5dcaa5; font-size:8px;">● live</span>
+      </div>
+      <div style="margin-top:7px; display:flex; gap:6px; align-items:center; border-top:1px solid #3a3450; padding-top:7px;">
+        <span style="flex:1; color:#e8e4f5; font-size:10.5px;">why 401 for pro users? cross-check ↑</span>
+        <span style="font-family:'Silkscreen'; font-size:8px; background:#534ab7; color:#eeedfe; padding:4px 7px; border-radius:3px;">↵</span>
+      </div>
+    </div>
+  </div>
+  <div style="position:absolute; left:300px; top:150px; display:flex; align-items:center; gap:5px; background:#1d1a28; border:1px dashed #afa9ec; border-radius:5px; padding:4px 8px; font-size:9px; color:#afa9ec;">
+    <i class="ti ti-components" style="font-size:12px;"></i> div.card.revenue <span style="color:#5f5e6e;">+html+css</span>
+  </div>
+</div>
+</body></html>

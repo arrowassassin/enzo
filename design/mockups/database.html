@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Enzo — Database</title>
+<link href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.7.0/dist/tabler-icons.min.css">
+<style>body{margin:0;background:#0e0c14;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:18px;box-sizing:border-box;}</style>
+</head><body>
+<div style="display:flex; background:#16131f; border:3px solid #3a3450; border-radius:10px; overflow:hidden; height:440px; width:720px; font-family:'JetBrains Mono',monospace;">
+  <div style="width:46px; background:#120f1a; border-right:2px solid #3a3450; display:flex; flex-direction:column; align-items:center; padding-top:12px; gap:16px; color:#5f5e6e; font-size:18px;">
+    <i class="ti ti-terminal-2"></i><i class="ti ti-code"></i><i class="ti ti-world"></i><i class="ti ti-database" style="color:#5dcaa5;"></i>
+    <i class="ti ti-robot" style="margin-top:auto;"></i><i class="ti ti-settings" style="margin-bottom:12px;"></i>
+  </div>
+  <div style="width:150px; background:#1a1626; border-right:2px solid #3a3450; padding:10px 0; font-size:11px; color:#9f97c4;">
+    <div style="font-family:'Silkscreen'; font-size:8px; color:#7f77dd; padding:0 12px 8px;">CONNECTIONS</div>
+    <div style="padding:0 10px;">
+      <div style="padding:3px 0; color:#5dcaa5;"><i class="ti ti-plug-connected" style="font-size:11px;"></i> prod · postgres</div>
+      <div style="padding:3px 0 3px 14px;"><i class="ti ti-chevron-down" style="font-size:10px;"></i> public</div>
+      <div style="padding:2px 0 2px 26px; color:#85b7eb;"><i class="ti ti-table" style="font-size:11px;"></i> users</div>
+      <div style="padding:2px 0 2px 26px;"><i class="ti ti-table" style="font-size:11px;"></i> orders</div>
+      <div style="padding:2px 0 2px 26px;"><i class="ti ti-table" style="font-size:11px;"></i> events</div>
+      <div style="padding:3px 0; color:#888780;"><i class="ti ti-plug" style="font-size:11px;"></i> local · duckdb</div>
+    </div>
+  </div>
+  <div style="flex:1; display:flex; flex-direction:column;">
+    <div style="display:flex; align-items:center; gap:8px; padding:7px 12px; background:#221d30; border-bottom:2px solid #3a3450; font-family:'Silkscreen'; font-size:8px; color:#9f97c4;">
+      <span style="background:#16131f; padding:4px 8px; border-radius:3px; color:#5dcaa5;">query 1</span>
+      <span style="margin-left:auto; background:#639922; color:#173404; padding:4px 9px; border-radius:3px;"><i class="ti ti-player-play" style="font-size:10px;vertical-align:-1px;"></i> RUN ⌘↵</span>
+    </div>
+    <div style="padding:10px 0; font-size:12px; line-height:1.55; border-bottom:2px solid #3a3450;">
+      <div style="display:grid; grid-template-columns:30px 1fr;">
+        <span style="color:#5f5e6e; text-align:right; padding-right:8px;">1</span><span><span style="color:#afa9ec;">select</span> <span style="color:#e8e4f5;">id, email, plan, created_at</span></span>
+        <span style="color:#5f5e6e; text-align:right; padding-right:8px;">2</span><span><span style="color:#afa9ec;">from</span> <span style="color:#5dcaa5;">users</span> <span style="color:#afa9ec;">where</span> plan = <span style="color:#97c459;">'pro'</span></span>
+        <span style="color:#5f5e6e; text-align:right; padding-right:8px;">3</span><span><span style="color:#afa9ec;">order by</span> created_at <span style="color:#afa9ec;">desc</span> <span style="color:#afa9ec;">limit</span> <span style="color:#ef9f27;">500</span>;</span>
+      </div>
+    </div>
+    <div style="flex:1; overflow:hidden; font-size:11px;">
+      <div style="display:grid; grid-template-columns:50px 1.4fr 0.8fr 1fr; background:#1d1a28; color:#7f77dd; font-family:'Silkscreen'; font-size:8px;">
+        <span style="padding:6px 10px;">ID</span><span style="padding:6px 10px;">EMAIL</span><span style="padding:6px 10px;">PLAN</span><span style="padding:6px 10px;">CREATED</span>
+      </div>
+      <div style="color:#c9c4dc;">
+        <div style="display:grid; grid-template-columns:50px 1.4fr 0.8fr 1fr; border-bottom:1px solid #221d30;"><span style="padding:5px 10px; color:#5dcaa5;">1</span><span style="padding:5px 10px;">ada@enzo.dev</span><span style="padding:5px 10px; color:#97c459;">pro</span><span style="padding:5px 10px;">2026-06-01</span></div>
+        <div style="display:grid; grid-template-columns:50px 1.4fr 0.8fr 1fr; border-bottom:1px solid #221d30; background:#1a1626;"><span style="padding:5px 10px; color:#5dcaa5;">2</span><span style="padding:5px 10px;">linus@enzo.dev</span><span style="padding:5px 10px; color:#97c459;">pro</span><span style="padding:5px 10px;">2026-05-28</span></div>
+        <div style="display:grid; grid-template-columns:50px 1.4fr 0.8fr 1fr; border-bottom:1px solid #221d30;"><span style="padding:5px 10px; color:#5dcaa5;">3</span><span style="padding:5px 10px;">grace@enzo.dev</span><span style="padding:5px 10px; color:#97c459;">pro</span><span style="padding:5px 10px;">2026-05-22</span></div>
+        <div style="display:grid; grid-template-columns:50px 1.4fr 0.8fr 1fr;"><span style="padding:5px 10px; color:#5dcaa5;">4</span><span style="padding:5px 10px;">edsger@enzo.dev</span><span style="padding:5px 10px; color:#97c459;">pro</span><span style="padding:5px 10px;">2026-05-19</span></div>
+      </div>
+    </div>
+    <div style="display:flex; gap:14px; padding:6px 12px; background:#221d30; border-top:2px solid #3a3450; font-family:'Silkscreen'; font-size:8px; color:#9f97c4;">
+      <span style="color:#5dcaa5;">● ADBC postgres</span><span>500 rows</span><span>6ms · Arrow stream</span><span style="margin-left:auto; color:#5f5e6e;">⌘K</span>
+    </div>
+  </div>
+</div>
+</body></html>

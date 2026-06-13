@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 560" font-family="monospace">
+  <rect width="760" height="560" fill="#16131f"/>
+  <text x="30" y="40" fill="#9f97c4" font-size="20" font-weight="bold">Enzo — Architecture</text>
+  <text x="30" y="62" fill="#5f5e6e" font-size="12">Daemon + client split · dual-plane rendering</text>
+
+  <!-- UI client -->
+  <rect x="30" y="85" width="700" height="170" rx="8" fill="#1a1626" stroke="#534ab7" stroke-width="2"/>
+  <text x="50" y="110" fill="#afa9ec" font-size="14" font-weight="bold">UI CLIENT — GPU window (wgpu: Metal / DX12 / Vulkan / WebGPU)</text>
+
+  <rect x="50" y="125" width="300" height="80" rx="6" fill="#221d30" stroke="#3a3450"/>
+  <text x="70" y="150" fill="#5dcaa5" font-size="13" font-weight="bold">COMPAT PLANE</text>
+  <text x="70" y="172" fill="#c9c4dc" font-size="11">xterm cell grid (raw VT)</text>
+  <text x="70" y="190" fill="#888780" font-size="11">runs vim / tmux / ssh / htop</text>
+
+  <rect x="410" y="125" width="300" height="80" rx="6" fill="#221d30" stroke="#3a3450"/>
+  <text x="430" y="150" fill="#ef9f27" font-size="13" font-weight="bold">SEMANTIC PLANE</text>
+  <text x="430" y="172" fill="#c9c4dc" font-size="11">blocks, diffs, editor, browser,</text>
+  <text x="430" y="190" fill="#c9c4dc" font-size="11">data grid, agent UI</text>
+
+  <text x="50" y="232" fill="#5f5e6e" font-size="11">GPU compositor  ·  AccessKit a11y tree → UIA / AT-SPI / NSAccessibility</text>
+
+  <!-- link -->
+  <line x1="380" y1="255" x2="380" y2="290" stroke="#5dcaa5" stroke-width="2"/>
+  <text x="392" y="278" fill="#5dcaa5" font-size="11">local IPC (UDS / named pipe) · QUIC when remote</text>
+
+  <!-- daemon -->
+  <rect x="30" y="290" width="700" height="160" rx="8" fill="#1a1626" stroke="#5dcaa5" stroke-width="2"/>
+  <text x="50" y="315" fill="#5dcaa5" font-size="14" font-weight="bold">SESSION DAEMON — headless, owns all state, survives UI crashes</text>
+
+  <rect x="50" y="328" width="160" height="46" rx="5" fill="#221d30" stroke="#3a3450"/>
+  <text x="60" y="348" fill="#c9c4dc" font-size="11">PTY mgr</text>
+  <text x="60" y="365" fill="#888780" font-size="10">ConPTY / openpty</text>
+
+  <rect x="222" y="328" width="160" height="46" rx="5" fill="#221d30" stroke="#3a3450"/>
+  <text x="232" y="348" fill="#c9c4dc" font-size="11">Scrollback + blocks</text>
+  <text x="232" y="365" fill="#888780" font-size="10">OSC 133/7/8</text>
+
+  <rect x="394" y="328" width="160" height="46" rx="5" fill="#221d30" stroke="#3a3450"/>
+  <text x="404" y="348" fill="#c9c4dc" font-size="11">ATP broker</text>
+  <text x="404" y="365" fill="#888780" font-size="10">JSON-RPC · refs</text>
+
+  <rect x="566" y="328" width="144" height="46" rx="5" fill="#221d30" stroke="#ba7517"/>
+  <text x="576" y="348" fill="#ef9f27" font-size="11">Credential vault</text>
+  <text x="576" y="365" fill="#888780" font-size="10">envelope-encrypted</text>
+
+  <rect x="50" y="384" width="240" height="46" rx="5" fill="#221d30" stroke="#3a3450"/>
+  <text x="60" y="404" fill="#c9c4dc" font-size="11">LSP / DAP host · DB (ADBC)</text>
+  <text x="60" y="421" fill="#888780" font-size="10">rust-analyzer, debug adapters</text>
+
+  <rect x="302" y="384" width="200" height="46" rx="5" fill="#221d30" stroke="#3a3450"/>
+  <text x="312" y="404" fill="#c9c4dc" font-size="11">WASM plugin host</text>
+  <text x="312" y="421" fill="#888780" font-size="10">capability-sandboxed</text>
+
+  <rect x="514" y="384" width="196" height="46" rx="5" fill="#221d30" stroke="#e24b4a"/>
+  <text x="524" y="404" fill="#f09595" font-size="11">CEF browser host</text>
+  <text x="524" y="421" fill="#888780" font-size="10">SANDBOXED · no vault access</text>
+
+  <!-- clients -->
+  <line x1="130" y1="450" x2="130" y2="485" stroke="#3a3450" stroke-width="2"/>
+  <line x1="380" y1="450" x2="380" y2="485" stroke="#3a3450" stroke-width="2"/>
+  <line x1="630" y1="450" x2="630" y2="485" stroke="#3a3450" stroke-width="2"/>
+
+  <rect x="50" y="485" width="160" height="46" rx="5" fill="#120f1a" stroke="#3a3450"/>
+  <text x="60" y="513" fill="#9f97c4" font-size="11">your shell (zsh/fish)</text>
+
+  <rect x="300" y="485" width="160" height="46" rx="5" fill="#120f1a" stroke="#534ab7"/>
+  <text x="310" y="507" fill="#afa9ec" font-size="11">Claude Code / agent</text>
+  <text x="310" y="523" fill="#888780" font-size="10">speaks ATP</text>
+
+  <rect x="550" y="485" width="160" height="46" rx="5" fill="#120f1a" stroke="#3a3450"/>
+  <text x="560" y="507" fill="#9f97c4" font-size="11">DB engines</text>
+  <text x="560" y="523" fill="#888780" font-size="10">Postgres / DuckDB / ...</text>
+</svg>

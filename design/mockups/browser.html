@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Enzo — Browser</title>
+<link href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=JetBrains+Mono:wght@400;500&family=Inter:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.7.0/dist/tabler-icons.min.css">
+<style>body{margin:0;background:#0e0c14;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:18px;box-sizing:border-box;}</style>
+</head><body>
+<div style="display:flex; background:#16131f; border:3px solid #3a3450; border-radius:10px; overflow:hidden; height:440px; width:720px; font-family:'JetBrains Mono',monospace;">
+  <div style="width:46px; background:#120f1a; border-right:2px solid #3a3450; display:flex; flex-direction:column; align-items:center; padding-top:12px; gap:16px; color:#5f5e6e; font-size:18px;">
+    <i class="ti ti-terminal-2"></i><i class="ti ti-code"></i><i class="ti ti-world" style="color:#5dcaa5;"></i><i class="ti ti-database"></i>
+    <i class="ti ti-robot" style="margin-top:auto;"></i><i class="ti ti-settings" style="margin-bottom:12px;"></i>
+  </div>
+  <div style="flex:1; display:flex; flex-direction:column;">
+    <div style="display:flex; align-items:center; gap:8px; padding:8px 12px; background:#221d30; border-bottom:2px solid #3a3450; color:#9f97c4; font-size:12px;">
+      <i class="ti ti-arrow-left" style="font-size:14px;"></i><i class="ti ti-arrow-right" style="font-size:14px; color:#5f5e6e;"></i><i class="ti ti-refresh" style="font-size:13px;"></i>
+      <span style="flex:1; background:#16131f; border:1px solid #3a3450; border-radius:4px; padding:4px 9px; color:#85b7eb; font-size:11px;"><i class="ti ti-lock" style="font-size:11px;"></i> localhost:5173/dashboard</span>
+      <span style="font-family:'Silkscreen'; font-size:8px; color:#7f77dd; background:#16131f; padding:4px 7px; border-radius:3px;">⊹ PICK → AI</span>
+    </div>
+    <div style="flex:1; background:#faf9f5; padding:16px; font-family:'Inter',sans-serif;">
+      <div style="font-size:18px; font-weight:500; color:#26215c;">Acme Dashboard</div>
+      <div style="display:flex; gap:10px; margin-top:12px;">
+        <div style="flex:1; background:#fff; border:2px dashed #534ab7; border-radius:8px; padding:12px;"><div style="font-size:11px; color:#888;">Revenue</div><div style="font-size:20px; font-weight:500; color:#1d1a28;">$48,210</div><div style="font-size:9px; color:#534ab7; margin-top:4px;">◄ selected element</div></div>
+        <div style="flex:1; background:#fff; border:1px solid #e5e3da; border-radius:8px; padding:12px;"><div style="font-size:11px; color:#888;">Users</div><div style="font-size:20px; font-weight:500; color:#1d1a28;">1,204</div></div>
+        <div style="flex:1; background:#fff; border:1px solid #e5e3da; border-radius:8px; padding:12px;"><div style="font-size:11px; color:#888;">Churn</div><div style="font-size:20px; font-weight:500; color:#c0392b;">2.1%</div></div>
+      </div>
+    </div>
+    <div style="height:150px; background:#1a1626; border-top:2px solid #3a3450; display:flex; flex-direction:column;">
+      <div style="display:flex; gap:14px; padding:6px 12px; font-family:'Silkscreen'; font-size:8px; color:#9f97c4; border-bottom:1px solid #3a3450;">
+        <span style="color:#5dcaa5;">NETWORK</span><span>ELEMENTS</span><span>CONSOLE</span><span>SOURCES</span><span style="margin-left:auto; color:#5f5e6e;">CDP ●</span>
+      </div>
+      <div style="flex:1; padding:8px 12px; font-size:11px; line-height:1.7;">
+        <div style="display:grid; grid-template-columns:1fr auto auto auto; gap:0 14px; color:#888780; font-size:9px;"><span>NAME</span><span>STATUS</span><span>TYPE</span><span>TIME</span></div>
+        <div style="display:grid; grid-template-columns:1fr auto auto auto; gap:0 14px; color:#c9c4dc;"><span>dashboard</span><span style="color:#97c459;">200</span><span>doc</span><span>120ms</span></div>
+        <div style="display:grid; grid-template-columns:1fr auto auto auto; gap:0 14px; color:#c9c4dc;"><span>/api/revenue</span><span style="color:#97c459;">200</span><span>xhr</span><span>42ms</span></div>
+        <div style="display:grid; grid-template-columns:1fr auto auto auto; gap:0 14px; color:#c9c4dc;"><span>/api/me</span><span style="color:#f09595;">401</span><span>xhr</span><span>11ms</span></div>
+        <div style="display:grid; grid-template-columns:1fr auto auto auto; gap:0 14px; color:#c9c4dc;"><span>app.css</span><span style="color:#97c459;">200</span><span>css</span><span>8ms</span></div>
+      </div>
+    </div>
+    <div style="display:flex; gap:14px; padding:6px 12px; background:#221d30; border-top:2px solid #3a3450; font-family:'Silkscreen'; font-size:8px; color:#9f97c4;">
+      <span style="color:#5dcaa5;">● CEF · sandboxed</span><span style="color:#f09595;">1 failed req</span><span style="margin-left:auto; color:#5f5e6e;">⌘K</span>
+    </div>
+  </div>
+</div>
+</body></html>

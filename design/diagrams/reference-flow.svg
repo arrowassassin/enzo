@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 480" font-family="monospace">
+  <rect width="760" height="480" fill="#16131f"/>
+  <text x="30" y="40" fill="#9f97c4" font-size="20" font-weight="bold">Cross-surface references — flow</text>
+  <text x="30" y="62" fill="#5f5e6e" font-size="12">Pick once on any surface → typed Ref (snapshot + locator) → drop into agent or another panel</text>
+
+  <!-- sources -->
+  <text x="30" y="100" fill="#7f77dd" font-size="13" font-weight="bold">SOURCES (⌘E grabs)</text>
+  <rect x="30" y="112" width="150" height="40" rx="5" fill="#15301a" stroke="#97c459"/>
+  <text x="42" y="137" fill="#97c459" font-size="11">code range</text>
+  <rect x="30" y="158" width="150" height="40" rx="5" fill="#2a1f12" stroke="#ef9f27"/>
+  <text x="42" y="183" fill="#ef9f27" font-size="11">sql result / table</text>
+  <rect x="30" y="204" width="150" height="40" rx="5" fill="#1a2433" stroke="#85b7eb"/>
+  <text x="42" y="229" fill="#85b7eb" font-size="11">dom element</text>
+  <rect x="30" y="250" width="150" height="40" rx="5" fill="#2e1414" stroke="#f09595"/>
+  <text x="42" y="275" fill="#f09595" font-size="11">network call</text>
+  <rect x="30" y="296" width="150" height="40" rx="5" fill="#1d1a28" stroke="#5dcaa5"/>
+  <text x="42" y="321" fill="#5dcaa5" font-size="11">terminal block</text>
+
+  <!-- Ref primitive -->
+  <line x1="180" y1="220" x2="250" y2="220" stroke="#9f97c4" stroke-width="2" marker-end="url(#b)"/>
+  <rect x="250" y="150" width="230" height="160" rx="8" fill="#1a1626" stroke="#9f97c4" stroke-width="2"/>
+  <text x="268" y="178" fill="#e8e4f5" font-size="14" font-weight="bold">Ref</text>
+  <text x="268" y="202" fill="#c9c4dc" font-size="11">kind</text>
+  <text x="268" y="222" fill="#c9c4dc" font-size="11">source { panel, document }</text>
+  <text x="268" y="242" fill="#5dcaa5" font-size="11">locator  → live re-resolve</text>
+  <text x="268" y="262" fill="#ef9f27" font-size="11">snapshot → frozen capture</text>
+  <text x="268" y="282" fill="#888780" font-size="11">render { chip, expanded }</text>
+  <text x="268" y="302" fill="#5f5e6e" font-size="10">● live   ◐ stale</text>
+
+  <!-- targets -->
+  <line x1="480" y1="200" x2="550" y2="160" stroke="#534ab7" stroke-width="2" marker-end="url(#b)"/>
+  <line x1="480" y1="230" x2="550" y2="270" stroke="#5dcaa5" stroke-width="2" marker-end="url(#b)"/>
+  <line x1="480" y1="290" x2="550" y2="350" stroke="#888780" stroke-width="2" marker-end="url(#b)"/>
+
+  <rect x="550" y="130" width="190" height="64" rx="6" fill="#1a1626" stroke="#534ab7" stroke-width="2"/>
+  <text x="565" y="155" fill="#afa9ec" font-size="12" font-weight="bold">AI composer</text>
+  <text x="565" y="175" fill="#888780" font-size="10">typed context chip</text>
+  <text x="565" y="189" fill="#888780" font-size="10">(secrets redacted)</text>
+
+  <rect x="550" y="238" width="190" height="64" rx="6" fill="#1a1626" stroke="#5dcaa5" stroke-width="2"/>
+  <text x="565" y="263" fill="#5dcaa5" font-size="12" font-weight="bold">another panel</text>
+  <text x="565" y="283" fill="#888780" font-size="10">network → fetch code</text>
+  <text x="565" y="297" fill="#888780" font-size="10">table → struct</text>
+
+  <rect x="550" y="330" width="190" height="50" rx="6" fill="#1a1626" stroke="#3a3450"/>
+  <text x="565" y="355" fill="#9f97c4" font-size="12" font-weight="bold">references tray</text>
+  <text x="565" y="372" fill="#888780" font-size="10">⌘-pin · reuse</text>
+
+  <text x="30" y="380" fill="#7f77dd" font-size="12" font-weight="bold">ATP messages</text>
+  <text x="30" y="402" fill="#c9c4dc" font-size="11">ref.create · ref.attach · ref.resolve · ref.reveal · ref.subscribe</text>
+  <text x="30" y="424" fill="#5f5e6e" font-size="11">code refs use anchored ranges (follow edits) · data/dom/network refs are immutable snapshots + liveness</text>
+  <text x="30" y="446" fill="#5f5e6e" font-size="11">Agent gets the failing request + the handler code + the actual rows together — what no separate tools can do.</text>
+
+  <defs><marker id="b" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6" fill="#9f97c4"/></marker></defs>
+</svg>

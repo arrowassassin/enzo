@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<title>Enzo — Command palette</title>
+<link href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  body{margin:0;background:#0e0c14;display:flex;align-items:center;justify-content:center;min-height:100vh;font-family:'JetBrains Mono',monospace;}
+  .frame{width:720px;height:440px;background:#16131f;border:3px solid #3a3450;border-radius:12px;overflow:hidden;position:relative;}
+  .bar{display:flex;align-items:center;gap:8px;padding:9px 12px;background:#221d30;border-bottom:3px solid #3a3450;font-family:'Silkscreen';font-size:10px;color:#9f97c4;}
+  .dot{width:11px;height:11px;border-radius:2px;display:inline-block;}
+  .dim{filter:blur(1px);opacity:.4;padding:16px;color:#5f5e6e;font-size:12px;line-height:1.7;}
+  .overlay{position:absolute;top:54px;left:0;right:0;bottom:0;background:rgba(8,6,14,.6);display:flex;justify-content:center;padding-top:30px;}
+  .pal{width:480px;background:#1a1626;border:2px solid #534ab7;border-radius:10px;overflow:hidden;height:fit-content;}
+  .search{display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid #3a3450;font-size:14px;}
+  .search .pill{font-family:'Silkscreen';font-size:8px;background:#2f80b8;color:#e6f1fb;padding:3px 7px;border-radius:3px;}
+  .item{display:flex;align-items:center;gap:11px;padding:9px 16px;font-size:12.5px;color:#c9c4dc;}
+  .item.sel{background:#534ab7;color:#eeedfe;}
+  .item .ic{font-size:15px;color:#7f77dd;}
+  .item.sel .ic{color:#eeedfe;}
+  .item .k{margin-left:auto;font-family:'Silkscreen';font-size:8px;color:#5f5e6e;}
+  .item.sel .k{color:#cecbf6;}
+</style>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.7.0/dist/tabler-icons.min.css">
+</head><body>
+<div class="frame">
+  <div class="bar"><span class="dot" style="background:#e24b4a"></span><span class="dot" style="background:#ef9f27"></span><span class="dot" style="background:#97c459"></span><span style="margin-left:8px">ENZO</span><span style="margin-left:auto;color:#85b7eb">⌘K</span></div>
+  <div class="dim">❯ npm run dev<br>VITE ready in 312 ms<br>➜ localhost:5173</div>
+  <div class="overlay">
+    <div class="pal">
+      <div class="search"><span class="pill">CMD</span><span style="color:#85b7eb">&gt;</span><span style="color:#e8e4f5">split</span><span style="margin-left:auto;color:#5f5e6e;font-size:11px">3 actions</span></div>
+      <div class="item sel"><i class="ti ti-layout-columns ic"></i> Split panel right <span class="k">⌘\</span></div>
+      <div class="item"><i class="ti ti-layout-rows ic"></i> Split panel down <span class="k">⌘⇧\</span></div>
+      <div class="item"><i class="ti ti-layout-board-split ic"></i> Split with AI panel <span class="k">⌘⇧A</span></div>
+      <div class="item"><i class="ti ti-database ic"></i> Open database surface <span class="k">⌘3</span></div>
+      <div class="item"><i class="ti ti-palette ic"></i> Toggle CRT effect <span class="k"></span></div>
+      <div class="item"><i class="ti ti-lock ic"></i> Lock vault <span class="k"></span></div>
+    </div>
+  </div>
+</div>
+</body></html>

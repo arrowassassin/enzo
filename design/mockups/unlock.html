@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<title>Enzo — Vault unlock</title>
+<link href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  body{margin:0;background:#0e0c14;display:flex;align-items:center;justify-content:center;min-height:100vh;font-family:'JetBrains Mono',monospace;}
+  .frame{width:720px;background:#16131f;border:3px solid #3a3450;border-radius:12px;overflow:hidden;}
+  .bar{display:flex;align-items:center;gap:8px;padding:9px 12px;background:#221d30;border-bottom:3px solid #3a3450;font-family:'Silkscreen';font-size:10px;color:#9f97c4;}
+  .dot{width:11px;height:11px;border-radius:2px;display:inline-block;}
+  .stage{padding:48px 40px;display:flex;flex-direction:column;align-items:center;}
+  .logo{font-family:'Silkscreen';font-size:30px;color:#5dcaa5;letter-spacing:3px;margin-bottom:6px;}
+  .sub{font-family:'Silkscreen';font-size:9px;color:#7f77dd;margin-bottom:30px;}
+  .lock{font-size:34px;color:#ef9f27;margin-bottom:10px;}
+  .lbl{color:#9f97c4;font-size:13px;margin-bottom:18px;}
+  .field{width:340px;background:#1d1a28;border:2px solid #534ab7;border-radius:7px;padding:11px 14px;color:#e8e4f5;font-size:14px;letter-spacing:3px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;}
+  .btn{width:368px;background:#534ab7;color:#eeedfe;border:none;border-radius:7px;padding:11px;font-family:'Silkscreen';font-size:10px;margin-bottom:10px;cursor:pointer;}
+  .bio{width:368px;background:#1d1a28;border:2px solid #3a3450;border-radius:7px;padding:11px;font-family:'Silkscreen';font-size:9px;color:#9f97c4;display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:18px;}
+  .links{display:flex;gap:18px;font-size:11px;color:#5f5e6e;}
+  .links a{color:#7f77dd;text-decoration:none;}
+  .foot{display:flex;gap:14px;padding:7px 14px;background:#221d30;border-top:3px solid #3a3450;font-family:'Silkscreen';font-size:8px;color:#9f97c4;}
+</style></head><body>
+<div class="frame">
+  <div class="bar"><span class="dot" style="background:#e24b4a"></span><span class="dot" style="background:#ef9f27"></span><span class="dot" style="background:#97c459"></span><span style="margin-left:8px">ENZO</span><span style="margin-left:auto;color:#ef9f27">● VAULT LOCKED</span></div>
+  <div class="stage">
+    <div class="logo">ENZO</div>
+    <div class="sub">AI-NATIVE WORKSPACE</div>
+    <div class="lock">▣</div>
+    <div class="lbl">Enter your master password to unlock the credential vault</div>
+    <div class="field"><span>••••••••••••</span><span style="color:#5dcaa5;font-size:11px">↵</span></div>
+    <button class="btn">UNLOCK</button>
+    <div class="bio">⌘  UNLOCK WITH TOUCH ID</div>
+    <div class="links"><a href="#">Use recovery code</a><span>·</span><a href="#">Forgot password?</a></div>
+  </div>
+  <div class="foot"><span style="color:#ef9f27">Argon2id · XChaCha20-Poly1305</span><span style="margin-left:auto;color:#5f5e6e">zero-knowledge · vendor cannot recover</span></div>
+</div>
+</body></html>

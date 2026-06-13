@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<title>Enzo — Add database connection</title>
+<link href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  body{margin:0;background:#0e0c14;display:flex;align-items:center;justify-content:center;min-height:100vh;font-family:'JetBrains Mono',monospace;}
+  .frame{display:flex;width:720px;height:470px;background:#16131f;border:3px solid #3a3450;border-radius:12px;overflow:hidden;}
+  .rail{width:46px;background:#120f1a;border-right:2px solid #3a3450;display:flex;flex-direction:column;align-items:center;padding-top:12px;gap:18px;color:#5f5e6e;font-size:17px;}
+  .rail .on{color:#5dcaa5;}
+  .main{flex:1;display:flex;flex-direction:column;}
+  .top{padding:10px 16px;background:#221d30;border-bottom:2px solid #3a3450;font-family:'Silkscreen';font-size:10px;color:#9f97c4;}
+  .body{flex:1;padding:16px 20px;overflow:auto;}
+  .row{display:flex;gap:12px;margin-bottom:11px;}
+  .grp{flex:1;}
+  .cap{font-family:'Silkscreen';font-size:8px;color:#7f77dd;margin-bottom:5px;display:block;}
+  .inp{width:100%;box-sizing:border-box;background:#1d1a28;border:1px solid #3a3450;border-radius:5px;padding:8px 10px;color:#e8e4f5;font-family:'JetBrains Mono';font-size:12px;}
+  .inp.pw{border-color:#ba7517;display:flex;align-items:center;justify-content:space-between;}
+  .vault{display:flex;align-items:center;gap:8px;background:#2a1f12;border:1px solid #ba7517;border-radius:6px;padding:9px 12px;margin:4px 0 14px;font-size:11px;color:#ef9f27;}
+  .toggle{margin-left:auto;width:34px;height:18px;background:#534ab7;border-radius:9px;position:relative;}
+  .toggle::after{content:'';position:absolute;right:2px;top:2px;width:14px;height:14px;border-radius:50%;background:#eeedfe;}
+  .btns{display:flex;gap:10px;}
+  .btn{font-family:'Silkscreen';font-size:9px;padding:9px 16px;border-radius:5px;border:none;cursor:pointer;}
+  .test{background:#1d1a28;color:#9f97c4;border:1px solid #3a3450;}
+  .save{background:#639922;color:#173404;}
+  .foot{display:flex;gap:14px;padding:7px 14px;background:#221d30;border-top:2px solid #3a3450;font-family:'Silkscreen';font-size:8px;color:#9f97c4;}
+</style></head><body>
+<div class="frame">
+  <div class="rail">
+    <span>▤</span><span>‹›</span><span>◯</span><span class="on">▦</span>
+  </div>
+  <div class="main">
+    <div class="top">NEW CONNECTION · postgres</div>
+    <div class="body">
+      <div class="row"><div class="grp"><span class="cap">NAME</span><input class="inp" value="prod · postgres"></div><div class="grp"><span class="cap">DRIVER</span><input class="inp" value="PostgreSQL (ADBC)"></div></div>
+      <div class="row"><div class="grp" style="flex:2"><span class="cap">HOST</span><input class="inp" value="db.acme.internal"></div><div class="grp"><span class="cap">PORT</span><input class="inp" value="5432"></div></div>
+      <div class="row"><div class="grp"><span class="cap">DATABASE</span><input class="inp" value="acme_prod"></div><div class="grp"><span class="cap">USER</span><input class="inp" value="enzo_ro"></div></div>
+      <div class="grp"><span class="cap">PASSWORD</span><div class="inp pw"><span style="letter-spacing:3px">••••••••••••</span><span style="color:#ba7517;font-size:10px">▣ encrypted</span></div></div>
+      <div class="vault">▣ Store in vault — encrypted with your master key (XChaCha20-Poly1305) <span class="toggle"></span></div>
+      <div class="vault" style="background:#1a1626;border-color:#534ab7;color:#afa9ec;">⌘ Also unlock with Touch ID on this device <span class="toggle"></span></div>
+      <div class="btns"><button class="btn test">TEST CONNECTION</button><button class="btn save">SAVE TO VAULT</button></div>
+    </div>
+    <div class="foot"><span style="color:#5dcaa5">● vault unlocked</span><span style="margin-left:auto;color:#5f5e6e">password never logged · scrubbed from agent context</span></div>
+  </div>
+</div>
+</body></html>

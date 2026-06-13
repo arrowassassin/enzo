@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Enzo pre-commit gate. Bypass in a genuine emergency with: git commit --no-verify
+set -euo pipefail
+
+# shellcheck disable=SC1091
+[ -f "$HOME/.cargo/env" ] && source "$HOME/.cargo/env"
+
+echo "▸ rustfmt --check"
+cargo fmt --all --check
+
+echo "▸ clippy (-D warnings)"
+cargo clippy --all-targets --all-features -- -D warnings
+
+echo "▸ tests"
+cargo test --all --quiet
+
+echo "✓ pre-commit passed"

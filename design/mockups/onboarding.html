@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<title>Enzo — First run</title>
+<link href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  body{margin:0;background:#0e0c14;display:flex;align-items:center;justify-content:center;min-height:100vh;font-family:'JetBrains Mono',monospace;}
+  .frame{width:720px;height:440px;background:#16131f;border:3px solid #3a3450;border-radius:12px;overflow:hidden;display:flex;flex-direction:column;}
+  .bar{display:flex;align-items:center;gap:8px;padding:9px 12px;background:#221d30;border-bottom:3px solid #3a3450;font-family:'Silkscreen';font-size:10px;color:#9f97c4;}
+  .dot{width:11px;height:11px;border-radius:2px;display:inline-block;}
+  .body{flex:1;padding:22px 20px;font-size:13px;line-height:1.7;color:#c9c4dc;}
+  .logo{font-family:'Silkscreen';font-size:22px;color:#5dcaa5;letter-spacing:2px;}
+  .welcome{color:#9f97c4;margin:4px 0 18px;}
+  .hint{background:#1a1626;border:1px solid #3a3450;border-left:3px solid #534ab7;border-radius:0 6px 6px 0;padding:10px 14px;margin-bottom:8px;font-size:12px;color:#afa9ec;}
+  .hint b{color:#5dcaa5;font-weight:500;}
+  .k{font-family:'Silkscreen';font-size:8px;background:#221d30;color:#9f97c4;padding:2px 6px;border-radius:3px;}
+  .prompt{margin-top:18px;}
+  .cur{display:inline-block;width:8px;height:15px;background:#5dcaa5;vertical-align:-3px;}
+  .foot{display:flex;gap:14px;padding:7px 14px;background:#221d30;border-top:3px solid #3a3450;font-family:'Silkscreen';font-size:8px;color:#9f97c4;}
+</style></head><body>
+<div class="frame">
+  <div class="bar"><span class="dot" style="background:#e24b4a"></span><span class="dot" style="background:#ef9f27"></span><span class="dot" style="background:#97c459"></span><span style="margin-left:8px">ENZO</span><span style="margin-left:auto;color:#5dcaa5">● first run</span></div>
+  <div class="body">
+    <div class="logo">ENZO</div>
+    <div class="welcome">It's just a terminal until you need more. Here are three things to try — everything else reveals itself.</div>
+    <div class="hint"><b>Type a command</b> like normal — <span class="k">git status</span>. Output groups into blocks you can re-run, share, or hand to AI.</div>
+    <div class="hint"><b>Ask in plain English.</b> Start typing a question and the prompt flips to <b>AI</b> mode — it can see your folder and last command.</div>
+    <div class="hint"><b>Press <span class="k">⌘K</span></b> for the universal prompt: commands, files, AI, and references — one input, visible intent.</div>
+    <div class="prompt"><span style="color:#5dcaa5">❯</span> <span class="cur"></span></div>
+  </div>
+  <div class="foot"><span style="color:#5dcaa5">● PTY zsh</span><span>~/projects</span><span style="margin-left:auto;color:#5f5e6e">hold ⌘ for hints · ? for all keys</span></div>
+</div>
+</body></html>

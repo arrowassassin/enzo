@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Enzo — Terminal</title>
+<link href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.7.0/dist/tabler-icons.min.css">
+<style>body{margin:0;background:#0e0c14;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:18px;box-sizing:border-box;}</style>
+</head><body>
+<div style="display:flex; background:#16131f; border:3px solid #3a3450; border-radius:10px; overflow:hidden; height:420px; width:720px; font-family:'JetBrains Mono',monospace;">
+  <div style="width:46px; background:#120f1a; border-right:2px solid #3a3450; display:flex; flex-direction:column; align-items:center; padding-top:12px; gap:16px; color:#5f5e6e; font-size:18px;">
+    <i class="ti ti-terminal-2" style="color:#5dcaa5;"></i><i class="ti ti-code"></i><i class="ti ti-world"></i><i class="ti ti-database"></i>
+    <i class="ti ti-robot" style="margin-top:auto;"></i><i class="ti ti-settings" style="margin-bottom:12px;"></i>
+  </div>
+  <div style="width:150px; background:#1a1626; border-right:2px solid #3a3450; padding:10px 0; font-size:11px;">
+    <div style="font-family:'Silkscreen'; font-size:8px; color:#7f77dd; padding:0 12px 8px;">SESSIONS</div>
+    <div style="padding:6px 12px; background:#534ab7; color:#eeedfe;">❯ enzo · main</div>
+    <div style="padding:6px 12px; color:#9f97c4;">❯ api server</div>
+    <div style="padding:6px 12px; color:#9f97c4;">❯ ssh prod ⚡</div>
+    <div style="font-family:'Silkscreen'; font-size:8px; color:#7f77dd; padding:14px 12px 8px;">QUICK</div>
+    <div style="padding:5px 12px; color:#888780;"><i class="ti ti-git-branch" style="font-size:12px;vertical-align:-1px;"></i> main ✓</div>
+    <div style="padding:5px 12px; color:#888780;"><i class="ti ti-folder" style="font-size:12px;vertical-align:-1px;"></i> ~/github/enzo</div>
+  </div>
+  <div style="flex:1; display:flex; flex-direction:column;">
+    <div style="display:flex; align-items:center; gap:8px; padding:8px 12px; background:#221d30; border-bottom:2px solid #3a3450; font-family:'Silkscreen'; font-size:9px; color:#9f97c4;">
+      <span style="background:#16131f; padding:4px 8px; border-radius:3px; color:#5dcaa5;">main</span><span>api</span><span>+</span>
+      <span style="margin-left:auto; color:#5dcaa5;">● ATP</span>
+    </div>
+    <div style="flex:1; padding:12px 14px; font-size:12.5px; line-height:1.6;">
+      <div style="border-left:3px solid #639922; padding-left:10px; margin-bottom:12px;">
+        <div style="display:flex;"><span style="color:#5dcaa5;">❯</span>&nbsp;<span style="color:#e8e4f5;">cargo test</span><span style="margin-left:auto; font-family:'Silkscreen'; font-size:8px; color:#639922;">✓ 88 PASS · 2.1s</span></div>
+        <div style="color:#888780; padding-left:14px;">test result: ok. 88 passed; 0 failed</div>
+      </div>
+      <div style="border-left:3px solid #534ab7; padding-left:10px; margin-bottom:12px;">
+        <div style="display:flex; align-items:center;"><span style="font-family:'Silkscreen';font-size:8px;background:#534ab7;color:#eeedfe;padding:2px 5px;border-radius:3px;">AI</span>&nbsp;<span style="color:#afa9ec;">&nbsp;summarized the failing log →</span></div>
+        <div style="background:#1d1a28; border:1px solid #3a3450; border-radius:5px; padding:6px 9px; margin-top:5px; color:#c9c4dc; font-size:11.5px;">Flaky test was a 5ms timeout race. Bumped to 50ms. <span style="color:#7f77dd;">[view diff]</span></div>
+      </div>
+      <div><span style="color:#5dcaa5;">❯</span> <span style="color:#e8e4f5;">git push</span><span style="width:7px;height:13px;background:#5dcaa5;display:inline-block;vertical-align:-2px;margin-left:2px;"></span></div>
+    </div>
+    <div style="display:flex; gap:14px; padding:6px 14px; background:#221d30; border-top:2px solid #3a3450; font-family:'Silkscreen'; font-size:8px; color:#9f97c4;">
+      <span style="color:#5dcaa5;">● PTY zsh</span><span>UTF-8</span><span style="margin-left:auto; color:#5f5e6e;">120 FPS · ⌘K</span>
+    </div>
+  </div>
+</div>
+</body></html>

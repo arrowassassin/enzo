@@ -1,0 +1,10 @@
+/target
+**/*.rs.bk
+*.profraw
+/coverage
+.DS_Store
+.claude/settings.local.json
+
+# never commit a real credential vault
+vault.enc
+*.vault.enc
