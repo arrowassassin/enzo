@@ -77,6 +77,14 @@ pub struct EnzoApp {
     sidebar_width: f32,
     /// True while the user is dragging the sidebar resize handle.
     resizing_sidebar: bool,
+    /// Language servers already started (by server id), so we start each once.
+    lsp_started: std::collections::HashSet<String>,
+    /// The currently-open IDE document's `(server_id, uri)`, if LSP is active.
+    lsp_open: Option<(String, String)>,
+    /// Document version counter for `didChange`.
+    lsp_version: i64,
+    /// Debounce generation for coalescing rapid edits into one `didChange`.
+    lsp_change_gen: u64,
     /// Active AI-CLI approval prompt (id, title, body, actions), if any.
     agent_prompt: Option<AgentPrompt>,
     /// AI agent blocks composited in the terminal column (id → title, body).
@@ -159,7 +167,7 @@ impl EnzoApp {
             loop {
                 let alive = this
                     .update(cx, |this, cx| {
-                        if this.drain() {
+                        if this.drain(cx) {
                             cx.notify();
                         }
                     })
@@ -228,6 +236,10 @@ impl EnzoApp {
             ide_opened: false,
             sidebar_width: 170.0,
             resizing_sidebar: false,
+            lsp_started: std::collections::HashSet::new(),
+            lsp_open: None,
+            lsp_version: 0,
+            lsp_change_gen: 0,
             agent_prompt: None,
             agent_blocks: Vec::new(),
             browser: browser::BrowserState::new(),
@@ -402,16 +414,125 @@ impl EnzoApp {
             let content = self.ide.content.clone();
             let editor = cx.new(|cx| {
                 gpui_component::input::InputState::new(window, cx)
-                    .code_editor(language)
+                    .code_editor(language.clone())
                     .line_number(true)
                     .indent_guides(true)
-                    .default_value(content)
+                    .default_value(content.clone())
             });
+            // Forward edits to the language server (debounced didChange).
+            cx.subscribe(
+                &editor,
+                |this, _editor, ev: &gpui_component::input::InputEvent, cx| {
+                    if matches!(ev, gpui_component::input::InputEvent::Change) {
+                        this.on_editor_changed(cx);
+                    }
+                },
+            )
+            .detach();
             self.ide.editor = Some(editor);
+            self.start_lsp_for(&language, path, &content);
         } else {
             self.ide.editor = None;
+            self.lsp_open = None;
         }
         cx.notify();
+    }
+
+    // ── Language server (intellisense) ────────────────────────────────────
+    /// Start the language server for `language` (once) and open `path` on it.
+    fn start_lsp_for(&mut self, language: &str, path: &Path, text: &str) {
+        let Some((server_id, cmd, args)) = lsp_server_for(language) else {
+            self.lsp_open = None;
+            return;
+        };
+        let server_id = server_id.to_owned();
+        let uri = path_to_uri(&path.display().to_string());
+        self.lsp_version = 1;
+        if self.lsp_started.insert(server_id.clone()) {
+            let _ = self.atp.commands.send(Command::LspStart {
+                id: server_id.clone(),
+                cmd: cmd.to_owned(),
+                args: args.into_iter().map(str::to_owned).collect(),
+                root_uri: path_to_uri(&self.ide.root()),
+            });
+        }
+        let _ = self.atp.commands.send(Command::LspDidOpen {
+            id: server_id.clone(),
+            uri: uri.clone(),
+            language_id: language.to_owned(),
+            version: 1,
+            text: text.to_owned(),
+        });
+        self.lsp_open = Some((server_id, uri));
+    }
+
+    /// An editor edit happened — schedule a debounced `didChange`.
+    fn on_editor_changed(&mut self, cx: &mut Context<Self>) {
+        if self.lsp_open.is_none() {
+            return;
+        }
+        self.lsp_change_gen = self.lsp_change_gen.wrapping_add(1);
+        let generation = self.lsp_change_gen;
+        cx.spawn(async move |this, cx| {
+            cx.background_executor()
+                .timer(Duration::from_millis(300))
+                .await;
+            let _ = this.update(cx, |this, cx| {
+                if this.lsp_change_gen == generation {
+                    this.flush_lsp_change(cx);
+                }
+            });
+        })
+        .detach();
+    }
+
+    /// Send the current document text to the server (`didChange`).
+    fn flush_lsp_change(&mut self, cx: &mut Context<Self>) {
+        let (Some((server_id, uri)), Some(editor)) =
+            (self.lsp_open.clone(), self.ide.editor.clone())
+        else {
+            return;
+        };
+        self.lsp_version += 1;
+        let text = editor.read(cx).value().to_string();
+        let _ = self.atp.commands.send(Command::LspDidChange {
+            id: server_id,
+            uri,
+            version: self.lsp_version,
+            text,
+        });
+    }
+
+    /// Apply diagnostics to the open editor (if the uri matches).
+    fn apply_diagnostics(&mut self, uri: &str, items: Vec<atp::DiagItem>, cx: &mut Context<Self>) {
+        let matches = self.lsp_open.as_ref().is_some_and(|(_, u)| u == uri);
+        if !matches {
+            return;
+        }
+        let Some(editor) = self.ide.editor.clone() else {
+            return;
+        };
+        editor.update(cx, |state, cx| {
+            if let Some(set) = state.diagnostics_mut() {
+                set.clear();
+                for item in &items {
+                    use gpui_component::highlighter::DiagnosticSeverity;
+                    let severity = match item.severity {
+                        1 => DiagnosticSeverity::Error,
+                        2 => DiagnosticSeverity::Warning,
+                        3 => DiagnosticSeverity::Info,
+                        _ => DiagnosticSeverity::Hint,
+                    };
+                    let start = gpui_component::input::Position::new(item.start_line, item.start_col);
+                    let end = gpui_component::input::Position::new(item.end_line, item.end_col);
+                    set.push(
+                        gpui_component::highlighter::Diagnostic::new(start..end, item.message.clone())
+                            .with_severity(severity),
+                    );
+                }
+            }
+            cx.notify();
+        });
     }
 
     // ── Cell editing (PK-anchored) ────────────────────────────────────────
@@ -710,7 +831,7 @@ impl EnzoApp {
 
     /// Drain queued daemon events into entity state. Returns `true` if any event
     /// was consumed (so the caller can repaint only when needed).
-    fn drain(&mut self) -> bool {
+    fn drain(&mut self, cx: &mut Context<Self>) -> bool {
         let mut any = false;
         while let Ok(msg) = self.atp.incoming.try_recv() {
             any = true;
@@ -799,6 +920,7 @@ impl EnzoApp {
                     }
                 }
                 Incoming::BlockClear { id } => self.agent_blocks.retain(|b| b.id != id),
+                Incoming::LspDiagnostics { uri, items } => self.apply_diagnostics(&uri, items, cx),
             }
         }
         any
@@ -1469,6 +1591,23 @@ fn main() {
             .unwrap();
             cx.activate(true);
         });
+}
+
+/// Map a language id to its language server (`server_id`, binary, args), if one
+/// is known. The server binary must be on `PATH`; if it's missing the start
+/// simply fails and the editor works without diagnostics.
+fn lsp_server_for(language: &str) -> Option<(&'static str, &'static str, Vec<&'static str>)> {
+    match language {
+        "rust" => Some(("lsp-rust", "rust-analyzer", vec![])),
+        "python" => Some(("lsp-python", "pylsp", vec![])),
+        "javascript" => Some(("lsp-js", "typescript-language-server", vec!["--stdio"])),
+        _ => None,
+    }
+}
+
+/// Build a `file://` URI from an absolute path string.
+fn path_to_uri(path: &str) -> String {
+    format!("file://{path}")
 }
 
 /// Render a result set as CSV (RFC-4180 quoting).

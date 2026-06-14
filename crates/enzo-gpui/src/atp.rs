@@ -39,6 +39,18 @@ pub struct ColumnMeta {
     pub not_null: bool,
 }
 
+/// One LSP diagnostic (a squiggle), in LSP 0-based line/character coordinates.
+#[derive(Clone, Debug)]
+pub struct DiagItem {
+    pub start_line: u32,
+    pub start_col: u32,
+    pub end_line: u32,
+    pub end_col: u32,
+    pub message: String,
+    /// LSP severity: 1=Error, 2=Warning, 3=Info, 4=Hint.
+    pub severity: u8,
+}
+
 /// A tree-sitter highlight span (byte range + capture name).
 #[derive(Clone, Debug)]
 pub struct HlSpan {
@@ -138,6 +150,29 @@ pub enum Command {
         root: String,
         message: String,
     },
+    /// Start a language server (`id` per language) and run the LSP `initialize`
+    /// handshake rooted at `root_uri`. Processed before any later `LspDidOpen`.
+    LspStart {
+        id: String,
+        cmd: String,
+        args: Vec<String>,
+        root_uri: String,
+    },
+    /// Notify the server that `uri` was opened (`textDocument/didOpen`).
+    LspDidOpen {
+        id: String,
+        uri: String,
+        language_id: String,
+        version: i64,
+        text: String,
+    },
+    /// Notify the server of a full-text edit (`textDocument/didChange`).
+    LspDidChange {
+        id: String,
+        uri: String,
+        version: i64,
+        text: String,
+    },
 }
 
 /// daemon → UI events, drained by the GPUI thread.
@@ -203,6 +238,11 @@ pub enum Incoming {
     },
     BlockClear {
         id: String,
+    },
+    /// Diagnostics for `uri` from `textDocument/publishDiagnostics`.
+    LspDiagnostics {
+        uri: String,
+        items: Vec<DiagItem>,
     },
 }
 
@@ -597,6 +637,80 @@ async fn handle_command(client: &Client, tx: &Sender<Incoming>, cmd: Command) {
             }
             send_git_status(client, tx, &root).await;
         }
+        Command::LspStart {
+            id,
+            cmd,
+            args,
+            root_uri,
+        } => {
+            // Spawn the server; if the binary is missing this fails and we just
+            // skip LSP for this language (the editor still works, no squiggles).
+            if client
+                .request("lsp.start", json!({ "id": id, "cmd": cmd, "args": args }))
+                .await
+                .is_err()
+            {
+                return;
+            }
+            let init = json!({
+                "processId": null,
+                "rootUri": root_uri,
+                "capabilities": {
+                    "textDocument": {
+                        "synchronization": { "didSave": false, "dynamicRegistration": false },
+                        "publishDiagnostics": { "relatedInformation": false }
+                    }
+                }
+            });
+            let _ = client
+                .request(
+                    "lsp.request",
+                    json!({ "id": id, "method": "initialize", "params": init }),
+                )
+                .await;
+            let _ = client
+                .request(
+                    "lsp.notify",
+                    json!({ "id": id, "method": "initialized", "params": {} }),
+                )
+                .await;
+        }
+        Command::LspDidOpen {
+            id,
+            uri,
+            language_id,
+            version,
+            text,
+        } => {
+            let params = json!({
+                "textDocument": {
+                    "uri": uri, "languageId": language_id, "version": version, "text": text
+                }
+            });
+            let _ = client
+                .request(
+                    "lsp.notify",
+                    json!({ "id": id, "method": "textDocument/didOpen", "params": params }),
+                )
+                .await;
+        }
+        Command::LspDidChange {
+            id,
+            uri,
+            version,
+            text,
+        } => {
+            let params = json!({
+                "textDocument": { "uri": uri, "version": version },
+                "contentChanges": [ { "text": text } ]
+            });
+            let _ = client
+                .request(
+                    "lsp.notify",
+                    json!({ "id": id, "method": "textDocument/didChange", "params": params }),
+                )
+                .await;
+        }
     }
 }
 
@@ -770,6 +884,35 @@ fn handle_notification(method: &str, v: &Value, tx: &Sender<Incoming>) {
         "block.clear" => {
             if let Some(id) = p["id"].as_str() {
                 let _ = tx.send(Incoming::BlockClear { id: id.to_owned() });
+            }
+        }
+        "lsp.notification" => {
+            if p["method"].as_str() == Some("textDocument/publishDiagnostics") {
+                let dp = &p["params"];
+                let uri = dp["uri"].as_str().unwrap_or_default().to_owned();
+                let items = dp["diagnostics"]
+                    .as_array()
+                    .map(|a| {
+                        a.iter()
+                            .map(|d| {
+                                let r = &d["range"];
+                                let n = |path: &Value| {
+                                    u32::try_from(path.as_u64().unwrap_or(0)).unwrap_or(0)
+                                };
+                                DiagItem {
+                                    start_line: n(&r["start"]["line"]),
+                                    start_col: n(&r["start"]["character"]),
+                                    end_line: n(&r["end"]["line"]),
+                                    end_col: n(&r["end"]["character"]),
+                                    message: d["message"].as_str().unwrap_or_default().to_owned(),
+                                    severity: u8::try_from(d["severity"].as_u64().unwrap_or(1))
+                                        .unwrap_or(1),
+                                }
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                let _ = tx.send(Incoming::LspDiagnostics { uri, items });
             }
         }
         other => log::debug!("unknown notification: {other}"),
