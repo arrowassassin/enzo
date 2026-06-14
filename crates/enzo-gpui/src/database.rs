@@ -448,10 +448,12 @@ pub fn content(
     let sql_line = div()
         .h(px(190.0))
         .flex_none()
+        .flex()
+        .flex_col()
         .text_size(px(13.0))
         .border_b_2()
         .border_color(theme::BORDER)
-        .child(Input::new(editor));
+        .child(Input::new(editor).h_full());
 
     let body = if let Some(err) = &db.error {
         div()

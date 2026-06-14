@@ -73,6 +73,10 @@ pub struct EnzoApp {
     ide: IdeState,
     /// Whether the Editor surface has been opened yet (drives first-entry file open).
     ide_opened: bool,
+    /// Context-sidebar width (px), adjustable via the drag handle.
+    sidebar_width: f32,
+    /// True while the user is dragging the sidebar resize handle.
+    resizing_sidebar: bool,
     /// Active AI-CLI approval prompt (id, title, body, actions), if any.
     agent_prompt: Option<AgentPrompt>,
     /// AI agent blocks composited in the terminal column (id → title, body).
@@ -100,6 +104,9 @@ struct AgentBlock {
 /// Terminal grid size (resize-to-fit comes later).
 const TERM_COLS: u16 = 120;
 const TERM_ROWS: u16 = 32;
+
+/// Width of the left icon dock (used to map mouse-x to sidebar width).
+const DOCK_WIDTH: f32 = 46.0;
 
 impl EnzoApp {
     /// Build a SQL code-editor entity (multi-line, tree-sitter highlight, LSP-ready).
@@ -219,6 +226,8 @@ impl EnzoApp {
             cursor_on: true,
             ide: IdeState::new(),
             ide_opened: false,
+            sidebar_width: 170.0,
+            resizing_sidebar: false,
             agent_prompt: None,
             agent_blocks: Vec::new(),
             browser: browser::BrowserState::new(),
@@ -961,8 +970,27 @@ impl Render for EnzoApp {
             .on_action(cx.listener(Self::on_cancel_edit))
             .on_action(cx.listener(Self::on_save_file))
             .on_action(cx.listener(Self::on_navigate))
+            // Sidebar resize drag: track motion/release at the root so the
+            // pointer can leave the 4px handle without dropping the drag.
+            .on_mouse_move(cx.listener(|this, ev: &gpui::MouseMoveEvent, _, cx| {
+                if this.resizing_sidebar {
+                    let w = f32::from(ev.position.x) - DOCK_WIDTH;
+                    this.sidebar_width = w.clamp(130.0, 520.0);
+                    cx.notify();
+                }
+            }))
+            .on_mouse_up(
+                gpui::MouseButton::Left,
+                cx.listener(|this, _, _, cx| {
+                    if this.resizing_sidebar {
+                        this.resizing_sidebar = false;
+                        cx.notify();
+                    }
+                }),
+            )
             .child(self.dock(cx))
             .child(self.sidebar(cx))
+            .child(self.resize_handle(cx))
             .child(self.surface_column(cx))
             .children(dialog)
             .children(prompt)
@@ -1161,13 +1189,34 @@ impl EnzoApp {
             .flex()
             .flex_none()
             .flex_col()
-            .w(px(150.0))
+            .w(px(self.sidebar_width))
             .h_full()
             .py(px(10.0))
             .bg(theme::BG_SIDE)
-            .border_r_2()
-            .border_color(theme::BORDER)
+            .overflow_hidden()
             .child(inner)
+    }
+
+    /// Draggable divider that resizes the context sidebar.
+    fn resize_handle(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .id("sidebar-resize")
+            .w(px(4.0))
+            .h_full()
+            .flex_none()
+            .cursor(gpui::CursorStyle::ResizeLeftRight)
+            .bg(if self.resizing_sidebar {
+                theme::TEAL
+            } else {
+                theme::BORDER
+            })
+            .on_mouse_down(
+                gpui::MouseButton::Left,
+                cx.listener(|this, _, _, cx| {
+                    this.resizing_sidebar = true;
+                    cx.notify();
+                }),
+            )
     }
 
     /// Surface column: tab bar → content → status bar (dispatched per surface).

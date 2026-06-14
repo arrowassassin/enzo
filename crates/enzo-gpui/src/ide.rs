@@ -387,9 +387,11 @@ pub fn content(ide: &IdeState) -> impl IntoElement {
     }
     match &ide.editor {
         Some(editor) => div()
+            .flex()
+            .flex_col()
             .size_full()
             .text_size(px(12.5))
-            .child(Input::new(editor))
+            .child(Input::new(editor).h_full())
             .into_any_element(),
         None => div()
             .flex()
