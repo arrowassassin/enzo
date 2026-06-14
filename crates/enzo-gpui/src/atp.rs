@@ -38,6 +38,14 @@ pub struct HlSpan {
     pub name: String,
 }
 
+/// One `git status` entry.
+#[derive(Clone, Debug)]
+pub struct GitEntry {
+    pub path: String,
+    pub state: String,
+    pub staged: bool,
+}
+
 /// UI → daemon requests (fire-and-forget from the GPUI thread).
 #[derive(Debug)]
 pub enum Command {
@@ -102,6 +110,18 @@ pub enum Command {
     BrowserShot {
         id: String,
     },
+    GitStatus {
+        root: String,
+    },
+    GitStage {
+        root: String,
+        file: String,
+        unstage: bool,
+    },
+    GitCommit {
+        root: String,
+        message: String,
+    },
 }
 
 /// daemon → UI events, drained by the GPUI thread.
@@ -136,6 +156,10 @@ pub enum Incoming {
     },
     BrowserShot {
         png: Vec<u8>,
+    },
+    GitStatus {
+        branch: String,
+        entries: Vec<GitEntry>,
     },
     Highlight {
         path: String,
@@ -474,7 +498,57 @@ async fn handle_command(client: &Client, tx: &Sender<Incoming>, cmd: Command) {
                 let _ = tx.send(Incoming::BrowserShot { png });
             }
         }
+        Command::GitStatus { root } => {
+            send_git_status(client, tx, &root).await;
+        }
+        Command::GitStage {
+            root,
+            file,
+            unstage,
+        } => {
+            let method = if unstage { "git.unstage" } else { "git.stage" };
+            let _ = client
+                .request(method, json!({ "path": root, "file": file }))
+                .await;
+            send_git_status(client, tx, &root).await;
+        }
+        Command::GitCommit { root, message } => {
+            if client
+                .request("git.commit", json!({ "path": root, "message": message }))
+                .await
+                .is_err()
+            {
+                // surface nothing special; a re-status reflects the result
+            }
+            send_git_status(client, tx, &root).await;
+        }
     }
+}
+
+/// Fetch branch + status and push a [`Incoming::GitStatus`].
+async fn send_git_status(client: &Client, tx: &Sender<Incoming>, root: &str) {
+    let branch = client
+        .request("git.info", json!({ "path": root }))
+        .await
+        .ok()
+        .and_then(|r| r["branch"].as_str().map(str::to_owned))
+        .unwrap_or_default();
+    let entries = match client.request("git.status", json!({ "path": root })).await {
+        Ok(r) => r["entries"]
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .map(|e| GitEntry {
+                        path: e["path"].as_str().unwrap_or_default().to_owned(),
+                        state: e["state"].as_str().unwrap_or_default().to_owned(),
+                        staged: e["staged"].as_bool().unwrap_or(false),
+                    })
+                    .collect()
+            })
+            .unwrap_or_default(),
+        Err(_) => Vec::new(),
+    };
+    let _ = tx.send(Incoming::GitStatus { branch, entries });
 }
 
 /// Seed the first-run demo db (idempotent).

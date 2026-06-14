@@ -13,6 +13,7 @@ use gpui::{
 use gpui_component::input::{Input, InputState};
 
 use crate::EnzoApp;
+use crate::text_input::TextInput;
 use crate::theme;
 use crate::widgets::{icon, pixel_header, text};
 
@@ -43,6 +44,16 @@ pub struct IdeState {
     pub editor: Option<Entity<InputState>>,
     pub language: String,
     pub error: Option<String>,
+    /// Git source-control state (from `git.status`/`git.info`).
+    pub git_branch: String,
+    pub git_entries: Vec<crate::atp::GitEntry>,
+}
+
+impl IdeState {
+    /// Repository root for git operations (the workspace cwd).
+    pub fn root(&self) -> String {
+        self.root.to_string_lossy().into_owned()
+    }
 }
 
 impl IdeState {
@@ -57,6 +68,8 @@ impl IdeState {
             editor: None,
             language: "plaintext".to_owned(),
             error: None,
+            git_branch: String::new(),
+            git_entries: Vec::new(),
         };
         state.rebuild_tree();
         state
@@ -145,8 +158,12 @@ fn language_for(path: &Path) -> &'static str {
 
 // ── Render ──────────────────────────────────────────────────────────────────
 
-/// Explorer file tree (clickable: dirs toggle, files open).
-pub fn sidebar(ide: &IdeState, cx: &mut Context<EnzoApp>) -> impl IntoElement {
+/// Explorer file tree + Source Control section.
+pub fn sidebar(
+    ide: &IdeState,
+    commit_input: &Entity<TextInput>,
+    cx: &mut Context<EnzoApp>,
+) -> impl IntoElement {
     let mut col = div().flex().flex_col().child(pixel_header("EXPLORER"));
     for entry in &ide.tree {
         let path = entry.path.clone();
@@ -189,7 +206,124 @@ pub fn sidebar(ide: &IdeState, cx: &mut Context<EnzoApp>) -> impl IntoElement {
             }));
         col = col.child(row);
     }
-    col
+    col.child(source_control(ide, commit_input, cx))
+}
+
+/// Git source-control section: branch, changed files (click to stage/unstage),
+/// commit message + button.
+fn source_control(
+    ide: &IdeState,
+    commit_input: &Entity<TextInput>,
+    cx: &mut Context<EnzoApp>,
+) -> impl IntoElement {
+    let header = div()
+        .flex()
+        .items_center()
+        .gap(px(5.0))
+        .px(px(12.0))
+        .pt(px(14.0))
+        .pb(px(6.0))
+        .child(
+            div()
+                .text_size(px(8.0))
+                .font_family(theme::FONT_PIXEL)
+                .text_color(theme::PURPLE)
+                .child("SOURCE CONTROL"),
+        )
+        .child(icon(theme::ICON_GIT_BRANCH, 11.0, theme::GREEN_LT))
+        .child(text(
+            if ide.git_branch.is_empty() {
+                "—"
+            } else {
+                &ide.git_branch
+            },
+            10.0,
+            theme::FG1,
+        ));
+    let mut col = div().flex().flex_col().child(header);
+    if ide.git_entries.is_empty() {
+        col = col.child(
+            div()
+                .pl(px(12.0))
+                .child(text("✓ clean", 11.0, theme::FAINT)),
+        );
+    }
+    for e in &ide.git_entries {
+        let color = if e.staged {
+            theme::GREEN_LT
+        } else if e.state == "??" {
+            theme::FAINT
+        } else {
+            theme::AMBER
+        };
+        let file = e.path.clone();
+        let unstage = e.staged;
+        col = col.child(
+            div()
+                .id(SharedString::from(format!("git-{}", e.path)))
+                .cursor_pointer()
+                .flex()
+                .items_center()
+                .gap(px(6.0))
+                .pl(px(12.0))
+                .pr(px(10.0))
+                .py(px(2.0))
+                .child(
+                    div()
+                        .w(px(14.0))
+                        .text_size(px(9.0))
+                        .font_family(theme::FONT_PIXEL)
+                        .text_color(color)
+                        .child(SharedString::from(if e.staged {
+                            "✓".to_owned()
+                        } else {
+                            e.state.clone()
+                        })),
+                )
+                .child(text(&e.path, 11.0, theme::FG2))
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.git_stage(file.clone(), unstage, cx);
+                })),
+        );
+    }
+    // Commit message + button.
+    col.child(
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(6.0))
+            .px(px(12.0))
+            .pt(px(8.0))
+            .child(
+                div()
+                    .px(px(8.0))
+                    .py(px(5.0))
+                    .bg(theme::BG_CARD)
+                    .border_1()
+                    .border_color(theme::BORDER)
+                    .rounded(px(4.0))
+                    .text_size(px(11.0))
+                    .font_family(theme::FONT_MONO)
+                    .text_color(theme::FG0)
+                    .child(commit_input.clone()),
+            )
+            .child(
+                div()
+                    .id("git-commit")
+                    .cursor_pointer()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .py(px(5.0))
+                    .rounded(px(4.0))
+                    .bg(theme::GREEN)
+                    .text_size(px(8.0))
+                    .font_family(theme::FONT_PIXEL)
+                    .text_color(theme::GREEN_INK)
+                    .child("✓ COMMIT")
+                    .on_click(cx.listener(|this, _, _, cx| this.do_git_commit(cx))),
+            ),
+    )
 }
 
 /// Tab bar showing the open file.

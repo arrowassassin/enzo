@@ -29,7 +29,6 @@ use atp::{Atp, Command, Incoming};
 use database::DbState;
 use ide::IdeState;
 use text_input::TextInput;
-use widgets::text;
 
 actions!(enzo, [RunQuery, CommitEdit, CancelEdit, SaveFile, Navigate]);
 
@@ -64,6 +63,7 @@ pub struct EnzoApp {
     agent_blocks: Vec<AgentBlock>,
     browser: browser::BrowserState,
     url_input: Entity<TextInput>,
+    git_commit_input: Entity<TextInput>,
 }
 
 /// An AI-CLI approval prompt awaiting a decision (`prompt.show`).
@@ -94,6 +94,7 @@ impl EnzoApp {
         let dialog_path = cx.new(|cx| TextInput::new(cx, "/path/to/db.sqlite", ""));
         let cell_input = cx.new(|cx| TextInput::new(cx, "", ""));
         let url_input = cx.new(|cx| TextInput::new(cx, "https://example.com", ""));
+        let git_commit_input = cx.new(|cx| TextInput::new(cx, "commit message…", ""));
 
         // Spawn the first PTY session (buffered until the daemon connects).
         let term_id = "term-0".to_owned();
@@ -153,7 +154,38 @@ impl EnzoApp {
             agent_blocks: Vec::new(),
             browser: browser::BrowserState::new(),
             url_input,
+            git_commit_input,
         }
+    }
+
+    // ── Git source control ────────────────────────────────────────────────
+    fn git_refresh(&mut self, cx: &mut Context<Self>) {
+        let _ = self.atp.commands.send(Command::GitStatus {
+            root: self.ide.root(),
+        });
+        cx.notify();
+    }
+
+    fn git_stage(&mut self, file: String, unstage: bool, cx: &mut Context<Self>) {
+        let _ = self.atp.commands.send(Command::GitStage {
+            root: self.ide.root(),
+            file,
+            unstage,
+        });
+        cx.notify();
+    }
+
+    fn do_git_commit(&mut self, cx: &mut Context<Self>) {
+        let message = self.git_commit_input.read(cx).text().trim().to_owned();
+        if message.is_empty() {
+            return;
+        }
+        let _ = self.atp.commands.send(Command::GitCommit {
+            root: self.ide.root(),
+            message,
+        });
+        self.git_commit_input.update(cx, |i, cx| i.set_text("", cx));
+        cx.notify();
     }
 
     // ── Browser ───────────────────────────────────────────────────────────
@@ -549,6 +581,10 @@ impl EnzoApp {
                     )));
                     self.browser.loading = false;
                 }
+                Incoming::GitStatus { branch, entries } => {
+                    self.ide.git_branch = branch;
+                    self.ide.git_entries = entries;
+                }
                 Incoming::PromptShow {
                     id,
                     title,
@@ -839,7 +875,7 @@ impl EnzoApp {
                         let handle = this.url_input.read(cx).handle();
                         window.focus(&handle, cx);
                     }
-                    Surface::Editor => {}
+                    Surface::Editor => this.git_refresh(cx),
                 }
                 cx.notify();
             }))
@@ -850,7 +886,9 @@ impl EnzoApp {
         let inner: AnyElement = match self.surface {
             Surface::Terminal => terminal::sidebar().into_any_element(),
             Surface::Database => database::sidebar(&self.db, cx).into_any_element(),
-            Surface::Editor => ide::sidebar(&self.ide, cx).into_any_element(),
+            Surface::Editor => {
+                ide::sidebar(&self.ide, &self.git_commit_input, cx).into_any_element()
+            }
             Surface::Browser => widgets::pixel_header("DEVTOOLS").into_any_element(),
         };
         div()
