@@ -5,6 +5,10 @@
 //! exchanges plain values with the GPUI thread over `std::sync::mpsc` channels
 //! (commands out, [`Incoming`] events in). The GPUI side drains `incoming`
 //! each tick and updates entity state — the render/input path never blocks.
+//!
+//! Some protocol messages (resize, agent prompt/block) are defined but not yet
+//! wired to a surface; those fields/variants are intentionally retained.
+#![allow(dead_code)]
 
 use std::collections::HashMap;
 use std::sync::Arc;

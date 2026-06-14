@@ -5,6 +5,10 @@
 //! literal mockup hex values, type sizes are the literal `px`, and the three
 //! embedded font families (Silkscreen pixel labels, JetBrains Mono body/code,
 //! Tabler icons) match the `<i class="ti …">` glyphs used in the mockups.
+//!
+//! This is a deliberately complete design palette/icon set; some entries aren't
+//! referenced yet by built surfaces.
+#![allow(dead_code)]
 
 use std::borrow::Cow;
 

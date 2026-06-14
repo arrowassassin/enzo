@@ -1,6 +1,10 @@
 //! VT100/xterm terminal state machine built on the `vte` parser.
 //!
 //! [`Terminal`] processes raw PTY bytes and maintains a scrollable cell grid.
+//!
+//! Ported general-purpose VT module; some public API isn't used by the current
+//! UI (the live terminal drives its own sizes).
+#![allow(dead_code)]
 
 use vte::{Params, Parser, Perform};
 

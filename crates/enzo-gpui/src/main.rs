@@ -884,6 +884,9 @@ fn apply_enzo_theme(cx: &mut App) {
     c.sidebar = theme::BG_SIDE.into();
     c.sidebar_foreground = theme::FG1.into();
     c.sidebar_border = theme::BORDER.into();
+    // Dark-appropriate syntax colours for the code editor (the default is light).
+    Theme::global_mut(cx).highlight_theme =
+        gpui_component::highlighter::HighlightTheme::default_dark();
 }
 
 fn main() {
