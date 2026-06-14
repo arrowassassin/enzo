@@ -15,4 +15,5 @@ pub mod cdp;
 pub mod page;
 
 pub use browser::Browser;
+pub use cdp::CdpEvent;
 pub use page::Page;

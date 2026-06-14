@@ -113,17 +113,13 @@ impl Page {
     }
 }
 
-/// A received CDP event used for waiting on page lifecycle events.
-pub use crate::cdp::CdpEvent as Event;
-
 #[cfg(test)]
 mod tests {
-    // Page requires a live WebSocket — only structural tests here.
-    use super::Event;
+    use crate::cdp::CdpEvent;
 
     #[test]
-    fn event_clone() {
-        let e = Event {
+    fn cdp_event_clone() {
+        let e = CdpEvent {
             method: "Page.frameNavigated".into(),
             params: serde_json::json!({}),
         };
