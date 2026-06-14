@@ -54,6 +54,10 @@ pub struct EnzoApp {
     db_tabs: Vec<database::QueryTab>,
     active_tab: usize,
     next_tab: u32,
+    /// Executed-statement history (newest first), shown in the DB sidebar.
+    db_history: Vec<database::HistEntry>,
+    /// SQL awaiting its result, so history can record timing/row counts.
+    pending_sql: Option<String>,
     dialog_open: bool,
     dialog_name: Entity<TextInput>,
     dialog_path: Entity<TextInput>,
@@ -198,6 +202,8 @@ impl EnzoApp {
             db_tabs: vec![first_tab],
             active_tab: 0,
             next_tab: 1,
+            db_history: Vec::new(),
+            pending_sql: None,
             dialog_open: false,
             dialog_name,
             dialog_path,
@@ -704,10 +710,28 @@ impl EnzoApp {
                     page,
                     browsing,
                     pk_columns,
-                } => self
-                    .db
-                    .apply_result(columns, rows, ms, total, page, browsing, pk_columns),
-                Incoming::DbError { message } => self.db.apply_error(message),
+                } => {
+                    if let Some(sql) = self.pending_sql.take() {
+                        self.push_history(sql, ms, rows.len(), true);
+                    }
+                    self.db
+                        .apply_result(columns, rows, ms, total, page, browsing, pk_columns);
+                }
+                Incoming::DbColumns {
+                    conn,
+                    table,
+                    columns,
+                } => {
+                    if self.db.active_conn_id() == Some(conn.as_str()) {
+                        self.db.set_table_columns(table, columns);
+                    }
+                }
+                Incoming::DbError { message } => {
+                    if let Some(sql) = self.pending_sql.take() {
+                        self.push_history(sql, 0, 0, false);
+                    }
+                    self.db.apply_error(message);
+                }
                 Incoming::Output { session_id, data } => {
                     if session_id == self.term_id {
                         self.term.process(&data);
@@ -760,7 +784,77 @@ impl EnzoApp {
         any
     }
 
+    // ── Query history + export ────────────────────────────────────────────
+    /// Record an executed statement (newest first, bounded, deduped).
+    fn push_history(&mut self, sql: String, ms: u64, rows: usize, ok: bool) {
+        let sql = sql.trim().to_owned();
+        if sql.is_empty() {
+            return;
+        }
+        if self.db_history.first().map(|h| h.sql.as_str()) == Some(sql.as_str()) {
+            // Update the timing of an immediate re-run rather than duplicating.
+            if let Some(h) = self.db_history.first_mut() {
+                h.ms = ms;
+                h.rows = rows;
+                h.ok = ok;
+            }
+            return;
+        }
+        self.db_history.insert(
+            0,
+            database::HistEntry {
+                sql,
+                ms,
+                rows,
+                ok,
+            },
+        );
+        self.db_history.truncate(200);
+    }
+
+    /// Open a history entry's SQL in a fresh query buffer.
+    fn open_history(&mut self, sql: String, window: &mut Window, cx: &mut Context<Self>) {
+        self.add_tab(window, cx);
+        let editor = self.active_editor().clone();
+        editor.update(cx, |e, cx| e.set_value(sql, window, cx));
+        cx.notify();
+    }
+
+    /// Export the current result set to `~/.enzo/exports/` as CSV or JSON.
+    fn export_results(&mut self, json: bool, cx: &mut Context<Self>) {
+        if self.db.columns.is_empty() {
+            return;
+        }
+        let body = if json {
+            export_json(&self.db.columns, &self.db.rows)
+        } else {
+            export_csv(&self.db.columns, &self.db.rows)
+        };
+        let ext = if json { "json" } else { "csv" };
+        match write_export(ext, &body) {
+            Ok(path) => self.db.export_msg = Some(format!("exported → {path}")),
+            Err(e) => self.db.export_msg = Some(format!("export failed: {e}")),
+        }
+        cx.notify();
+    }
+
     // ── Database actions ──────────────────────────────────────────────────
+    /// Toggle the schema catalog row for `table`, fetching its columns on first
+    /// expand (lazily, via `db.schema.columns`).
+    fn toggle_table(&mut self, table: String, cx: &mut Context<Self>) {
+        if self.db.expanded.remove(&table) {
+            cx.notify();
+            return;
+        }
+        self.db.expanded.insert(table.clone());
+        if !self.db.table_columns.contains_key(&table)
+            && let Some(conn) = self.db.active_conn_id().map(str::to_owned)
+        {
+            let _ = self.atp.commands.send(Command::DbColumns { conn, table });
+        }
+        cx.notify();
+    }
+
     /// Browse `table` in the active connection (sets SQL + pages via ATP).
     fn browse_table(&mut self, table: String, page: u64, window: &mut Window, cx: &mut Context<Self>) {
         let Some(conn) = self.db.active_conn_id().map(str::to_owned) else {
@@ -768,7 +862,8 @@ impl EnzoApp {
         };
         let q = format!("SELECT * FROM {table} LIMIT {};", database::PAGE_SIZE);
         let editor = self.active_editor().clone();
-        editor.update(cx, |e, cx| e.set_value(q, window, cx));
+        editor.update(cx, |e, cx| e.set_value(q.clone(), window, cx));
+        self.pending_sql = Some(q);
         self.db.running = true;
         let _ = self.atp.commands.send(Command::DbBrowse {
             conn,
@@ -788,6 +883,7 @@ impl EnzoApp {
         if sql.is_empty() {
             return;
         }
+        self.pending_sql = Some(sql.clone());
         self.db.running = true;
         self.db.browsing = None;
         let _ = self.atp.commands.send(Command::DbQuery { conn, sql });
@@ -1036,7 +1132,9 @@ impl EnzoApp {
             Surface::Terminal => {
                 terminal::sidebar(&self.ide.root(), &self.ide.git_branch).into_any_element()
             }
-            Surface::Database => database::sidebar(&self.db, cx).into_any_element(),
+            Surface::Database => {
+                database::sidebar(&self.db, &self.db_history, cx).into_any_element()
+            }
             Surface::Editor => {
                 ide::sidebar(&self.ide, &self.git_commit_input, cx).into_any_element()
             }
@@ -1305,6 +1403,62 @@ fn main() {
             .unwrap();
             cx.activate(true);
         });
+}
+
+/// Render a result set as CSV (RFC-4180 quoting).
+fn export_csv(columns: &[String], rows: &[Vec<String>]) -> String {
+    fn field(s: &str) -> String {
+        if s.contains([',', '"', '\n', '\r']) {
+            format!("\"{}\"", s.replace('"', "\"\""))
+        } else {
+            s.to_owned()
+        }
+    }
+    let mut out = String::new();
+    out.push_str(&columns.iter().map(|c| field(c)).collect::<Vec<_>>().join(","));
+    out.push('\n');
+    for row in rows {
+        out.push_str(&row.iter().map(|c| field(c)).collect::<Vec<_>>().join(","));
+        out.push('\n');
+    }
+    out
+}
+
+/// Render a result set as a JSON array of objects.
+fn export_json(columns: &[String], rows: &[Vec<String>]) -> String {
+    let objs: Vec<serde_json::Value> = rows
+        .iter()
+        .map(|row| {
+            let map: serde_json::Map<String, serde_json::Value> = columns
+                .iter()
+                .enumerate()
+                .map(|(i, c)| {
+                    (
+                        c.clone(),
+                        serde_json::Value::String(row.get(i).cloned().unwrap_or_default()),
+                    )
+                })
+                .collect();
+            serde_json::Value::Object(map)
+        })
+        .collect();
+    serde_json::to_string_pretty(&objs).unwrap_or_else(|_| "[]".to_owned())
+}
+
+/// Write an export to `~/.enzo/exports/result-<epoch>.<ext>`, returning the path.
+fn write_export(ext: &str, body: &str) -> std::io::Result<String> {
+    let home = std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .ok_or_else(|| std::io::Error::other("no home dir"))?;
+    let dir = std::path::Path::new(&home).join(".enzo").join("exports");
+    std::fs::create_dir_all(&dir)?;
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let path = dir.join(format!("result-{ts}.{ext}"));
+    std::fs::write(&path, body)?;
+    Ok(path.to_string_lossy().into_owned())
 }
 
 /// Path to the first-run demo database (`~/.enzo/demo.db`), creating `~/.enzo`.

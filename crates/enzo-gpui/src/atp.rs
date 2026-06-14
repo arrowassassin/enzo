@@ -30,6 +30,15 @@ pub struct TableInfo {
     pub kind: String,
 }
 
+/// One column in a table's schema (for the expandable catalog).
+#[derive(Clone, Debug)]
+pub struct ColumnMeta {
+    pub name: String,
+    pub sql_type: String,
+    pub primary_key: bool,
+    pub not_null: bool,
+}
+
 /// A tree-sitter highlight span (byte range + capture name).
 #[derive(Clone, Debug)]
 pub struct HlSpan {
@@ -63,6 +72,11 @@ pub enum Command {
         table: String,
         page: u64,
         size: u64,
+    },
+    /// Fetch the column schema of `table` (for the expandable catalog).
+    DbColumns {
+        conn: String,
+        table: String,
     },
     DbUpdate {
         conn: String,
@@ -146,6 +160,11 @@ pub enum Incoming {
         browsing: Option<String>,
         /// Primary-key column names (empty for ad-hoc queries → not editable).
         pk_columns: Vec<String>,
+    },
+    DbColumns {
+        conn: String,
+        table: String,
+        columns: Vec<ColumnMeta>,
     },
     DbError {
         message: String,
@@ -392,6 +411,31 @@ async fn handle_command(client: &Client, tx: &Sender<Incoming>, cmd: Command) {
                         message: e.to_string(),
                     });
                 }
+            }
+        }
+        Command::DbColumns { conn, table } => {
+            if let Ok(r) = client
+                .request("db.schema.columns", json!({ "conn": conn, "table": table }))
+                .await
+            {
+                let columns = r["columns"]
+                    .as_array()
+                    .map(|a| {
+                        a.iter()
+                            .map(|c| ColumnMeta {
+                                name: c["name"].as_str().unwrap_or_default().to_owned(),
+                                sql_type: c["sql_type"].as_str().unwrap_or_default().to_owned(),
+                                primary_key: c["primary_key"].as_bool().unwrap_or(false),
+                                not_null: c["not_null"].as_bool().unwrap_or(false),
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                let _ = tx.send(Incoming::DbColumns {
+                    conn,
+                    table,
+                    columns,
+                });
             }
         }
         Command::DbUpdate {

@@ -2,13 +2,15 @@
 //! query results, errors and pagination all come over ATP; no demo data lives
 //! here. Styled faithful to `design/mockups/database.html`.
 
+use std::collections::{HashMap, HashSet};
+
 use gpui::{
     Context, Entity, IntoElement, ParentElement, SharedString, Styled, div, prelude::*, px,
 };
 use gpui_component::input::{Input, InputState};
 
 use crate::EnzoApp;
-use crate::atp::TableInfo;
+use crate::atp::{ColumnMeta, TableInfo};
 use crate::text_input::TextInput;
 use crate::theme;
 use crate::widgets::{icon, pixel_header, text};
@@ -25,6 +27,15 @@ pub struct QueryTab {
     pub title: String,
     /// The live SQL code editor for this tab.
     pub editor: Entity<InputState>,
+}
+
+/// One executed statement in the query history.
+#[derive(Clone)]
+pub struct HistEntry {
+    pub sql: String,
+    pub ms: u64,
+    pub rows: usize,
+    pub ok: bool,
 }
 
 /// A live, daemon-backed connection mirrored on the client.
@@ -56,6 +67,12 @@ pub struct DbState {
     pub pk_columns: Vec<String>,
     /// Cell `(row, col)` currently being edited, if any.
     pub editing: Option<(usize, usize)>,
+    /// Catalog: expanded table names (showing their columns).
+    pub expanded: HashSet<String>,
+    /// Catalog: cached column schema per table (lazily fetched on expand).
+    pub table_columns: HashMap<String, Vec<ColumnMeta>>,
+    /// Transient status line after an export (path or error).
+    pub export_msg: Option<String>,
 }
 
 impl DbState {
@@ -79,7 +96,15 @@ impl DbState {
             page: 0,
             pk_columns: Vec::new(),
             editing: None,
+            expanded: HashSet::new(),
+            table_columns: HashMap::new(),
+            export_msg: None,
         }
+    }
+
+    /// Store the fetched column schema for `table`.
+    pub fn set_table_columns(&mut self, table: String, columns: Vec<ColumnMeta>) {
+        self.table_columns.insert(table, columns);
     }
 
     pub fn active_conn_id(&self) -> Option<&str> {
@@ -123,6 +148,7 @@ impl DbState {
         self.browsing = browsing;
         self.pk_columns = pk_columns;
         self.editing = None;
+        self.export_msg = None;
     }
 
     /// Whether the current result set is an editable table view.
@@ -155,13 +181,19 @@ impl DbState {
         self.error = None;
         self.browsing = None;
         self.total = None;
+        self.expanded.clear();
+        self.table_columns.clear();
     }
 }
 
 // ── Render (state-driven) ───────────────────────────────────────────────────
 
-/// Connections + schema sidebar; clicking a table browses it.
-pub fn sidebar(db: &DbState, cx: &mut Context<EnzoApp>) -> impl IntoElement {
+/// Connections + schema + history sidebar; clicking a table browses it.
+pub fn sidebar(
+    db: &DbState,
+    history: &[HistEntry],
+    cx: &mut Context<EnzoApp>,
+) -> impl IntoElement {
     let new_conn = div()
         .id("db-new-conn")
         .cursor_pointer()
@@ -210,22 +242,106 @@ pub fn sidebar(db: &DbState, cx: &mut Context<EnzoApp>) -> impl IntoElement {
         }
         for t in &conn.tables {
             let name = t.name.clone();
+            let expanded = db.expanded.contains(&name);
             let browsing = db.browsing.as_deref() == Some(name.as_str());
             let color = if browsing { theme::TEAL } else { theme::BLUE };
+            let chevron = if expanded {
+                theme::ICON_CHEVRON_DOWN
+            } else {
+                theme::ICON_CHEVRON_RIGHT
+            };
+            // Table row: chevron toggles the column list; the name browses rows.
             col = col.child(
                 div()
-                    .id(SharedString::from(format!("tbl-{name}")))
+                    .flex()
+                    .items_center()
+                    .gap(px(3.0))
+                    .pl(px(12.0))
+                    .pr(px(10.0))
+                    .py(px(2.0))
+                    .child(
+                        div()
+                            .id(SharedString::from(format!("tblx-{name}")))
+                            .cursor_pointer()
+                            .child(icon(chevron, 10.0, theme::FAINT))
+                            .on_click(cx.listener({
+                                let n = name.clone();
+                                move |this, _, _, cx| this.toggle_table(n.clone(), cx)
+                            })),
+                    )
+                    .child(icon(theme::ICON_TABLE, 11.0, color))
+                    .child(
+                        div()
+                            .id(SharedString::from(format!("tbl-{name}")))
+                            .cursor_pointer()
+                            .child(text(&name, 11.0, color))
+                            .on_click(cx.listener({
+                                let n = name.clone();
+                                move |this, _, window, cx| this.browse_table(n.clone(), 0, window, cx)
+                            })),
+                    ),
+            );
+            // Expanded: one row per column with its type + PK / not-null marker.
+            if expanded {
+                if let Some(columns) = db.table_columns.get(&name) {
+                    for c in columns {
+                        let badge = if c.primary_key {
+                            " PK"
+                        } else if c.not_null {
+                            " ●"
+                        } else {
+                            ""
+                        };
+                        let cc = if c.primary_key { theme::TEAL } else { theme::FG2 };
+                        col = col.child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .pl(px(34.0))
+                                .pr(px(10.0))
+                                .py(px(1.0))
+                                .child(text(&format!("{}{}", c.name, badge), 10.5, cc))
+                                .child(div().ml_auto().child(text(
+                                    &c.sql_type.to_lowercase(),
+                                    9.0,
+                                    theme::FAINT,
+                                ))),
+                        );
+                    }
+                } else {
+                    col = col.child(
+                        div()
+                            .pl(px(34.0))
+                            .child(text("loading…", 10.0, theme::FAINT)),
+                    );
+                }
+            }
+        }
+    }
+
+    // ── History ──
+    if !history.is_empty() {
+        col = col.child(div().h(px(8.0))).child(pixel_header("HISTORY"));
+        for (i, h) in history.iter().take(20).enumerate() {
+            let mark = if h.ok { "✓" } else { "✗" };
+            let mark_color = if h.ok { theme::GREEN_LT } else { theme::RED_LT };
+            let one_line: String = h.sql.split_whitespace().collect::<Vec<_>>().join(" ");
+            let preview: String = one_line.chars().take(28).collect();
+            let sql = h.sql.clone();
+            col = col.child(
+                div()
+                    .id(SharedString::from(format!("hist-{i}")))
                     .cursor_pointer()
                     .flex()
                     .items_center()
                     .gap(px(5.0))
-                    .pl(px(24.0))
+                    .pl(px(12.0))
                     .pr(px(10.0))
                     .py(px(2.0))
-                    .child(icon(theme::ICON_TABLE, 11.0, color))
-                    .child(text(&name, 11.0, color))
+                    .child(text(mark, 9.0, mark_color))
+                    .child(text(&preview, 10.5, theme::FG2))
                     .on_click(cx.listener(move |this, _, window, cx| {
-                        this.browse_table(name.clone(), 0, window, cx);
+                        this.open_history(sql.clone(), window, cx);
                     })),
             );
         }
@@ -485,6 +601,20 @@ pub fn status_bar(db: &DbState, cx: &mut Context<EnzoApp>) -> impl IntoElement {
             )
         },
     );
+    let export_btn = |id: &'static str, label: &'static str, json: bool, cx: &mut Context<EnzoApp>| {
+        div()
+            .id(id)
+            .cursor_pointer()
+            .px(px(6.0))
+            .py(px(2.0))
+            .rounded(px(3.0))
+            .bg(theme::BG_CARD)
+            .text_size(px(8.0))
+            .font_family(theme::FONT_PIXEL)
+            .text_color(theme::TEAL)
+            .child(label)
+            .on_click(cx.listener(move |this, _, _, cx| this.export_results(json, cx)))
+    };
     let mut bar = div()
         .flex()
         .items_center()
@@ -498,6 +628,14 @@ pub fn status_bar(db: &DbState, cx: &mut Context<EnzoApp>) -> impl IntoElement {
         .child(cell(format!("{} rows", db.rows.len()), theme::FG1));
     if let Some(ms) = db.query_ms {
         bar = bar.child(cell(format!("{ms}ms · Arrow stream"), theme::FG1));
+    }
+    if let Some(msg) = &db.export_msg {
+        bar = bar.child(cell(format!("⤓ {msg}"), theme::GREEN_LT));
+    }
+    if !db.columns.is_empty() {
+        bar = bar
+            .child(export_btn("exp-csv", "⤓ CSV", false, cx))
+            .child(export_btn("exp-json", "⤓ JSON", true, cx));
     }
     if let (Some(total), Some(table)) = (db.total, db.browsing.as_ref()) {
         let pages = total.div_ceil(PAGE_SIZE).max(1);
