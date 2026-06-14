@@ -51,6 +51,39 @@ pub struct DiagItem {
     pub severity: u8,
 }
 
+/// A debug call-stack frame.
+#[derive(Clone, Debug)]
+pub struct StackFrame {
+    pub id: u64,
+    pub name: String,
+    pub path: String,
+    pub line: u32,
+}
+
+/// A scope (Locals/Globals/…) at a stack frame.
+#[derive(Clone, Debug)]
+pub struct DapScope {
+    pub name: String,
+    pub reference: u64,
+}
+
+/// A debugger variable (name/value/type + child reference for expansion).
+#[derive(Clone, Debug)]
+pub struct DapVar {
+    pub name: String,
+    pub value: String,
+    pub ty: String,
+    pub reference: u64,
+}
+
+/// Which step a debug step command performs.
+#[derive(Clone, Copy, Debug)]
+pub enum DapStepKind {
+    Over,
+    In,
+    Out,
+}
+
 /// A tree-sitter highlight span (byte range + capture name).
 #[derive(Clone, Debug)]
 pub struct HlSpan {
@@ -180,6 +213,46 @@ pub enum Command {
         version: i64,
         text: String,
     },
+    /// Start a debug adapter and run initialize → launch (deferred response).
+    DapStart {
+        id: String,
+        cmd: String,
+        args: Vec<String>,
+        adapter_id: String,
+        launch: serde_json::Value,
+    },
+    DapSetBreakpoints {
+        id: String,
+        path: String,
+        lines: Vec<u32>,
+    },
+    DapConfigDone {
+        id: String,
+    },
+    DapStackTrace {
+        id: String,
+        thread_id: u64,
+    },
+    DapScopes {
+        id: String,
+        frame_id: u64,
+    },
+    DapVariables {
+        id: String,
+        reference: u64,
+    },
+    DapContinue {
+        id: String,
+        thread_id: u64,
+    },
+    DapStep {
+        id: String,
+        thread_id: u64,
+        kind: DapStepKind,
+    },
+    DapStop {
+        id: String,
+    },
 }
 
 /// daemon → UI events, drained by the GPUI thread.
@@ -256,6 +329,29 @@ pub enum Incoming {
         uri: String,
         items: Vec<DiagItem>,
     },
+    /// The adapter is ready for breakpoint configuration (`initialized` event).
+    DapInitialized,
+    /// Execution stopped (breakpoint/step/entry) on `thread_id`.
+    DapStopped {
+        thread_id: u64,
+        reason: String,
+    },
+    DapContinued,
+    DapOutput {
+        category: String,
+        text: String,
+    },
+    DapTerminated,
+    DapStackTraceResult {
+        frames: Vec<StackFrame>,
+    },
+    DapScopesResult {
+        scopes: Vec<DapScope>,
+    },
+    DapVariablesResult {
+        reference: u64,
+        vars: Vec<DapVar>,
+    },
 }
 
 /// Handle to the background ATP thread.
@@ -290,6 +386,7 @@ pub fn connect() -> Atp {
 type PendingMap = Arc<Mutex<HashMap<u64, oneshot::Sender<Value>>>>;
 
 /// The async client: writer + pending response map.
+#[derive(Clone)]
 struct Client {
     writer: Arc<Mutex<tokio::net::unix::OwnedWriteHalf>>,
     pending: PendingMap,
@@ -732,7 +829,173 @@ async fn handle_command(client: &Client, tx: &Sender<Incoming>, cmd: Command) {
                 )
                 .await;
         }
+        // ── DAP ───────────────────────────────────────────────────────────
+        // DAP requests run on spawned tasks so the deferred `launch` response
+        // doesn't block setBreakpoints/configurationDone on the command loop.
+        Command::DapStart {
+            id,
+            cmd,
+            args,
+            adapter_id,
+            launch,
+        } => {
+            let c = client.clone();
+            tokio::spawn(async move {
+                if c.request("dap.start", json!({ "id": id, "cmd": cmd, "args": args }))
+                    .await
+                    .is_err()
+                {
+                    return;
+                }
+                let _ = dap_req(
+                    &c,
+                    &id,
+                    "initialize",
+                    json!({
+                        "clientID": "enzo", "adapterID": adapter_id,
+                        "linesStartAt1": true, "columnsStartAt1": true,
+                        "pathFormat": "path", "supportsRunInTerminalRequest": false
+                    }),
+                )
+                .await;
+                // Deferred until configurationDone — only blocks this task.
+                let _ = dap_req(&c, &id, "launch", launch).await;
+            });
+        }
+        Command::DapSetBreakpoints { id, path, lines } => {
+            let c = client.clone();
+            tokio::spawn(async move {
+                let bps: Vec<Value> = lines.iter().map(|l| json!({ "line": l })).collect();
+                let _ = dap_req(
+                    &c,
+                    &id,
+                    "setBreakpoints",
+                    json!({ "source": { "path": path }, "breakpoints": bps }),
+                )
+                .await;
+            });
+        }
+        Command::DapConfigDone { id } => {
+            let c = client.clone();
+            tokio::spawn(async move {
+                let _ = dap_req(&c, &id, "configurationDone", json!({})).await;
+            });
+        }
+        Command::DapStackTrace { id, thread_id } => {
+            let c = client.clone();
+            let tx = tx.clone();
+            tokio::spawn(async move {
+                if let Ok(body) = dap_req(
+                    &c,
+                    &id,
+                    "stackTrace",
+                    json!({ "threadId": thread_id, "startFrame": 0, "levels": 20 }),
+                )
+                .await
+                {
+                    let frames = body["stackFrames"]
+                        .as_array()
+                        .map(|a| {
+                            a.iter()
+                                .map(|fr| StackFrame {
+                                    id: fr["id"].as_u64().unwrap_or(0),
+                                    name: fr["name"].as_str().unwrap_or_default().to_owned(),
+                                    path: fr["source"]["path"].as_str().unwrap_or_default().to_owned(),
+                                    line: u32::try_from(fr["line"].as_u64().unwrap_or(0)).unwrap_or(0),
+                                })
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    let _ = tx.send(Incoming::DapStackTraceResult { frames });
+                }
+            });
+        }
+        Command::DapScopes { id, frame_id } => {
+            let c = client.clone();
+            let tx = tx.clone();
+            tokio::spawn(async move {
+                if let Ok(body) =
+                    dap_req(&c, &id, "scopes", json!({ "frameId": frame_id })).await
+                {
+                    let scopes = body["scopes"]
+                        .as_array()
+                        .map(|a| {
+                            a.iter()
+                                .map(|s| DapScope {
+                                    name: s["name"].as_str().unwrap_or_default().to_owned(),
+                                    reference: s["variablesReference"].as_u64().unwrap_or(0),
+                                })
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    let _ = tx.send(Incoming::DapScopesResult { scopes });
+                }
+            });
+        }
+        Command::DapVariables { id, reference } => {
+            let c = client.clone();
+            let tx = tx.clone();
+            tokio::spawn(async move {
+                if let Ok(body) = dap_req(
+                    &c,
+                    &id,
+                    "variables",
+                    json!({ "variablesReference": reference }),
+                )
+                .await
+                {
+                    let vars = body["variables"]
+                        .as_array()
+                        .map(|a| {
+                            a.iter()
+                                .map(|v| DapVar {
+                                    name: v["name"].as_str().unwrap_or_default().to_owned(),
+                                    value: v["value"].as_str().unwrap_or_default().to_owned(),
+                                    ty: v["type"].as_str().unwrap_or_default().to_owned(),
+                                    reference: v["variablesReference"].as_u64().unwrap_or(0),
+                                })
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    let _ = tx.send(Incoming::DapVariablesResult { reference, vars });
+                }
+            });
+        }
+        Command::DapContinue { id, thread_id } => {
+            let c = client.clone();
+            tokio::spawn(async move {
+                let _ = dap_req(&c, &id, "continue", json!({ "threadId": thread_id })).await;
+            });
+        }
+        Command::DapStep {
+            id,
+            thread_id,
+            kind,
+        } => {
+            let command = match kind {
+                DapStepKind::Over => "next",
+                DapStepKind::In => "stepIn",
+                DapStepKind::Out => "stepOut",
+            };
+            let c = client.clone();
+            tokio::spawn(async move {
+                let _ = dap_req(&c, &id, command, json!({ "threadId": thread_id })).await;
+            });
+        }
+        Command::DapStop { id } => {
+            let _ = client.request("dap.stop", json!({ "id": id })).await;
+        }
     }
+}
+
+/// Forward a single DAP request through the daemon and return the adapter body.
+async fn dap_req(client: &Client, id: &str, command: &str, arguments: Value) -> anyhow::Result<Value> {
+    client
+        .request(
+            "dap.request",
+            json!({ "id": id, "command": command, "arguments": arguments }),
+        )
+        .await
 }
 
 /// Fetch branch + status and push a [`Incoming::GitStatus`].
@@ -918,6 +1181,27 @@ fn handle_notification(method: &str, v: &Value, tx: &Sender<Incoming>) {
                     let session_id = ep["sessionId"].as_i64().unwrap_or(0);
                     let _ = tx.send(Incoming::BrowserFrame { jpeg, session_id });
                 }
+            }
+        }
+        "dap.event" => {
+            let event = p["event"].as_str().unwrap_or("");
+            let body = &p["body"];
+            let inc = match event {
+                "initialized" => Some(Incoming::DapInitialized),
+                "stopped" => Some(Incoming::DapStopped {
+                    thread_id: body["threadId"].as_u64().unwrap_or(0),
+                    reason: body["reason"].as_str().unwrap_or_default().to_owned(),
+                }),
+                "continued" => Some(Incoming::DapContinued),
+                "output" => Some(Incoming::DapOutput {
+                    category: body["category"].as_str().unwrap_or("console").to_owned(),
+                    text: body["output"].as_str().unwrap_or_default().to_owned(),
+                }),
+                "terminated" | "exited" => Some(Incoming::DapTerminated),
+                _ => None,
+            };
+            if let Some(inc) = inc {
+                let _ = tx.send(inc);
             }
         }
         "lsp.notification" => {

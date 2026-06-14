@@ -16,6 +16,7 @@ use gpui_platform::application;
 mod atp;
 mod browser;
 mod database;
+mod debug;
 mod ide;
 mod terminal;
 mod terminal_state;
@@ -85,6 +86,12 @@ pub struct EnzoApp {
     lsp_version: i64,
     /// Debounce generation for coalescing rapid edits into one `didChange`.
     lsp_change_gen: u64,
+    /// Active debug session, if any.
+    dap: Option<debug::DapState>,
+    /// Breakpoints per file path → 1-based line numbers.
+    breakpoints: std::collections::HashMap<String, std::collections::BTreeSet<u32>>,
+    /// Monotonic counter for unique DAP client ids.
+    dap_seq: u32,
     /// Active AI-CLI approval prompt (id, title, body, actions), if any.
     agent_prompt: Option<AgentPrompt>,
     /// AI agent blocks composited in the terminal column (id → title, body).
@@ -245,6 +252,9 @@ impl EnzoApp {
             lsp_open: None,
             lsp_version: 0,
             lsp_change_gen: 0,
+            dap: None,
+            breakpoints: std::collections::HashMap::new(),
+            dap_seq: 0,
             agent_prompt: None,
             agent_blocks: Vec::new(),
             browser: browser::BrowserState::new(),
@@ -313,6 +323,112 @@ impl EnzoApp {
                 self.open_file(&path, window, cx);
             }
         }
+    }
+
+    // ── Debugger (DAP) ────────────────────────────────────────────────────
+    /// Start a debug session for the open file's language.
+    fn start_debug(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        let Some(path) = self.ide.open_path.clone() else {
+            return;
+        };
+        let language = self.ide.language.clone();
+        let Some((cmd, args, adapter_id)) = dap_adapter_for(&language) else {
+            let mut s = debug::DapState::new(String::new(), language.clone());
+            s.ended = true;
+            s.console.push(format!("no debug adapter configured for '{language}'"));
+            self.dap = Some(s);
+            cx.notify();
+            return;
+        };
+        let program = path.display().to_string();
+        let cwd = self.ide.root();
+        self.dap_seq += 1;
+        let client_id = format!("dap-{}", self.dap_seq);
+        let launch = dap_launch_args(&language, &program, &cwd);
+        let _ = self.atp.commands.send(Command::DapStart {
+            id: client_id.clone(),
+            cmd: cmd.to_owned(),
+            args: args.into_iter().map(str::to_owned).collect(),
+            adapter_id: adapter_id.to_owned(),
+            launch,
+        });
+        self.dap = Some(debug::DapState::new(client_id, language));
+        cx.notify();
+    }
+
+    /// `(client_id, thread_id)` of the active, stopped session.
+    fn dap_thread(&self) -> Option<(String, u64)> {
+        self.dap
+            .as_ref()
+            .and_then(|d| d.thread_id.map(|t| (d.client_id.clone(), t)))
+    }
+
+    fn dbg_continue(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        if let Some((id, thread_id)) = self.dap_thread() {
+            let _ = self
+                .atp
+                .commands
+                .send(Command::DapContinue { id, thread_id });
+            if let Some(d) = self.dap.as_mut() {
+                d.running = true;
+                d.stopped_at = None;
+            }
+            cx.notify();
+        }
+    }
+
+    fn dbg_step(&mut self, kind: atp::DapStepKind, _window: &mut Window, cx: &mut Context<Self>) {
+        if let Some((id, thread_id)) = self.dap_thread() {
+            let _ = self.atp.commands.send(Command::DapStep {
+                id,
+                thread_id,
+                kind,
+            });
+            cx.notify();
+        }
+    }
+
+    fn dbg_stop(&mut self, cx: &mut Context<Self>) {
+        if let Some(id) = self
+            .dap
+            .as_ref()
+            .map(|d| d.client_id.clone())
+            .filter(|id| !id.is_empty())
+        {
+            let _ = self.atp.commands.send(Command::DapStop { id });
+        }
+        self.dap = None;
+        cx.notify();
+    }
+
+    /// Toggle a breakpoint at the editor's cursor line.
+    fn toggle_breakpoint_at_cursor(&mut self, cx: &mut Context<Self>) {
+        let (Some(path), Some(editor)) = (self.ide.open_path.clone(), self.ide.editor.clone())
+        else {
+            return;
+        };
+        let line = editor.read(cx).cursor_position().line + 1; // DAP lines are 1-based
+        let path_str = path.display().to_string();
+        let lines: Vec<u32> = {
+            let set = self.breakpoints.entry(path_str.clone()).or_default();
+            if !set.remove(&line) {
+                set.insert(line);
+            }
+            set.iter().copied().collect()
+        };
+        if let Some(id) = self
+            .dap
+            .as_ref()
+            .filter(|d| !d.ended)
+            .map(|d| d.client_id.clone())
+        {
+            let _ = self.atp.commands.send(Command::DapSetBreakpoints {
+                id,
+                path: path_str,
+                lines,
+            });
+        }
+        cx.notify();
     }
 
     // ── Git source control ────────────────────────────────────────────────
@@ -1135,6 +1251,80 @@ impl EnzoApp {
                 }
                 Incoming::BlockClear { id } => self.agent_blocks.retain(|b| b.id != id),
                 Incoming::LspDiagnostics { uri, items } => self.apply_diagnostics(&uri, items, cx),
+                // ── DAP events ──
+                Incoming::DapInitialized => {
+                    if let Some(id) = self.dap.as_ref().map(|d| d.client_id.clone()) {
+                        for (path, lines) in &self.breakpoints {
+                            let _ = self.atp.commands.send(Command::DapSetBreakpoints {
+                                id: id.clone(),
+                                path: path.clone(),
+                                lines: lines.iter().copied().collect(),
+                            });
+                        }
+                        let _ = self.atp.commands.send(Command::DapConfigDone { id });
+                    }
+                }
+                Incoming::DapStopped { thread_id, .. } => {
+                    let id = if let Some(d) = self.dap.as_mut() {
+                        d.thread_id = Some(thread_id);
+                        d.running = false;
+                        Some(d.client_id.clone())
+                    } else {
+                        None
+                    };
+                    if let Some(id) = id {
+                        let _ = self.atp.commands.send(Command::DapStackTrace { id, thread_id });
+                    }
+                }
+                Incoming::DapStackTraceResult { frames } => {
+                    let next = if let Some(d) = self.dap.as_mut() {
+                        d.frames = frames.clone();
+                        frames.first().map(|top| {
+                            d.stopped_at = Some((top.path.clone(), top.line));
+                            (d.client_id.clone(), top.id)
+                        })
+                    } else {
+                        None
+                    };
+                    if let Some((id, frame_id)) = next {
+                        let _ = self.atp.commands.send(Command::DapScopes { id, frame_id });
+                    }
+                }
+                Incoming::DapScopesResult { scopes } => {
+                    let next = if let Some(d) = self.dap.as_mut() {
+                        d.scopes = scopes.clone();
+                        scopes.first().map(|s| (d.client_id.clone(), s.reference))
+                    } else {
+                        None
+                    };
+                    if let Some((id, reference)) = next {
+                        let _ = self.atp.commands.send(Command::DapVariables { id, reference });
+                    }
+                }
+                Incoming::DapVariablesResult { reference, vars } => {
+                    if let Some(d) = self.dap.as_mut() {
+                        let _ = reference;
+                        d.variables = vars;
+                    }
+                }
+                Incoming::DapContinued => {
+                    if let Some(d) = self.dap.as_mut() {
+                        d.running = true;
+                        d.stopped_at = None;
+                    }
+                }
+                Incoming::DapOutput { category: _, text } => {
+                    if let Some(d) = self.dap.as_mut() {
+                        d.console.push(text);
+                    }
+                }
+                Incoming::DapTerminated => {
+                    if let Some(d) = self.dap.as_mut() {
+                        d.running = false;
+                        d.ended = true;
+                        d.stopped_at = None;
+                    }
+                }
             }
         }
         any
@@ -1573,6 +1763,49 @@ impl EnzoApp {
             )
     }
 
+    /// Editor tab bar: open-file chip + debug toolbar.
+    fn editor_tab_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let name = self.ide.open_path.as_ref().and_then(|p| p.file_name()).map_or_else(
+            || "no file".to_owned(),
+            |n| n.to_string_lossy().into_owned(),
+        );
+        div()
+            .flex()
+            .items_center()
+            .gap(px(6.0))
+            .px(px(12.0))
+            .py(px(7.0))
+            .bg(theme::BG_BAR)
+            .border_b_2()
+            .border_color(theme::BORDER)
+            .child(
+                div()
+                    .px(px(8.0))
+                    .py(px(4.0))
+                    .rounded(px(3.0))
+                    .bg(theme::BG_SURFACE)
+                    .text_size(px(8.0))
+                    .font_family(theme::FONT_PIXEL)
+                    .text_color(theme::TEAL)
+                    .child(SharedString::from(name)),
+            )
+            .child(debug::toolbar(
+                self.dap.as_ref(),
+                self.ide.open_path.is_some(),
+                cx,
+            ))
+    }
+
+    /// Editor content: code editor + (when debugging) the debug panel beneath it.
+    fn editor_content(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .flex()
+            .flex_col()
+            .size_full()
+            .child(div().flex_1().overflow_hidden().child(ide::content(&self.ide)))
+            .children(self.dap.as_ref().map(|d| debug::panel(d, cx)))
+    }
+
     /// Surface column: tab bar → content → status bar (dispatched per surface).
     fn surface_column(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let (tab_bar, content, status_bar): (AnyElement, AnyElement, AnyElement) =
@@ -1591,8 +1824,8 @@ impl EnzoApp {
                     database::status_bar(&self.db, cx).into_any_element(),
                 ),
                 Surface::Editor => (
-                    ide::tab_bar(&self.ide).into_any_element(),
-                    ide::content(&self.ide).into_any_element(),
+                    self.editor_tab_bar(cx).into_any_element(),
+                    self.editor_content(cx).into_any_element(),
                     ide::status_bar(&self.ide).into_any_element(),
                 ),
                 Surface::Browser => (
@@ -1823,6 +2056,37 @@ fn main() {
             .unwrap();
             cx.activate(true);
         });
+}
+
+/// Map a language id to its debug adapter `(cmd, args, adapterID)`. The adapter
+/// binary must be installed (debugpy/lldb-dap/dlv); a missing one fails
+/// gracefully. JS/Node (vscode-js-debug, TCP) is deferred.
+fn dap_adapter_for(language: &str) -> Option<(&'static str, Vec<&'static str>, &'static str)> {
+    match language {
+        "python" => Some(("python3", vec!["-m", "debugpy.adapter"], "debugpy")),
+        "rust" => Some(("lldb-dap", vec![], "lldb")),
+        "go" => Some(("dlv", vec!["dap"], "go")),
+        _ => None,
+    }
+}
+
+/// Per-adapter `launch` arguments. For compiled languages `program` should be a
+/// built binary; for interpreted languages it's the source file directly.
+fn dap_launch_args(language: &str, program: &str, cwd: &str) -> serde_json::Value {
+    match language {
+        "python" => serde_json::json!({
+            "request": "launch", "program": program,
+            "console": "internalConsole", "cwd": cwd, "stopOnEntry": false
+        }),
+        "go" => serde_json::json!({
+            "request": "launch", "mode": "debug", "program": program, "cwd": cwd
+        }),
+        // rust/lldb: program must be a compiled binary; the source path is a
+        // best-effort default the user can override.
+        _ => serde_json::json!({
+            "request": "launch", "program": program, "cwd": cwd, "args": []
+        }),
+    }
 }
 
 /// Map a language id to its language server (`server_id`, binary, args), if one
