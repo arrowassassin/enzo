@@ -35,10 +35,14 @@ pub fn spawn_session(
         .spawn_command(cmd)
         .map_err(|e| DaemonError::Pty(e.to_string()))?;
 
+    let reader = pair
+        .master
+        .try_clone_reader()
+        .map_err(|e| DaemonError::Pty(e.to_string()))?;
     let writer = pair
         .master
         .take_writer()
         .map_err(|e| DaemonError::Pty(e.to_string()))?;
 
-    Ok(Session::new(id, pair.master, writer, child))
+    Ok(Session::new(id, pair.master, reader, writer, child))
 }

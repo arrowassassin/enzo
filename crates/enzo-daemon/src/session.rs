@@ -1,4 +1,4 @@
-//! A terminal session: a PTY pair + the child process running inside it.
+//! A terminal session: a PTY pair + the child shell process.
 
 use std::sync::Mutex;
 
@@ -13,6 +13,8 @@ pub struct Session {
     pub id: SessionId,
     /// Write half — send bytes to the child's stdin.
     writer: Mutex<Box<dyn std::io::Write + Send>>,
+    /// Read half — receive bytes from the child's stdout/stderr.
+    pub reader: Mutex<Box<dyn std::io::Read + Send>>,
     /// The PTY master (used for resize).
     master: Mutex<Box<dyn MasterPty + Send>>,
     /// The child process.
@@ -26,12 +28,14 @@ impl Session {
     pub fn new(
         id: SessionId,
         master: Box<dyn MasterPty + Send>,
+        reader: Box<dyn std::io::Read + Send>,
         writer: Box<dyn std::io::Write + Send>,
         child: Box<dyn Child + Send + Sync>,
     ) -> Self {
         Self {
             id,
             writer: Mutex::new(writer),
+            reader: Mutex::new(reader),
             master: Mutex::new(master),
             child: Mutex::new(child),
         }
@@ -58,5 +62,23 @@ impl Session {
             .lock()
             .expect("writer mutex poisoned")
             .write_all(data)
+    }
+
+    /// Take the PTY reader out of the session for use in a background read task.
+    ///
+    /// Replaces the reader with an EOF stub so a second call returns EOF immediately.
+    /// The caller should call this exactly once after spawning the session.
+    pub fn take_reader(&self) -> Option<Box<dyn std::io::Read + Send>> {
+        let mut guard = self.reader.lock().expect("reader mutex poisoned");
+        Some(std::mem::replace(&mut *guard, Box::new(EofReader)))
+    }
+}
+
+/// Stub reader that immediately returns EOF — installed after the real reader is taken.
+struct EofReader;
+
+impl std::io::Read for EofReader {
+    fn read(&mut self, _buf: &mut [u8]) -> std::io::Result<usize> {
+        Ok(0)
     }
 }
