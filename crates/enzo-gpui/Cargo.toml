@@ -10,21 +10,22 @@ description = "Enzo GPU client — GPUI workspace UI over the ATP daemon connect
 [workspace]
 
 [dependencies]
-# Editable fork of GPUI (pinned commit df9c9f0), vendored to a durable path so
-# we can add a Linux headless renderer (offscreen render→image) for in-cloud
-# snapshot verification. `gpui_platform` is not on crates.io regardless.
-gpui = { path = "/root/zed/crates/gpui" }
-gpui_platform = { path = "/root/zed/crates/gpui_platform", features = [
+# gpui has no rev here on purpose: it must resolve to the SAME source as
+# gpui-component's `gpui = { git = zed }` so cargo unifies them into one gpui.
+# The exact commit (df9c9f0, what this client was built against) is pinned in
+# Cargo.lock for reproducibility.
+gpui = { git = "https://github.com/zed-industries/zed" }
+gpui_platform = { git = "https://github.com/zed-industries/zed", features = [
     "x11",
     "wayland",
     "font-kit",
 ] }
 # Production code editor (ropey buffer + tree-sitter highlight for ~35 langs +
-# LSP). Its gpui is one commit from ours; the [patch] below unifies them.
-gpui-component = { path = "/root/gpui-component/crates/ui", features = [
+# LSP). Pinned to the rev this client integrates against.
+gpui-component = { git = "https://github.com/longbridge/gpui-component", rev = "cda0fc7fd4e4809dd2a8bae0337ac43b49e9f675", features = [
     "tree-sitter-languages",
 ] }
-gpui-component-assets = { path = "/root/gpui-component/crates/assets" }
+gpui-component-assets = { git = "https://github.com/longbridge/gpui-component", rev = "cda0fc7fd4e4809dd2a8bae0337ac43b49e9f675" }
 log = "0.4"
 
 # ATP client (async, talks to enzo-daemon over a Unix socket)
@@ -37,11 +38,3 @@ vte = "0.13"
 
 [dev-dependencies]
 image = "0.25"
-
-# Unify gpui across our code + gpui-component (which depends on zed by git) onto
-# our single vendored checkout, so there's exactly one gpui in the tree.
-[patch."https://github.com/zed-industries/zed"]
-gpui = { path = "/root/zed/crates/gpui" }
-gpui_platform = { path = "/root/zed/crates/gpui_platform" }
-gpui_macros = { path = "/root/zed/crates/gpui_macros" }
-gpui_web = { path = "/root/zed/crates/gpui_web" }
