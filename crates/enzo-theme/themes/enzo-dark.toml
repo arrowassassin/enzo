@@ -1,0 +1,63 @@
+[meta]
+name = "Enzo Dark"
+id = "enzo-dark"
+author = "Enzo"
+appearance = "dark"
+high_contrast = false
+colorblind_safe = true
+tags = ["modern", "default"]
+
+[palette]
+bg0 = "#0f1117"
+bg1 = "#1e2230"
+bg2 = "#2a2f42"
+fg0 = "#e2e8f0"
+fg1 = "#94a3b8"
+fg2 = "#64748b"
+blue = "#3b82f6"
+cyan = "#22d3ee"
+green = "#22c55e"
+yellow = "#eab308"
+orange = "#f97316"
+red = "#ef4444"
+purple = "#a855f7"
+pink = "#ec4899"
+
+[roles]
+background = "bg0"
+surface = "bg1"
+surface_alt = "bg2"
+foreground = "fg0"
+muted = "fg1"
+faint = "fg2"
+accent = "blue"
+cursor = "fg0"
+selection = "bg2"
+success = "green"
+warning = "yellow"
+error = "red"
+border = "bg2"
+
+[syntax]
+keyword = "purple"
+string = "green"
+number = "orange"
+comment = "fg2"
+function = "blue"
+type = "cyan"
+variable = "fg0"
+constant = "orange"
+operator = "fg1"
+punctuation = "fg1"
+
+[fonts]
+mono = "JetBrains Mono"
+ui = "Inter"
+size_tenths = 140
+
+[effects]
+scanlines = false
+phosphor = false
+curvature = false
+bloom = false
+dither = false

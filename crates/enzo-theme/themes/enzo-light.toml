@@ -1,0 +1,56 @@
+[meta]
+name = "Enzo Light"
+id = "enzo-light"
+author = "Enzo"
+appearance = "light"
+high_contrast = false
+colorblind_safe = true
+tags = ["modern", "light"]
+
+[palette]
+bg0 = "#ffffff"
+bg1 = "#f1f5f9"
+bg2 = "#e2e8f0"
+fg0 = "#0f172a"
+fg1 = "#475569"
+fg2 = "#94a3b8"
+blue = "#2563eb"
+cyan = "#0891b2"
+green = "#16a34a"
+yellow = "#ca8a04"
+orange = "#ea580c"
+red = "#dc2626"
+purple = "#9333ea"
+pink = "#db2777"
+
+[roles]
+background = "bg0"
+surface = "bg1"
+surface_alt = "bg2"
+foreground = "fg0"
+muted = "fg1"
+faint = "fg2"
+accent = "blue"
+cursor = "fg0"
+selection = "bg2"
+success = "green"
+warning = "yellow"
+error = "red"
+border = "bg2"
+
+[syntax]
+keyword = "purple"
+string = "green"
+number = "orange"
+comment = "fg2"
+function = "blue"
+type = "cyan"
+variable = "fg0"
+constant = "orange"
+operator = "fg1"
+punctuation = "fg1"
+
+[fonts]
+mono = "JetBrains Mono"
+ui = "Inter"
+size_tenths = 140

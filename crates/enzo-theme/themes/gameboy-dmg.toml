@@ -1,0 +1,50 @@
+[meta]
+name = "Game Boy DMG"
+id = "gameboy-dmg"
+author = "Enzo 8-bit pack"
+appearance = "dark"
+high_contrast = true
+colorblind_safe = false
+tags = ["8-bit", "retro"]
+
+[palette]
+darkest = "#0f380f"
+dark = "#306230"
+light = "#8bac0f"
+lightest = "#9bbc0f"
+
+[roles]
+background = "darkest"
+surface = "dark"
+surface_alt = "light"
+foreground = "lightest"
+muted = "light"
+faint = "dark"
+accent = "lightest"
+cursor = "lightest"
+selection = "dark"
+success = "light"
+warning = "lightest"
+error = "lightest"
+border = "dark"
+
+[syntax]
+keyword = "lightest"
+string = "light"
+number = "lightest"
+comment = "dark"
+function = "light"
+type = "lightest"
+variable = "lightest"
+constant = "light"
+operator = "light"
+punctuation = "light"
+
+[fonts]
+mono = "JetBrains Mono"
+ui = "JetBrains Mono"
+size_tenths = 140
+
+[effects]
+scanlines = true
+dither = true

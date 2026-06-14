@@ -6,7 +6,8 @@
 
 use std::sync::Arc;
 
-use crate::driver::{Driver, QueryResult};
+use crate::driver::{Driver, MemDriver, QueryResult};
+use crate::sqlite::SqliteDriver;
 
 /// A cheaply-cloneable handle to a shared driver instance.
 pub struct Pool<D: Driver> {
@@ -43,6 +44,58 @@ impl<D: Driver> Pool<D> {
     #[must_use]
     pub fn driver_name(&self) -> &'static str {
         self.inner.name()
+    }
+}
+
+// ── AnyPool ───────────────────────────────────────────────────────────────────
+
+/// Type-erased pool for use where the concrete driver is not known at compile time.
+///
+/// Avoids `dyn Driver` (which is not object-safe due to async trait methods) by
+/// using enum dispatch.
+#[derive(Clone)]
+pub enum AnyPool {
+    /// `SQLite` connection pool.
+    Sqlite(Pool<SqliteDriver>),
+    /// In-memory mock pool (testing / demo).
+    Mem(Pool<MemDriver>),
+}
+
+impl AnyPool {
+    /// Open a `SQLite` pool at `path` (use `":memory:"` for a transient DB).
+    pub fn sqlite(path: &str) -> anyhow::Result<Self> {
+        Ok(Self::Sqlite(Pool::new(SqliteDriver::open(path)?)))
+    }
+
+    /// Create an in-memory mock pool.
+    #[must_use]
+    pub fn mem() -> Self {
+        Self::Mem(Pool::new(MemDriver))
+    }
+
+    /// Execute a SQL query and return Arrow record batches.
+    pub async fn query(&self, sql: &str) -> anyhow::Result<QueryResult> {
+        match self {
+            Self::Sqlite(p) => p.query(sql).await,
+            Self::Mem(p) => p.query(sql).await,
+        }
+    }
+
+    /// Execute a SQL statement that produces no result set.
+    pub async fn execute(&self, sql: &str) -> anyhow::Result<u64> {
+        match self {
+            Self::Sqlite(p) => p.execute(sql).await,
+            Self::Mem(p) => p.execute(sql).await,
+        }
+    }
+
+    /// Return the underlying driver name.
+    #[must_use]
+    pub fn driver_name(&self) -> &'static str {
+        match self {
+            Self::Sqlite(p) => p.driver_name(),
+            Self::Mem(p) => p.driver_name(),
+        }
     }
 }
 

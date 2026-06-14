@@ -33,6 +33,13 @@ anyhow = "1"
 # Credential vault
 enzo-vault = { path = "../enzo-vault" }
 
+# Sibling service crates wired into the daemon
+enzo-db = { path = "../enzo-db" }
+enzo-editor = { path = "../enzo-editor" }
+enzo-browser = { path = "../enzo-browser" }
+enzo-git = { path = "../enzo-git" }
+enzo-theme = { path = "../enzo-theme" }
+
 [[bin]]
 name = "enzo-daemon"
 path = "src/bin/enzo-daemon.rs"

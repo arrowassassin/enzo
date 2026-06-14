@@ -22,6 +22,37 @@ pub enum DaemonMessage {
         /// Raw PTY bytes.
         data: Vec<u8>,
     },
+    /// An AI agent requests an inline approval (rendered as an overlay card).
+    PromptShow {
+        /// Prompt id — echoed back in `prompt.respond`.
+        id: String,
+        /// Prompt kind: `"diff"` or `"text"`.
+        kind: String,
+        /// Short title (e.g. "claude wants to edit renderer.rs").
+        title: String,
+        /// Body / context text.
+        body: String,
+        /// Optional unified diff (`{ path, raw }`).
+        diff: Option<Value>,
+        /// Available actions (e.g. `["accept","reject","edit"]`).
+        actions: Vec<String>,
+    },
+    /// An AI agent pushes a non-blocking content block.
+    BlockPush {
+        /// Block id.
+        id: String,
+        /// Block kind: `"text"`, `"diff"`, or `"code"`.
+        kind: String,
+        /// Title line.
+        title: String,
+        /// Body text.
+        body: String,
+    },
+    /// Remove a previously-pushed block.
+    BlockClear {
+        /// Block id to remove.
+        id: String,
+    },
     /// The daemon closed the connection.
     Closed,
 }
@@ -134,6 +165,58 @@ impl AtpClient {
             .await
             .map(|_| ())
     }
+
+    /// Register this connection as a display client so it receives
+    /// `prompt.show` / `block.push` broadcasts from AI agent adapters.
+    pub async fn register_display(&self) -> anyhow::Result<()> {
+        self.request("display.register", json!({}))
+            .await
+            .map(|_| ())
+    }
+
+    /// Respond to a pending agent prompt with the chosen action.
+    pub async fn respond_prompt(&self, id: &str, action: &str) -> anyhow::Result<()> {
+        self.request("prompt.respond", json!({ "id": id, "action": action }))
+            .await
+            .map(|_| ())
+    }
+
+    /// Launch a headless browser under `id` and navigate to `url`.
+    pub async fn browser_launch(&self, id: &str, url: &str, w: u32, h: u32) -> anyhow::Result<()> {
+        self.request(
+            "browser.launch",
+            json!({ "id": id, "url": url, "width": w, "height": h }),
+        )
+        .await
+        .map(|_| ())
+    }
+
+    /// Navigate an existing browser page to `url`.
+    pub async fn browser_navigate(&self, id: &str, url: &str) -> anyhow::Result<()> {
+        self.request("browser.navigate", json!({ "id": id, "url": url }))
+            .await
+            .map(|_| ())
+    }
+
+    /// Capture a screenshot; returns the decoded PNG bytes.
+    pub async fn browser_screenshot(&self, id: &str) -> anyhow::Result<Vec<u8>> {
+        let r = self
+            .request("browser.screenshot", json!({ "id": id }))
+            .await?;
+        let b64 = r["png"].as_str().context("missing png")?;
+        base64::Engine::decode(&base64::engine::general_purpose::STANDARD, b64)
+            .context("decode screenshot base64")
+    }
+
+    /// Forward a raw CDP input event to the browser page.
+    pub async fn browser_input(&self, id: &str, method: &str, params: Value) -> anyhow::Result<()> {
+        self.request(
+            "browser.input",
+            json!({ "id": id, "method": method, "params": params }),
+        )
+        .await
+        .map(|_| ())
+    }
 }
 
 // ── Read loop ────────────────────────────────────────────────────────────────
@@ -182,6 +265,45 @@ fn handle_notification(method: &str, v: &Value, on_message: &mut impl FnMut(Daem
                 Err(e) => log::warn!("invalid base64 in session.output: {e}"),
             }
         }
+        "prompt.show" => {
+            let p = &v["params"];
+            let Some(id) = p["id"].as_str() else { return };
+            let actions = p["actions"].as_array().map_or_else(
+                || vec!["accept".to_owned(), "reject".to_owned(), "edit".to_owned()],
+                |a| {
+                    a.iter()
+                        .filter_map(|x| x.as_str().map(str::to_owned))
+                        .collect()
+                },
+            );
+            on_message(DaemonMessage::PromptShow {
+                id: id.to_owned(),
+                kind: p["type"].as_str().unwrap_or("text").to_owned(),
+                title: p["title"].as_str().unwrap_or("").to_owned(),
+                body: p["body"].as_str().unwrap_or("").to_owned(),
+                diff: if p["diff"].is_null() {
+                    None
+                } else {
+                    Some(p["diff"].clone())
+                },
+                actions,
+            });
+        }
+        "block.push" => {
+            let p = &v["params"];
+            let Some(id) = p["id"].as_str() else { return };
+            on_message(DaemonMessage::BlockPush {
+                id: id.to_owned(),
+                kind: p["type"].as_str().unwrap_or("text").to_owned(),
+                title: p["title"].as_str().unwrap_or("").to_owned(),
+                body: p["body"].as_str().unwrap_or("").to_owned(),
+            });
+        }
+        "block.clear" => {
+            if let Some(id) = v["params"]["id"].as_str() {
+                on_message(DaemonMessage::BlockClear { id: id.to_owned() });
+            }
+        }
         other => log::debug!("unknown notification: {other}"),
     }
 }
@@ -207,7 +329,7 @@ mod tests {
                 assert_eq!(session_id, "s1");
                 assert_eq!(data, b"hello");
             }
-            other @ DaemonMessage::Closed => panic!("unexpected: {other:?}"),
+            other => panic!("unexpected: {other:?}"),
         }
     }
 
@@ -252,6 +374,104 @@ mod tests {
         let v = json!({ "jsonrpc": "2.0", "method": "foo", "params": {} });
         let mut count = 0u32;
         handle_notification("foo", &v, &mut |_| count += 1);
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn notification_prompt_show_parsed() {
+        let v = json!({
+            "jsonrpc": "2.0",
+            "method": "prompt.show",
+            "params": {
+                "id": "p1",
+                "type": "diff",
+                "title": "edit x.rs",
+                "body": "context",
+                "diff": { "path": "src/x.rs", "raw": "+a\n-b\n" },
+                "actions": ["accept", "reject", "edit"]
+            }
+        });
+        let mut got: Option<DaemonMessage> = None;
+        handle_notification("prompt.show", &v, &mut |m| got = Some(m));
+        match got.unwrap() {
+            DaemonMessage::PromptShow {
+                id,
+                kind,
+                title,
+                actions,
+                diff,
+                ..
+            } => {
+                assert_eq!(id, "p1");
+                assert_eq!(kind, "diff");
+                assert_eq!(title, "edit x.rs");
+                assert_eq!(actions, vec!["accept", "reject", "edit"]);
+                assert!(diff.is_some());
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn notification_prompt_show_defaults_actions() {
+        let v = json!({
+            "jsonrpc": "2.0",
+            "method": "prompt.show",
+            "params": { "id": "p2", "type": "text", "title": "run" }
+        });
+        let mut got: Option<DaemonMessage> = None;
+        handle_notification("prompt.show", &v, &mut |m| got = Some(m));
+        match got.unwrap() {
+            DaemonMessage::PromptShow { actions, diff, .. } => {
+                assert_eq!(actions, vec!["accept", "reject", "edit"]);
+                assert!(diff.is_none());
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn notification_block_push_parsed() {
+        let v = json!({
+            "jsonrpc": "2.0",
+            "method": "block.push",
+            "params": { "id": "b1", "type": "text", "title": "Note", "body": "hi" }
+        });
+        let mut got: Option<DaemonMessage> = None;
+        handle_notification("block.push", &v, &mut |m| got = Some(m));
+        match got.unwrap() {
+            DaemonMessage::BlockPush {
+                id, title, body, ..
+            } => {
+                assert_eq!(id, "b1");
+                assert_eq!(title, "Note");
+                assert_eq!(body, "hi");
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn notification_block_clear_parsed() {
+        let v = json!({
+            "jsonrpc": "2.0",
+            "method": "block.clear",
+            "params": { "id": "b1" }
+        });
+        let mut got: Option<DaemonMessage> = None;
+        handle_notification("block.clear", &v, &mut |m| got = Some(m));
+        assert!(matches!(got, Some(DaemonMessage::BlockClear { id }) if id == "b1"));
+    }
+
+    #[test]
+    fn notification_prompt_show_missing_id_ignored() {
+        let v = json!({
+            "jsonrpc": "2.0",
+            "method": "prompt.show",
+            "params": { "title": "x" }
+        });
+        let mut count = 0u32;
+        handle_notification("prompt.show", &v, &mut |_| count += 1);
         assert_eq!(count, 0);
     }
 }

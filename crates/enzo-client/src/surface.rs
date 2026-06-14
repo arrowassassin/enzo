@@ -53,7 +53,7 @@ pub struct FileEntry {
 pub struct IdeState {
     /// Root directory currently shown.
     pub root: String,
-    /// Flat, depth-sorted listing.
+    /// Flat listing of currently *visible* tree rows (expanded dirs inlined).
     pub entries: Vec<FileEntry>,
     /// Highlighted entry index.
     pub selected: usize,
@@ -61,40 +61,86 @@ pub struct IdeState {
     pub lines: Vec<String>,
     /// Path of the currently open file, if any.
     pub open_path: Option<String>,
+    /// Language id of the open file (for the status bar).
+    pub language: String,
     /// First visible line in the code view.
     pub scroll: usize,
     /// Cursor line within the code view.
     pub cursor_line: usize,
+    /// Paths of directories currently expanded.
+    expanded: std::collections::HashSet<String>,
 }
 
 impl IdeState {
-    /// Create an IDE state rooted at `root`.  Scans the directory immediately.
+    /// Create an IDE state rooted at `root`. Scans only the top level.
     #[must_use]
     pub fn new(root: impl Into<String>) -> Self {
         let root = root.into();
-        let entries = scan_dir(&root, 0, 1);
+        let entries = scan_dir(&root, 0, 0);
         Self {
             root,
             entries,
             selected: 0,
             lines: Vec::new(),
             open_path: None,
+            language: "plaintext".to_owned(),
             scroll: 0,
             cursor_line: 0,
+            expanded: std::collections::HashSet::new(),
         }
     }
 
-    /// Open the currently selected file (no-op on directories).
-    pub fn open_selected(&mut self) {
-        if let Some(entry) = self.entries.get(self.selected).cloned()
-            && !entry.is_dir
-            && let Ok(text) = std::fs::read_to_string(&entry.path)
-        {
+    /// `true` if the directory at `path` is expanded.
+    #[must_use]
+    pub fn is_expanded(&self, path: &str) -> bool {
+        self.expanded.contains(path)
+    }
+
+    /// Activate entry `index`: expand/collapse a directory, or open a file.
+    pub fn activate(&mut self, index: usize) {
+        let Some(entry) = self.entries.get(index).cloned() else {
+            return;
+        };
+        self.selected = index;
+        if entry.is_dir {
+            self.toggle_dir(index, &entry);
+        } else {
+            self.open_file(&entry);
+        }
+    }
+
+    /// Expand or collapse the directory entry at `index`.
+    fn toggle_dir(&mut self, index: usize, entry: &FileEntry) {
+        if self.expanded.remove(&entry.path) {
+            // Collapse: drop all following rows nested under this directory.
+            // `remove(i)` shifts the next row into `i`, so the index stays put.
+            let i = index + 1;
+            while i < self.entries.len() && self.entries[i].depth > entry.depth {
+                self.entries.remove(i);
+            }
+        } else {
+            // Expand: scan one level and splice the children in after `index`.
+            self.expanded.insert(entry.path.clone());
+            let children = scan_dir(&entry.path, entry.depth + 1, entry.depth + 1);
+            for (k, child) in children.into_iter().enumerate() {
+                self.entries.insert(index + 1 + k, child);
+            }
+        }
+    }
+
+    fn open_file(&mut self, entry: &FileEntry) {
+        if let Ok(text) = std::fs::read_to_string(&entry.path) {
             self.lines = text.lines().map(str::to_string).collect();
             self.open_path = Some(entry.name.clone());
+            self.language = language_id(&entry.name);
             self.scroll = 0;
             self.cursor_line = 0;
         }
+    }
+
+    /// Open the currently selected entry (kept for keyboard navigation).
+    pub fn open_selected(&mut self) {
+        self.activate(self.selected);
     }
 
     /// Move the file explorer selection by `delta` rows.
@@ -162,13 +208,40 @@ fn scan_dir(path: &str, depth: usize, max_depth: usize) -> Vec<FileEntry> {
     out
 }
 
+/// Infer a short language id from a file name (drives status bar + highlight).
+#[must_use]
+pub fn language_id(name: &str) -> String {
+    let ext = name.rsplit('.').next().unwrap_or("").to_ascii_lowercase();
+    match ext.as_str() {
+        "rs" => "rust",
+        "py" | "pyi" => "python",
+        "js" | "jsx" | "ts" | "tsx" | "mjs" | "cjs" => "javascript",
+        "json" | "jsonc" => "json",
+        "toml" => "toml",
+        "md" => "markdown",
+        _ => "plaintext",
+    }
+    .to_owned()
+}
+
 // ── Database surface ──────────────────────────────────────────────────────────
 
-/// Database surface state: SQL editor + result table.
+/// One SQL query tab.
+#[derive(Clone, Debug)]
+pub struct QueryTab {
+    /// Tab title.
+    pub title: String,
+    /// SQL editor contents.
+    pub sql: String,
+}
+
+/// Database surface state: connections + multiple SQL query tabs + result table.
 pub struct DbState {
-    /// Text in the SQL editor.
-    pub query: String,
-    /// Cursor offset (bytes) within `query`.
+    /// Open query tabs.
+    pub tabs: Vec<QueryTab>,
+    /// Active tab index.
+    pub active_tab: usize,
+    /// Cursor offset (bytes) within the active query.
     pub cursor: usize,
     /// Column headers of the last result set.
     pub columns: Vec<String>,
@@ -180,76 +253,84 @@ pub struct DbState {
     pub result_scroll: usize,
     /// Execution time of the last query in milliseconds.
     pub query_ms: Option<u64>,
-    /// Display name of the active connection.
-    pub active_conn: String,
+    /// Configured connections (display names).
+    pub connections: Vec<String>,
+    /// Active connection index.
+    pub active_conn_idx: usize,
+    /// Tables in the active connection's schema (display only for now).
+    pub tables: Vec<String>,
+    /// Next tab number for naming.
+    next_tab: u32,
 }
 
 impl DbState {
     /// Initial demo state with sample data.
     #[must_use]
     pub fn demo() -> Self {
+        let cols = ["id", "name", "email"].map(String::from).to_vec();
+        let rows = [
+            ("1", "Alice", "alice@example.com"),
+            ("2", "Bob", "bob@example.com"),
+            ("3", "Carol", "carol@example.com"),
+            ("4", "Dave", "dave@example.com"),
+            ("5", "Eve", "eve@example.com"),
+            ("6", "Frank", "frank@example.com"),
+        ]
+        .iter()
+        .map(|(a, b, c)| vec![(*a).to_owned(), (*b).to_owned(), (*c).to_owned()])
+        .collect();
         Self {
-            query: "SELECT id, name, email FROM users LIMIT 10;".to_string(),
-            cursor: 44,
-            columns: vec!["id".to_string(), "name".to_string(), "email".to_string()],
-            rows: vec![
-                vec![
-                    "1".to_string(),
-                    "Alice".to_string(),
-                    "alice@example.com".to_string(),
-                ],
-                vec![
-                    "2".to_string(),
-                    "Bob".to_string(),
-                    "bob@example.com".to_string(),
-                ],
-                vec![
-                    "3".to_string(),
-                    "Carol".to_string(),
-                    "carol@example.com".to_string(),
-                ],
-                vec![
-                    "4".to_string(),
-                    "Dave".to_string(),
-                    "dave@example.com".to_string(),
-                ],
-                vec![
-                    "5".to_string(),
-                    "Eve".to_string(),
-                    "eve@example.com".to_string(),
-                ],
-                vec![
-                    "6".to_string(),
-                    "Frank".to_string(),
-                    "frank@example.com".to_string(),
-                ],
-            ],
+            tabs: vec![QueryTab {
+                title: "query 1".to_owned(),
+                sql: "SELECT id, name, email FROM users LIMIT 10;".to_owned(),
+            }],
+            active_tab: 0,
+            cursor: 0,
+            columns: cols,
+            rows,
             error: None,
             result_scroll: 0,
             query_ms: Some(12),
-            active_conn: "SQLite · enzo.db".to_string(),
+            connections: vec!["SQLite · enzo.db".to_owned()],
+            active_conn_idx: 0,
+            tables: ["users", "orders", "products", "sessions"]
+                .map(String::from)
+                .to_vec(),
+            next_tab: 1,
         }
     }
 
-    /// Append a character at the cursor.
-    pub fn insert(&mut self, ch: char) {
-        self.query.insert(self.cursor, ch);
-        self.cursor += ch.len_utf8();
+    /// Display name of the active connection.
+    #[must_use]
+    pub fn active_conn(&self) -> &str {
+        self.connections
+            .get(self.active_conn_idx)
+            .map_or("no connection", String::as_str)
     }
 
-    /// Delete the character before the cursor (backspace).
-    pub fn backspace(&mut self) {
-        if self.cursor == 0 {
-            return;
+    /// Mutable SQL of the active query tab (for the editor).
+    pub fn active_sql_mut(&mut self) -> &mut String {
+        if self.tabs.is_empty() {
+            self.add_query_tab();
         }
-        let (idx, _) = self
-            .query
-            .char_indices()
-            .rev()
-            .find(|&(i, _)| i < self.cursor)
-            .unwrap_or((0, ' '));
-        self.query.remove(idx);
-        self.cursor = idx;
+        let i = self.active_tab.min(self.tabs.len() - 1);
+        &mut self.tabs[i].sql
+    }
+
+    /// Open a new empty query tab and make it active.
+    pub fn add_query_tab(&mut self) {
+        self.next_tab += 1;
+        self.tabs.push(QueryTab {
+            title: format!("query {}", self.next_tab),
+            sql: String::new(),
+        });
+        self.active_tab = self.tabs.len() - 1;
+    }
+
+    /// Add a new connection and make it active.
+    pub fn add_connection(&mut self, name: impl Into<String>) {
+        self.connections.push(name.into());
+        self.active_conn_idx = self.connections.len() - 1;
     }
 }
 

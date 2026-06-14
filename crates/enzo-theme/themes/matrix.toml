@@ -1,0 +1,55 @@
+[meta]
+name = "Matrix"
+id = "matrix"
+author = "Enzo 8-bit pack"
+appearance = "dark"
+high_contrast = true
+colorblind_safe = false
+tags = ["8-bit", "crt", "flagship"]
+
+[palette]
+black = "#000000"
+dkgreen = "#003b00"
+green = "#008f11"
+brgreen = "#00ff41"
+ltgreen = "#22ff66"
+white = "#d6ffd6"
+
+[roles]
+background = "black"
+surface = "dkgreen"
+surface_alt = "green"
+foreground = "brgreen"
+muted = "green"
+faint = "dkgreen"
+accent = "ltgreen"
+cursor = "brgreen"
+selection = "green"
+success = "brgreen"
+warning = "ltgreen"
+error = "white"
+border = "green"
+
+[syntax]
+keyword = "ltgreen"
+string = "brgreen"
+number = "white"
+comment = "green"
+function = "ltgreen"
+type = "white"
+variable = "brgreen"
+constant = "white"
+operator = "green"
+punctuation = "green"
+
+[fonts]
+mono = "JetBrains Mono"
+ui = "JetBrains Mono"
+size_tenths = 140
+
+[effects]
+scanlines = true
+phosphor = true
+curvature = true
+bloom = true
+dither = false

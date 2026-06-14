@@ -1,0 +1,19 @@
+[package]
+name = "enzo"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Enzo — single binary that boots the daemon and GPU client together"
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow = "1"
+
+[[bin]]
+name = "enzo"
+path = "src/main.rs"

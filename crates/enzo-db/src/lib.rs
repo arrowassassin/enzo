@@ -8,6 +8,18 @@
 //! [`Driver`] trait and are registered at startup.
 
 pub mod driver;
+pub mod introspect;
+pub mod paginate;
 pub mod pool;
 pub mod pretty;
 pub mod schema;
+pub mod sqlite;
+pub mod table;
+pub mod tabs;
+
+pub use introspect::{ColumnDef, IndexInfo, TableInfo};
+pub use paginate::{Page, page_count};
+pub use pool::AnyPool;
+pub use pretty::batches_to_json;
+pub use table::Cell;
+pub use tabs::{QueryTab, TabManager};

@@ -1,0 +1,26 @@
+[package]
+name = "enzo-adapters"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "ATP adapter binaries — wrap AI CLIs (Claude Code, Codex, Cursor) for enzo-daemon"
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+# Error handling
+anyhow = "1"
+
+# JSON-RPC payloads
+serde_json = "1"
+
+# PTY control for sub-process spawning
+portable-pty = "0.8"
+
+[[bin]]
+name = "enzo-claude"
+path = "src/bin/enzo-claude.rs"

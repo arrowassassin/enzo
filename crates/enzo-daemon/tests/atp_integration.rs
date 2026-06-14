@@ -151,3 +151,198 @@ async fn full_session_lifecycle() {
     .await;
     assert_eq!(r["error"]["code"], json!(-32001), "after-close resize: {r}");
 }
+
+// ── Theme family ──────────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn theme_list_includes_builtins() {
+    let state = DaemonState::new();
+    let r = atp_call(&state, "theme.list", json!({})).await;
+    assert_eq!(r["result"]["active"], "enzo-dark");
+    let themes = r["result"]["themes"].as_array().unwrap();
+    assert!(themes.iter().any(|t| t["id"] == "matrix"));
+}
+
+#[tokio::test]
+async fn theme_apply_switches_active() {
+    let state = DaemonState::new();
+    let r = atp_call(&state, "theme.apply", json!({ "id": "matrix" })).await;
+    assert_eq!(r["result"]["meta"]["id"], "matrix");
+    // The active theme is now matrix.
+    let g = atp_call(&state, "theme.get", json!({})).await;
+    assert_eq!(g["result"]["meta"]["id"], "matrix");
+}
+
+#[tokio::test]
+async fn theme_apply_unknown_errors() {
+    let state = DaemonState::new();
+    let r = atp_call(&state, "theme.apply", json!({ "id": "nope" })).await;
+    assert_eq!(r["error"]["code"], json!(-32001));
+}
+
+// ── Editor family ─────────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn editor_highlight_rust_keyword() {
+    let state = DaemonState::new();
+    let r = atp_call(
+        &state,
+        "editor.highlight",
+        json!({ "language": "rust", "source": "fn main() {}" }),
+    )
+    .await;
+    let spans = r["result"]["spans"].as_array().unwrap();
+    assert!(spans.iter().any(|s| s["name"] == "keyword"));
+}
+
+#[tokio::test]
+async fn editor_languages_lists_rust() {
+    let state = DaemonState::new();
+    let r = atp_call(&state, "editor.languages", json!({})).await;
+    let langs = r["result"]["languages"].as_array().unwrap();
+    let rust = langs.iter().find(|l| l["id"] == "rust").unwrap();
+    assert_eq!(rust["lsp"], "rust-analyzer");
+}
+
+// ── Git family ────────────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn git_status_on_non_repo_errors() {
+    let state = DaemonState::new();
+    let r = atp_call(&state, "git.status", json!({ "path": "/" })).await;
+    assert!(r["error"].is_object(), "expected error for non-repo: {r}");
+}
+
+#[tokio::test]
+async fn git_info_on_self_repo() {
+    let state = DaemonState::new();
+    // The test runs inside the enzo git repo; CARGO_MANIFEST_DIR is within it.
+    let path = env!("CARGO_MANIFEST_DIR");
+    let r = atp_call(&state, "git.info", json!({ "path": path })).await;
+    // Either we're in a repo (Ok with head) or sandboxed (Err) — accept both,
+    // but if Ok the shape must be right.
+    if r["result"].is_object() {
+        assert!(r["result"]["head"].is_string());
+    }
+}
+
+// ── DB schema + table + tabs families ─────────────────────────────────────────
+
+async fn connect_seeded_db(state: &DaemonState) {
+    atp_call(
+        state,
+        "db.connect",
+        json!({ "id": "c1", "path": ":memory:" }),
+    )
+    .await;
+    atp_call(
+        state,
+        "db.execute",
+        json!({ "conn": "c1", "sql": "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL)" }),
+    )
+    .await;
+    atp_call(
+        state,
+        "db.execute",
+        json!({ "conn": "c1", "sql": "INSERT INTO users VALUES (1,'alice'),(2,'bob')" }),
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn db_schema_tables_lists_users() {
+    let state = DaemonState::new();
+    connect_seeded_db(&state).await;
+    let r = atp_call(&state, "db.schema.tables", json!({ "conn": "c1" })).await;
+    let tables = r["result"]["tables"].as_array().unwrap();
+    assert!(tables.iter().any(|t| t["name"] == "users"));
+}
+
+#[tokio::test]
+async fn db_schema_columns_reports_pk() {
+    let state = DaemonState::new();
+    connect_seeded_db(&state).await;
+    let r = atp_call(
+        &state,
+        "db.schema.columns",
+        json!({ "conn": "c1", "table": "users" }),
+    )
+    .await;
+    let cols = r["result"]["columns"].as_array().unwrap();
+    let id = cols.iter().find(|c| c["name"] == "id").unwrap();
+    assert_eq!(id["primary_key"], true);
+}
+
+#[tokio::test]
+async fn db_table_browse_paginates() {
+    let state = DaemonState::new();
+    connect_seeded_db(&state).await;
+    let r = atp_call(
+        &state,
+        "db.table.browse",
+        json!({ "conn": "c1", "table": "users", "page": 0, "size": 1 }),
+    )
+    .await;
+    assert_eq!(r["result"]["total"], 2);
+    assert_eq!(r["result"]["rows"].as_array().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn db_table_update_and_delete_cycle() {
+    let state = DaemonState::new();
+    connect_seeded_db(&state).await;
+
+    let upd = atp_call(
+        &state,
+        "db.table.update",
+        json!({
+            "conn": "c1", "table": "users",
+            "cells": [{ "column": "name", "value": "ALICE" }],
+            "pk": [{ "column": "id", "value": "1" }]
+        }),
+    )
+    .await;
+    assert_eq!(upd["result"]["affected"], 1);
+
+    let del = atp_call(
+        &state,
+        "db.table.delete",
+        json!({ "conn": "c1", "table": "users", "pk": [{ "column": "id", "value": "2" }] }),
+    )
+    .await;
+    assert_eq!(del["result"]["affected"], 1);
+}
+
+#[tokio::test]
+async fn db_table_update_without_pk_rejected() {
+    let state = DaemonState::new();
+    connect_seeded_db(&state).await;
+    let r = atp_call(
+        &state,
+        "db.table.update",
+        json!({ "conn": "c1", "table": "users", "cells": [{ "column": "name", "value": "x" }], "pk": [] }),
+    )
+    .await;
+    assert_eq!(r["error"]["code"], json!(-32602));
+}
+
+#[tokio::test]
+async fn db_tabs_open_rename_list() {
+    let state = DaemonState::new();
+    connect_seeded_db(&state).await;
+
+    let open = atp_call(&state, "db.tabs.open", json!({ "conn": "c1" })).await;
+    let tab_id = open["result"]["id"].as_str().unwrap().to_owned();
+
+    let ren = atp_call(
+        &state,
+        "db.tabs.rename",
+        json!({ "conn": "c1", "tab": tab_id, "title": "Reports" }),
+    )
+    .await;
+    assert_eq!(ren["result"]["ok"], true);
+
+    let list = atp_call(&state, "db.tabs.list", json!({ "conn": "c1" })).await;
+    let tabs = list["result"]["tabs"].as_array().unwrap();
+    assert!(tabs.iter().any(|t| t["title"] == "Reports"));
+}

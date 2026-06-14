@@ -12,8 +12,10 @@
 
 pub mod browser;
 pub mod cdp;
+pub mod launch;
 pub mod page;
 
 pub use browser::Browser;
 pub use cdp::CdpEvent;
+pub use launch::{Launched, launch};
 pub use page::Page;

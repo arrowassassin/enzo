@@ -11,3 +11,13 @@ vault.enc
 
 # VS Code — local machine paths; each dev gets their own
 .vscode/settings.json
+
+# egui_kittest transient snapshot artifacts (only the *.png baselines are tracked)
+**/tests/snapshots/*.new.png
+**/tests/snapshots/*.old.png
+**/tests/snapshots/*.diff.png
+
+# Transient tooling artifacts
+.playwright-mcp/
+/target-terminal.png
+/target-*.png

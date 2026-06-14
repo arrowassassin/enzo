@@ -1,0 +1,56 @@
+[meta]
+name = "Tokyo Night"
+id = "tokyo-night"
+author = "Enzo modern pack"
+appearance = "dark"
+high_contrast = false
+colorblind_safe = true
+tags = ["modern"]
+
+[palette]
+bg0 = "#1a1b26"
+bg1 = "#24283b"
+bg2 = "#414868"
+fg0 = "#c0caf5"
+fg1 = "#9aa5ce"
+fg2 = "#565f89"
+blue = "#7aa2f7"
+cyan = "#7dcfff"
+green = "#9ece6a"
+yellow = "#e0af68"
+orange = "#ff9e64"
+red = "#f7768e"
+purple = "#bb9af7"
+magenta = "#c0caf5"
+
+[roles]
+background = "bg0"
+surface = "bg1"
+surface_alt = "bg2"
+foreground = "fg0"
+muted = "fg1"
+faint = "fg2"
+accent = "blue"
+cursor = "fg0"
+selection = "bg2"
+success = "green"
+warning = "yellow"
+error = "red"
+border = "bg2"
+
+[syntax]
+keyword = "purple"
+string = "green"
+number = "orange"
+comment = "fg2"
+function = "blue"
+type = "cyan"
+variable = "fg0"
+constant = "orange"
+operator = "cyan"
+punctuation = "fg1"
+
+[fonts]
+mono = "JetBrains Mono"
+ui = "Inter"
+size_tenths = 140

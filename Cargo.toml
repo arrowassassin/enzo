@@ -1,6 +1,18 @@
 [workspace]
 resolver = "2"
-members = ["crates/*"]
+members = [
+    "crates/enzo",
+    "crates/enzo-adapters",
+    "crates/enzo-browser",
+    "crates/enzo-client",
+    "crates/enzo-daemon",
+    "crates/enzo-db",
+    "crates/enzo-editor",
+    "crates/enzo-git",
+    "crates/enzo-redact",
+    "crates/enzo-theme",
+    "crates/enzo-vault",
+]
 
 [workspace.package]
 edition = "2024"

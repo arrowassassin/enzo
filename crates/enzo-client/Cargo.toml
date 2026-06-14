@@ -5,19 +5,20 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "GPU terminal client — wgpu compositor + ATP daemon connection"
+description = "Enzo GPU client — egui/eframe workspace UI over the ATP daemon connection"
 publish = false
 
 [lints]
 workspace = true
 
 [dependencies]
-# Windowing + GPU
-winit = "0.30"
-wgpu = "22"
-cosmic-text = "0.12"
-bytemuck = { version = "1", features = ["derive"] }
-pollster = "0.4"
+# GPU UI framework (wgpu-backed, immediate mode)
+eframe = { version = "0.31", default-features = false, features = [
+    "wgpu",
+    "default_fonts",
+] }
+egui = "0.31"
+egui_extras = "0.31"
 
 # VT100 / terminal emulation
 vte = "0.13"
@@ -36,6 +37,19 @@ anyhow = "1"
 # Base64 (for ATP data frames)
 base64 = "0.22"
 
+# PNG decode for the CDP browser screenshot stream
+image = { version = "0.25", default-features = false, features = ["png"] }
+
+[dev-dependencies]
+# Headless click + snapshot testing of the egui UI
+egui_kittest = { version = "0.31", features = ["wgpu", "snapshot", "eframe"] }
+# Integration tests are separate crates, so egui + eframe must be dev-deps too.
+egui = "0.31"
+eframe = { version = "0.31", default-features = false, features = [
+    "wgpu",
+    "default_fonts",
+] }
+
 [[bin]]
-name = "enzo"
+name = "enzo-client"
 path = "src/bin/enzo.rs"

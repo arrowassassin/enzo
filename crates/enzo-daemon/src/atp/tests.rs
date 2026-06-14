@@ -129,3 +129,132 @@ async fn session_spawn_with_explicit_shell() {
     assert!(r["result"].is_object(), "spawn with shell: {r}");
     let _ = call(&state, "session.close", json!({ "id": "sh-explicit" })).await;
 }
+
+// ── Block handler tests ───────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn block_push_broadcasts_and_returns_ok() {
+    let state = DaemonState::new();
+    let mut rx = state.subscribe_notifications().await;
+
+    let r = call(
+        &state,
+        "block.push",
+        json!({ "id": "b1", "type": "text", "title": "hello", "body": "world" }),
+    )
+    .await;
+    assert!(r["result"].is_object(), "block.push: {r}");
+
+    // The notification must be reachable on the broadcast channel.
+    let raw = rx.try_recv().expect("notification sent");
+    let notif: serde_json::Value = serde_json::from_str(&raw).unwrap();
+    assert_eq!(notif["method"], "block.push");
+    assert_eq!(notif["params"]["id"], "b1");
+}
+
+#[tokio::test]
+async fn block_clear_broadcasts_and_returns_ok() {
+    let state = DaemonState::new();
+    let mut rx = state.subscribe_notifications().await;
+
+    let r = call(&state, "block.clear", json!({ "id": "b1" })).await;
+    assert!(r["result"].is_object(), "block.clear: {r}");
+
+    let raw = rx.try_recv().expect("notification sent");
+    let notif: serde_json::Value = serde_json::from_str(&raw).unwrap();
+    assert_eq!(notif["method"], "block.clear");
+}
+
+// ── Prompt handler tests ──────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn prompt_respond_resolves_show() {
+    let state = DaemonState::new();
+
+    // prompt.show blocks — run it on a separate task.
+    let s = state.clone();
+    let show_handle = tokio::spawn(async move {
+        call(
+            &s,
+            "prompt.show",
+            json!({
+                "id": "p1",
+                "type": "diff",
+                "title": "claude wants to edit renderer.rs",
+                "body": "remove redraw_all",
+                "actions": ["accept","reject","edit"]
+            }),
+        )
+        .await
+    });
+
+    // Give the show task a moment to register the channel and block.
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+    let r = call(
+        &state,
+        "prompt.respond",
+        json!({ "id": "p1", "action": "accept" }),
+    )
+    .await;
+    assert!(r["result"].is_object(), "prompt.respond: {r}");
+
+    let show_result = show_handle.await.unwrap();
+    assert_eq!(
+        show_result["result"]["action"], "accept",
+        "show result: {show_result}"
+    );
+}
+
+#[tokio::test]
+async fn prompt_dismiss_rejects_pending_show() {
+    let state = DaemonState::new();
+
+    let s = state.clone();
+    let show_handle = tokio::spawn(async move {
+        call(
+            &s,
+            "prompt.show",
+            json!({ "id": "p2", "type": "text", "title": "x" }),
+        )
+        .await
+    });
+
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+    let r = call(&state, "prompt.dismiss", json!({ "id": "p2" })).await;
+    assert!(r["result"].is_object(), "prompt.dismiss: {r}");
+
+    let show_result = show_handle.await.unwrap();
+    assert_eq!(
+        show_result["result"]["action"], "reject",
+        "dismissed show should be reject: {show_result}"
+    );
+}
+
+#[tokio::test]
+async fn prompt_respond_to_unknown_id_is_error() {
+    let state = DaemonState::new();
+    let r = call(
+        &state,
+        "prompt.respond",
+        json!({ "id": "no-such-prompt", "action": "accept" }),
+    )
+    .await;
+    assert!(
+        r["error"].is_object(),
+        "expected error for unknown prompt: {r}"
+    );
+}
+
+#[tokio::test]
+async fn prompt_show_missing_id_is_error() {
+    let state = DaemonState::new();
+    let r = call(
+        &state,
+        "prompt.show",
+        json!({ "type": "text", "title": "x" }),
+    )
+    .await;
+    assert!(r["error"].is_object(), "expected error for missing id: {r}");
+}

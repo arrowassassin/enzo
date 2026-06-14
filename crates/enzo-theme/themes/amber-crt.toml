@@ -1,0 +1,53 @@
+[meta]
+name = "Amber CRT"
+id = "amber-crt"
+author = "Enzo 8-bit pack"
+appearance = "dark"
+high_contrast = true
+colorblind_safe = false
+tags = ["8-bit", "crt"]
+
+[palette]
+black = "#100800"
+dkamber = "#4d2600"
+amber = "#ffb000"
+ltamber = "#ffcc55"
+white = "#fff0d0"
+
+[roles]
+background = "black"
+surface = "dkamber"
+surface_alt = "amber"
+foreground = "amber"
+muted = "ltamber"
+faint = "dkamber"
+accent = "ltamber"
+cursor = "amber"
+selection = "dkamber"
+success = "amber"
+warning = "ltamber"
+error = "white"
+border = "dkamber"
+
+[syntax]
+keyword = "ltamber"
+string = "amber"
+number = "white"
+comment = "dkamber"
+function = "ltamber"
+type = "white"
+variable = "amber"
+constant = "white"
+operator = "amber"
+punctuation = "amber"
+
+[fonts]
+mono = "JetBrains Mono"
+ui = "JetBrains Mono"
+size_tenths = 140
+
+[effects]
+scanlines = true
+phosphor = true
+curvature = true
+bloom = true
