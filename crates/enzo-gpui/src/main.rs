@@ -57,6 +57,25 @@ pub struct EnzoApp {
     term_id: String,
     term_focus: FocusHandle,
     ide: IdeState,
+    /// Active AI-CLI approval prompt (id, title, body, actions), if any.
+    agent_prompt: Option<AgentPrompt>,
+    /// AI agent blocks composited in the terminal column (id → title, body).
+    agent_blocks: Vec<AgentBlock>,
+}
+
+/// An AI-CLI approval prompt awaiting a decision (`prompt.show`).
+struct AgentPrompt {
+    id: String,
+    title: String,
+    body: String,
+    actions: Vec<String>,
+}
+
+/// An AI agent block pushed into the terminal column (`block.push`).
+struct AgentBlock {
+    id: String,
+    title: String,
+    body: String,
 }
 
 /// Terminal grid size (resize-to-fit comes later).
@@ -126,6 +145,20 @@ impl EnzoApp {
             term_id,
             term_focus: cx.focus_handle(),
             ide: IdeState::new(),
+            agent_prompt: None,
+            agent_blocks: Vec::new(),
+        }
+    }
+
+    // ── AI agent loop (prompt.show / block.push) ──────────────────────────
+    /// Respond to the active approval prompt and dismiss it.
+    fn respond_prompt(&mut self, action: String, cx: &mut Context<Self>) {
+        if let Some(p) = self.agent_prompt.take() {
+            let _ = self
+                .atp
+                .commands
+                .send(Command::PromptRespond { id: p.id, action });
+            cx.notify();
         }
     }
 
@@ -321,6 +354,9 @@ impl EnzoApp {
             .flex_col()
             .size_full()
             .overflow_hidden()
+            .px(px(14.0))
+            .py(px(8.0))
+            .children(self.agent_blocks.iter().map(agent_block_card))
             .child(body)
     }
 
@@ -448,9 +484,28 @@ impl EnzoApp {
                 // Highlighting is now done locally by gpui-component's editor.
                 Incoming::Highlight { .. } => {}
                 // agent prompt/block surfaces wired in a later segment
-                Incoming::PromptShow { .. }
-                | Incoming::BlockPush { .. }
-                | Incoming::BlockClear { .. } => {}
+                Incoming::PromptShow {
+                    id,
+                    title,
+                    body,
+                    actions,
+                } => {
+                    self.agent_prompt = Some(AgentPrompt {
+                        id,
+                        title,
+                        body,
+                        actions,
+                    });
+                }
+                Incoming::BlockPush { id, title, body } => {
+                    if let Some(b) = self.agent_blocks.iter_mut().find(|b| b.id == id) {
+                        b.title = title;
+                        b.body = body;
+                    } else {
+                        self.agent_blocks.push(AgentBlock { id, title, body });
+                    }
+                }
+                Incoming::BlockClear { id } => self.agent_blocks.retain(|b| b.id != id),
             }
         }
         any
@@ -520,6 +575,10 @@ impl Render for EnzoApp {
         let dialog = self.dialog_open.then(|| {
             database::connection_dialog(&self.dialog_name, &self.dialog_path, cx).into_any_element()
         });
+        let prompt = self
+            .agent_prompt
+            .as_ref()
+            .map(|p| self.agent_prompt_overlay(p, cx).into_any_element());
         let key_context = match self.surface {
             Surface::Database => "Database",
             Surface::Terminal => "Terminal",
@@ -542,6 +601,100 @@ impl Render for EnzoApp {
             .child(self.sidebar(cx))
             .child(self.surface_column(cx))
             .children(dialog)
+            .children(prompt)
+    }
+}
+
+impl EnzoApp {
+    /// AI-CLI approval card: title, body, and one button per action.
+    fn agent_prompt_overlay(&self, p: &AgentPrompt, cx: &mut Context<Self>) -> impl IntoElement {
+        let mut buttons = div().flex().gap(px(10.0)).pt(px(4.0));
+        for action in &p.actions {
+            let (bg, fg) = match action.as_str() {
+                "accept" => (theme::GREEN, theme::GREEN_INK),
+                "reject" => (theme::RED, theme::FG0),
+                _ => (theme::PURPLE_BG, theme::PURPLE_FG),
+            };
+            let act = action.clone();
+            buttons = buttons.child(
+                div()
+                    .id(SharedString::from(format!("prompt-{action}")))
+                    .cursor_pointer()
+                    .px(px(16.0))
+                    .py(px(9.0))
+                    .rounded(px(5.0))
+                    .bg(bg)
+                    .text_size(px(9.0))
+                    .font_family(theme::FONT_PIXEL)
+                    .text_color(fg)
+                    .child(SharedString::from(action.to_uppercase()))
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.respond_prompt(act.clone(), cx);
+                    })),
+            );
+        }
+        div()
+            .absolute()
+            .top_0()
+            .left_0()
+            .size_full()
+            .flex()
+            .items_center()
+            .justify_center()
+            .bg(gpui::rgba(0x0e0c14cc))
+            .child(
+                div()
+                    .w(px(460.0))
+                    .bg(theme::BG_SURFACE)
+                    .border_3()
+                    .border_color(theme::PURPLE_BG)
+                    .rounded(px(12.0))
+                    .overflow_hidden()
+                    .child(
+                        div()
+                            .px(px(16.0))
+                            .py(px(10.0))
+                            .bg(theme::BG_BAR)
+                            .border_b_2()
+                            .border_color(theme::BORDER)
+                            .flex()
+                            .items_center()
+                            .gap(px(8.0))
+                            .child(
+                                div()
+                                    .px(px(6.0))
+                                    .py(px(2.0))
+                                    .rounded(px(3.0))
+                                    .bg(theme::PURPLE_BG)
+                                    .text_size(px(8.0))
+                                    .font_family(theme::FONT_PIXEL)
+                                    .text_color(theme::PURPLE_FG)
+                                    .child("AI"),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(10.0))
+                                    .font_family(theme::FONT_PIXEL)
+                                    .text_color(theme::FG1)
+                                    .child(SharedString::from(p.title.clone())),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .gap(px(8.0))
+                            .px(px(20.0))
+                            .py(px(16.0))
+                            .child(
+                                div()
+                                    .text_size(px(12.5))
+                                    .text_color(theme::FG2)
+                                    .child(SharedString::from(p.body.clone())),
+                            )
+                            .child(buttons),
+                    ),
+            )
     }
 }
 
@@ -678,6 +831,52 @@ impl EnzoApp {
             .child(div().flex_1().overflow_hidden().child(content))
             .child(status_bar)
     }
+}
+
+/// An AI agent block (`block.push`) composited in the terminal column.
+fn agent_block_card(b: &AgentBlock) -> impl IntoElement {
+    div()
+        .border_l_3()
+        .border_color(theme::PURPLE_BG)
+        .pl(px(10.0))
+        .mb(px(10.0))
+        .font_family(theme::FONT_MONO)
+        .text_size(px(12.5))
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .gap(px(6.0))
+                .child(
+                    div()
+                        .px(px(5.0))
+                        .py(px(2.0))
+                        .rounded(px(3.0))
+                        .bg(theme::PURPLE_BG)
+                        .text_size(px(8.0))
+                        .font_family(theme::FONT_PIXEL)
+                        .text_color(theme::PURPLE_FG)
+                        .child("AI"),
+                )
+                .child(
+                    div()
+                        .text_color(theme::PURPLE_LT)
+                        .child(SharedString::from(b.title.clone())),
+                ),
+        )
+        .child(
+            div()
+                .mt(px(4.0))
+                .px(px(9.0))
+                .py(px(6.0))
+                .bg(theme::BG_CARD)
+                .border_1()
+                .border_color(theme::BORDER)
+                .rounded(px(5.0))
+                .text_size(px(11.5))
+                .text_color(theme::FG2)
+                .child(SharedString::from(b.body.clone())),
+        )
 }
 
 /// Render OSC-133 command blocks as cards (`design/mockups/terminal.html`).
