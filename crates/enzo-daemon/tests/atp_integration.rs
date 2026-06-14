@@ -346,3 +346,44 @@ async fn db_tabs_open_rename_list() {
     let tabs = list["result"]["tabs"].as_array().unwrap();
     assert!(tabs.iter().any(|t| t["title"] == "Reports"));
 }
+
+#[tokio::test]
+async fn db_connect_execute_query_roundtrip() {
+    // The full path the live DB surface drives: connect → create+insert →
+    // query, asserting the daemon streams back the real rows it just stored.
+    let state = DaemonState::new();
+    connect_seeded_db(&state).await;
+
+    let r = atp_call(
+        &state,
+        "db.query",
+        json!({ "conn": "c1", "sql": "SELECT id, name FROM users ORDER BY id" }),
+    )
+    .await;
+    assert_eq!(r["result"]["columns"], json!(["id", "name"]));
+    let rows = r["result"]["rows"].as_array().unwrap();
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[0], json!(["1", "alice"]));
+    assert_eq!(rows[1], json!(["2", "bob"]));
+}
+
+#[tokio::test]
+async fn db_query_reports_sql_error() {
+    // A bad query must come back as a JSON-RPC error (rendered red in the UI),
+    // not a panic or an empty result.
+    let state = DaemonState::new();
+    connect_seeded_db(&state).await;
+    let r = atp_call(
+        &state,
+        "db.query",
+        json!({ "conn": "c1", "sql": "SELECT * FROM does_not_exist" }),
+    )
+    .await;
+    assert!(r["error"].is_object());
+    assert!(
+        r["error"]["message"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("does_not_exist")
+    );
+}

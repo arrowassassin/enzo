@@ -12,10 +12,14 @@ publish = false
 workspace = true
 
 [dependencies]
-# GPU UI framework (wgpu-backed, immediate mode)
+# GPU UI framework (wgpu-backed, immediate mode).
+# `x11`/`wayland` are cfg-gated to Linux (no-ops on macOS/Windows) but are
+# required for `winit` to select a platform backend when building on Linux.
 eframe = { version = "0.31", default-features = false, features = [
     "wgpu",
     "default_fonts",
+    "x11",
+    "wayland",
 ] }
 egui = "0.31"
 egui_extras = "0.31"
@@ -48,6 +52,8 @@ egui = "0.31"
 eframe = { version = "0.31", default-features = false, features = [
     "wgpu",
     "default_fonts",
+    "x11",
+    "wayland",
 ] }
 
 [[bin]]

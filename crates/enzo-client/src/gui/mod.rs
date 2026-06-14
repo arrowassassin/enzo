@@ -15,7 +15,7 @@ use egui_extras::{Column, TableBuilder};
 
 use crate::atp::{AtpClient, DaemonMessage};
 use crate::overlay::{Block, DiffLineKind, OverlayState, PromptCard};
-use crate::surface::{BrowserPanel, BrowserState, DbState, IdeState, Surface};
+use crate::surface::{BrowserPanel, BrowserState, DB_PAGE_SIZE, DbState, IdeState, Surface};
 use crate::terminal::{DEFAULT_COLS, DEFAULT_ROWS, Terminal};
 use crate::ui::UiState;
 
@@ -63,6 +63,22 @@ enum UiCommand {
         method: String,
         params: serde_json::Value,
     },
+    DbConnect {
+        conn: String,
+        path: String,
+        /// Seed a fresh demo schema after connecting (first-run default db).
+        seed: bool,
+    },
+    DbQuery {
+        conn: String,
+        sql: String,
+    },
+    DbBrowseTable {
+        conn: String,
+        table: String,
+        page: u64,
+        size: u64,
+    },
 }
 
 enum Incoming {
@@ -70,6 +86,27 @@ enum Incoming {
     Message(DaemonMessage),
     BrowserReady,
     BrowserFrame(egui::ColorImage),
+    DbConnected {
+        conn: String,
+        driver: String,
+    },
+    DbTables {
+        conn: String,
+        tables: Vec<crate::surface::TableInfo>,
+    },
+    DbResult {
+        columns: Vec<String>,
+        rows: Vec<Vec<String>>,
+        ms: u64,
+        /// Total row count when this came from a table browse (drives the pager).
+        total: Option<u64>,
+        page: u64,
+        /// Table being browsed, if this result was a browse.
+        browsing: Option<String>,
+    },
+    DbError {
+        message: String,
+    },
 }
 
 // ── Entry point ────────────────────────────────────────────────────────────────
@@ -182,7 +219,7 @@ impl EnzoApp {
             ui: UiState::new(),
             surface: Surface::Terminal,
             ide: IdeState::new(project_root),
-            db: DbState::demo(),
+            db: DbState::new(),
             browser: BrowserState::demo(),
             overlay: OverlayState::new(),
             sidebar_open: true,
@@ -246,7 +283,10 @@ impl EnzoApp {
     fn drain_incoming(&mut self, ctx: &egui::Context) {
         while let Ok(msg) = self.incoming.try_recv() {
             match msg {
-                Incoming::Connected => self.ui.connected = true,
+                Incoming::Connected => {
+                    self.ui.connected = true;
+                    self.ensure_default_db();
+                }
                 Incoming::Message(DaemonMessage::Output { session_id, data }) => {
                     if let Some((_, t)) = self.terminals.iter_mut().find(|(s, _)| *s == session_id)
                     {
@@ -272,6 +312,26 @@ impl EnzoApp {
                     self.overlay.clear_block(&id);
                 }
                 Incoming::Message(DaemonMessage::Closed) => self.ui.connected = false,
+                Incoming::DbConnected { conn, driver } => {
+                    self.db.set_driver(&conn, driver);
+                }
+                Incoming::DbTables { conn, tables } => {
+                    self.db.set_tables(&conn, tables);
+                }
+                Incoming::DbResult {
+                    columns,
+                    rows,
+                    ms,
+                    total,
+                    page,
+                    browsing,
+                } => {
+                    self.db.apply_result(columns, rows, ms);
+                    self.db.browsing = browsing;
+                    self.db.total_rows = total;
+                    self.db.page = page;
+                }
+                Incoming::DbError { message } => self.db.apply_error(message),
                 Incoming::BrowserReady => {
                     self.browser_launched = true;
                     self.browser_pending = false;
@@ -300,6 +360,95 @@ impl EnzoApp {
             self.overlay.clear_prompt();
         }
     }
+
+    // ── Database actions ──────────────────────────────────────────────────────
+
+    /// On first daemon connection, open a real on-disk demo `SQLite` database so
+    /// the surface isn't empty. The file lives at `~/.enzo/demo.db` and is
+    /// seeded once with a couple of small tables (idempotent).
+    fn ensure_default_db(&mut self) {
+        if !self.db.connections.is_empty() {
+            return;
+        }
+        let Some(path) = default_db_path() else {
+            return;
+        };
+        let id = self.db.add_connection("SQLite · demo.db", &path);
+        let _ = self.cmd_tx.send(UiCommand::DbConnect {
+            conn: id,
+            path,
+            seed: true,
+        });
+    }
+
+    /// Run the active query tab's SQL against the active connection.
+    fn run_active_query(&mut self) {
+        let (Some(conn), sql) = (
+            self.db.active_conn_id().map(str::to_owned),
+            self.db.active_sql().trim().to_owned(),
+        ) else {
+            return;
+        };
+        if sql.is_empty() {
+            return;
+        }
+        self.db.running = true;
+        self.db.browsing = None;
+        self.db.total_rows = None;
+        let _ = self.cmd_tx.send(UiCommand::DbQuery { conn, sql });
+    }
+
+    /// Browse `table` in the active connection: fill the current tab with a
+    /// `SELECT … LIMIT` and page through it via `db.table.browse`.
+    fn browse_table(&mut self, table: &str, page: u64) {
+        let Some(conn) = self.db.active_conn_id().map(str::to_owned) else {
+            return;
+        };
+        *self.db.active_sql_mut() = format!("SELECT * FROM {table} LIMIT {DB_PAGE_SIZE};");
+        self.db.running = true;
+        let _ = self.cmd_tx.send(UiCommand::DbBrowseTable {
+            conn,
+            table: table.to_owned(),
+            page,
+            size: DB_PAGE_SIZE,
+        });
+    }
+
+    /// Connect using the path entered in the add-connection dialog.
+    fn connect_from_dialog(&mut self) {
+        let path = self.db.dialog_path.trim().to_owned();
+        if path.is_empty() {
+            return;
+        }
+        let name = connection_display_name(&path);
+        let id = self.db.add_connection(name, &path);
+        let _ = self.cmd_tx.send(UiCommand::DbConnect {
+            conn: id,
+            path,
+            seed: false,
+        });
+        self.db.dialog_open = false;
+        self.db.dialog_path.clear();
+    }
+}
+
+/// Path to the first-run demo database (`~/.enzo/demo.db`), creating `~/.enzo`.
+fn default_db_path() -> Option<String> {
+    let home = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE"))?;
+    let dir = std::path::Path::new(&home).join(".enzo");
+    std::fs::create_dir_all(&dir).ok()?;
+    Some(dir.join("demo.db").to_string_lossy().into_owned())
+}
+
+/// Build a sidebar display name from a connection path.
+fn connection_display_name(path: &str) -> String {
+    if path == ":memory:" {
+        return "SQLite · memory".to_owned();
+    }
+    let file = std::path::Path::new(path)
+        .file_name()
+        .map_or_else(|| path.to_owned(), |f| f.to_string_lossy().into_owned());
+    format!("SQLite · {file}")
 }
 
 // ── eframe::App ──────────────────────────────────────────────────────────────────
@@ -321,6 +470,7 @@ impl eframe::App for EnzoApp {
         self.central(ctx);
         self.draw_overlay(ctx);
         self.draw_settings(ctx);
+        self.draw_db_dialog(ctx);
         self.draw_palette(ctx);
 
         if self.surface == Surface::Terminal {
@@ -394,6 +544,42 @@ impl EnzoApp {
     /// Add a Database query tab (mirrors clicking the "+" in the DB tab strip).
     pub fn __db_add_query_tab(&mut self) {
         self.db.add_query_tab();
+    }
+
+    /// Inject a connection with the given tables (mirrors a successful connect).
+    /// For deterministic offline snapshots only — routes through the same state
+    /// the real `DbConnected`/`DbTables` handlers use.
+    pub fn __db_add_connection(&mut self, name: &str, path: &str, tables: &[&str]) {
+        let id = self.db.add_connection(name, path);
+        self.db.set_driver(&id, "sqlite");
+        let infos = tables
+            .iter()
+            .map(|t| crate::surface::TableInfo {
+                name: (*t).to_owned(),
+                kind: "table".to_owned(),
+            })
+            .collect();
+        self.db.set_tables(&id, infos);
+    }
+
+    /// Inject a result set (mirrors a `DbResult` from a successful query).
+    pub fn __db_apply_result(&mut self, columns: &[&str], rows: &[&[&str]], ms: u64) {
+        let columns = columns.iter().map(|c| (*c).to_owned()).collect();
+        let rows = rows
+            .iter()
+            .map(|r| r.iter().map(|c| (*c).to_owned()).collect())
+            .collect();
+        self.db.apply_result(columns, rows, ms);
+    }
+
+    /// Inject a query error (mirrors a `DbError`).
+    pub fn __db_set_error(&mut self, message: &str) {
+        self.db.apply_error(message);
+    }
+
+    /// Open/close the add-connection dialog (mirrors the sidebar "+" button).
+    pub fn __db_set_dialog_open(&mut self, open: bool) {
+        self.db.dialog_open = open;
     }
 
     /// Number of visible rows in the IDE file explorer (expanded dirs inlined).
@@ -899,17 +1085,21 @@ impl EnzoApp {
 
     fn sidebar_db(&mut self, ui: &mut egui::Ui) {
         pixel_header(ui, "CONNECTIONS");
-        let conns: Vec<String> = self.db.connections.clone();
-        for (i, conn) in conns.iter().enumerate() {
+        let names: Vec<String> = self.db.connections.iter().map(|c| c.name.clone()).collect();
+        let mut select = None;
+        for (i, name) in names.iter().enumerate() {
             let sel = i == self.db.active_conn_idx;
             let (icon, color) = if sel {
                 (theme::ICON_PLUG_CONNECTED, theme::TEAL)
             } else {
                 (theme::ICON_PLUG, theme::MUTED)
             };
-            if tree_row_icon(ui, Some(icon), conn, 0, sel, color).clicked() {
-                self.db.active_conn_idx = i;
+            if tree_row_icon(ui, Some(icon), name, 0, sel, color).clicked() {
+                select = Some(i);
             }
+        }
+        if let Some(i) = select {
+            self.db.active_conn_idx = i;
         }
         if ui
             .add(
@@ -922,17 +1112,35 @@ impl EnzoApp {
             )
             .clicked()
         {
-            let n = self.db.connections.len();
-            self.db.add_connection(format!("SQLite · db{n}.db"));
+            self.db.dialog_open = true;
+            self.db.dialog_path.clear();
         }
         ui.add_space(8.0);
         pixel_header(ui, "SCHEMA");
-        let tables: Vec<String> = self.db.tables.clone();
+        let tables: Vec<String> = self
+            .db
+            .active_tables()
+            .iter()
+            .map(|t| t.name.clone())
+            .collect();
+        if tables.is_empty() {
+            ui.label(
+                RichText::new("no tables")
+                    .font(theme::pixel(8.0))
+                    .color(theme::FAINT),
+            );
+        }
+        let browsing = self.db.browsing.clone();
+        let mut browse = None;
         for t in tables {
-            if tree_row_icon(ui, Some(theme::ICON_TABLE), &t, 1, false, theme::BLUE).clicked() {
-                self.db.add_query_tab();
-                *self.db.active_sql_mut() = format!("SELECT * FROM {t} LIMIT 100;");
+            let sel = browsing.as_deref() == Some(t.as_str());
+            let color = if sel { theme::TEAL } else { theme::BLUE };
+            if tree_row_icon(ui, Some(theme::ICON_TABLE), &t, 1, sel, color).clicked() {
+                browse = Some(t);
             }
+        }
+        if let Some(t) = browse {
+            self.browse_table(&t, 0);
         }
     }
 
@@ -1195,30 +1403,49 @@ impl EnzoApp {
             });
     }
 
+    #[allow(clippy::too_many_lines, reason = "one cohesive surface layout")]
     fn central_db(&mut self, ui: &mut egui::Ui) {
+        // ⌘↵ runs the active query (when no modal/text field has focus elsewhere).
+        let run_shortcut = ui.input(|i| i.modifiers.command && i.key_pressed(egui::Key::Enter));
+        let mut run = false;
+
         // RUN bar.
         egui::Frame::new()
             .inner_margin(Margin::symmetric(10, 6))
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
+                    let has_conn = self.db.active_conn_id().is_some();
                     if ui
-                        .add(egui::Button::new(run_button_label()).fill(theme::GREEN))
+                        .add_enabled(
+                            has_conn && !self.db.running,
+                            egui::Button::new(run_button_label()).fill(theme::GREEN),
+                        )
                         .clicked()
                     {
-                        // Execution wiring lands with the live DB surface.
+                        run = true;
                     }
-                    ui.label(
-                        RichText::new(format!("{} rows", self.db.rows.len()))
-                            .font(theme::pixel(8.0))
-                            .color(theme::FG1),
-                    );
-                    if let Some(ms) = self.db.query_ms {
+                    if self.db.running {
                         ui.label(
-                            RichText::new(format!("· {ms}ms · Arrow stream"))
+                            RichText::new("running…")
                                 .font(theme::pixel(8.0))
-                                .color(theme::FAINT),
+                                .color(theme::AMBER),
                         );
+                    } else {
+                        ui.label(
+                            RichText::new(format!("{} rows", self.db.rows.len()))
+                                .font(theme::pixel(8.0))
+                                .color(theme::FG1),
+                        );
+                        if let Some(ms) = self.db.query_ms {
+                            ui.label(
+                                RichText::new(format!("· {ms}ms · Arrow stream"))
+                                    .font(theme::pixel(8.0))
+                                    .color(theme::FAINT),
+                            );
+                        }
                     }
+                    // Pager for browsed tables (right-aligned).
+                    self.db_pager(ui);
                 });
             });
 
@@ -1239,6 +1466,29 @@ impl EnzoApp {
                 );
             });
         ui.add_space(8.0);
+
+        if run || run_shortcut {
+            self.run_active_query();
+        }
+
+        // Error banner (real daemon error, rendered red).
+        if let Some(err) = self.db.error.clone() {
+            egui::Frame::new()
+                .fill(egui::Color32::from_rgb(0x2a, 0x14, 0x16))
+                .stroke(Stroke::new(1.0, theme::RED))
+                .corner_radius(CornerRadius::same(5))
+                .inner_margin(Margin::same(8))
+                .outer_margin(Margin::symmetric(10, 0))
+                .show(ui, |ui| {
+                    ui.label(
+                        RichText::new(format!("✗ {err}"))
+                            .color(theme::RED_LT)
+                            .monospace()
+                            .size(12.0),
+                    );
+                });
+            return;
+        }
 
         // Result grid with pixel headers + alternating rows.
         if self.db.columns.is_empty() {
@@ -1277,6 +1527,41 @@ impl EnzoApp {
                         }
                     });
             });
+    }
+
+    /// Prev/next pager shown while browsing a table; pages via `db.table.browse`.
+    fn db_pager(&mut self, ui: &mut egui::Ui) {
+        let (Some(table), Some(total)) = (self.db.browsing.clone(), self.db.total_rows) else {
+            return;
+        };
+        let pages = total.div_ceil(DB_PAGE_SIZE).max(1);
+        let page = self.db.page;
+        let mut goto: Option<u64> = None;
+        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+            if ui
+                .add_enabled(
+                    page + 1 < pages,
+                    egui::Button::new(RichText::new("›").size(13.0)),
+                )
+                .clicked()
+            {
+                goto = Some(page + 1);
+            }
+            ui.label(
+                RichText::new(format!("page {}/{}  ·  {total} rows", page + 1, pages))
+                    .font(theme::pixel(8.0))
+                    .color(theme::FAINT),
+            );
+            if ui
+                .add_enabled(page > 0, egui::Button::new(RichText::new("‹").size(13.0)))
+                .clicked()
+            {
+                goto = Some(page - 1);
+            }
+        });
+        if let Some(p) = goto {
+            self.browse_table(&table, p);
+        }
     }
 
     #[allow(clippy::too_many_lines, reason = "one cohesive surface layout")]
@@ -1762,6 +2047,74 @@ impl EnzoApp {
         }
     }
 
+    // ── Add-connection dialog ──────────────────────────────────────────────────────
+
+    /// Modal to open a new database connection by file path / connection string.
+    fn draw_db_dialog(&mut self, ctx: &egui::Context) {
+        if !self.db.dialog_open {
+            return;
+        }
+        let mut open = true;
+        let mut connect = false;
+        egui::Window::new("Add connection")
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
+            .frame(
+                egui::Frame::new()
+                    .fill(theme::BG_SURFACE)
+                    .stroke(Stroke::new(2.0, theme::TEAL))
+                    .corner_radius(CornerRadius::same(8))
+                    .inner_margin(Margin::same(14)),
+            )
+            .fixed_size([440.0, 0.0])
+            .show(ctx, |ui| {
+                pixel_header(ui, "SQLITE DATABASE");
+                ui.label(
+                    RichText::new("File path or :memory:")
+                        .color(theme::FAINT)
+                        .size(12.0),
+                );
+                ui.add_space(4.0);
+                let resp = ui.add(
+                    egui::TextEdit::singleline(&mut self.db.dialog_path)
+                        .hint_text("/path/to/database.db")
+                        .desired_width(f32::INFINITY)
+                        .font(egui::TextStyle::Monospace),
+                );
+                resp.request_focus();
+                if resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                    connect = true;
+                }
+                ui.add_space(10.0);
+                ui.horizontal(|ui| {
+                    if ui
+                        .add(
+                            egui::Button::new(RichText::new("Connect").color(theme::TEAL).strong())
+                                .fill(theme::BG_CARD)
+                                .stroke(Stroke::new(1.0, theme::TEAL)),
+                        )
+                        .clicked()
+                    {
+                        connect = true;
+                    }
+                    if ui
+                        .add(egui::Button::new(RichText::new("Cancel")).fill(theme::BG_CARD))
+                        .clicked()
+                    {
+                        self.db.dialog_open = false;
+                    }
+                });
+            });
+        if !open {
+            self.db.dialog_open = false;
+        }
+        if connect {
+            self.connect_from_dialog();
+        }
+    }
+
     // ── Command palette ────────────────────────────────────────────────────────────
 
     fn draw_palette(&mut self, ctx: &egui::Context) {
@@ -1908,6 +2261,7 @@ const PALETTE_ACTIONS: &[PaletteItem] = &[
 
 // ── ATP background task ──────────────────────────────────────────────────────────
 
+#[allow(clippy::too_many_lines, reason = "linear command dispatch table")]
 async fn run_atp(
     sock: String,
     ctx: egui::Context,
@@ -1974,8 +2328,124 @@ async fn run_atp(
             UiCommand::BrowserInput { id, method, params } => {
                 let _ = client.browser_input(&id, &method, params).await;
             }
+            UiCommand::DbConnect { conn, path, seed } => {
+                db_connect_task(&client, &tx, &ctx, &conn, &path, seed).await;
+            }
+            UiCommand::DbQuery { conn, sql } => {
+                let started = std::time::Instant::now();
+                let incoming = match client.db_query(&conn, &sql).await {
+                    Ok((columns, rows)) => Incoming::DbResult {
+                        columns,
+                        rows,
+                        ms: elapsed_ms(started),
+                        total: None,
+                        page: 0,
+                        browsing: None,
+                    },
+                    Err(e) => Incoming::DbError {
+                        message: atp_error_message(&e),
+                    },
+                };
+                let _ = tx.send(incoming);
+                ctx.request_repaint();
+            }
+            UiCommand::DbBrowseTable {
+                conn,
+                table,
+                page,
+                size,
+            } => {
+                let started = std::time::Instant::now();
+                let incoming = match client.db_table_browse(&conn, &table, page, size).await {
+                    Ok((columns, rows, total)) => Incoming::DbResult {
+                        columns,
+                        rows,
+                        ms: elapsed_ms(started),
+                        total: Some(total),
+                        page,
+                        browsing: Some(table),
+                    },
+                    Err(e) => Incoming::DbError {
+                        message: atp_error_message(&e),
+                    },
+                };
+                let _ = tx.send(incoming);
+                ctx.request_repaint();
+            }
         }
     }
+}
+
+/// Connect a DB pool, optionally seed a demo schema, then report driver + tables.
+async fn db_connect_task(
+    client: &AtpClient,
+    tx: &Sender<Incoming>,
+    ctx: &egui::Context,
+    conn: &str,
+    path: &str,
+    seed: bool,
+) {
+    match client.db_connect(conn, path).await {
+        Ok(driver) => {
+            if seed {
+                seed_demo_db(client, conn).await;
+            }
+            let _ = tx.send(Incoming::DbConnected {
+                conn: conn.to_owned(),
+                driver,
+            });
+            if let Ok(tables) = client.db_schema_tables(conn).await {
+                let tables = tables
+                    .into_iter()
+                    .map(|(name, kind)| crate::surface::TableInfo { name, kind })
+                    .collect();
+                let _ = tx.send(Incoming::DbTables {
+                    conn: conn.to_owned(),
+                    tables,
+                });
+            }
+            ctx.request_repaint();
+        }
+        Err(e) => {
+            let _ = tx.send(Incoming::DbError {
+                message: atp_error_message(&e),
+            });
+            ctx.request_repaint();
+        }
+    }
+}
+
+/// Seed the first-run demo database with a couple of small, real tables.
+/// Idempotent: uses `IF NOT EXISTS` + `INSERT OR IGNORE` so re-running is safe.
+async fn seed_demo_db(client: &AtpClient, conn: &str) {
+    const STMTS: &[&str] = &[
+        "CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, email TEXT)",
+        "INSERT OR IGNORE INTO users (id, name, email) VALUES \
+         (1,'Alice','alice@example.com'),(2,'Bob','bob@example.com'),\
+         (3,'Carol','carol@example.com'),(4,'Dave','dave@example.com')",
+        "CREATE TABLE IF NOT EXISTS products (id INTEGER PRIMARY KEY, name TEXT NOT NULL, price REAL)",
+        "INSERT OR IGNORE INTO products (id, name, price) VALUES \
+         (1,'Keyboard',89.0),(2,'Mouse',39.5),(3,'Monitor',329.0)",
+    ];
+    for sql in STMTS {
+        if let Err(e) = client.db_execute(conn, sql).await {
+            log::warn!("seed demo db: {e:#}");
+        }
+    }
+}
+
+/// Milliseconds elapsed since `started`, saturating into `u64`.
+fn elapsed_ms(started: std::time::Instant) -> u64 {
+    u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX)
+}
+
+/// Strip the `ATP error: ` envelope so the surface shows the bare SQL error.
+fn atp_error_message(e: &anyhow::Error) -> String {
+    let s = e.to_string();
+    s.strip_prefix("ATP error: ")
+        .unwrap_or(&s)
+        .trim()
+        .to_owned()
 }
 
 /// Decode PNG bytes into an egui `ColorImage` (off the UI thread).

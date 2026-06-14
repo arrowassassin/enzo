@@ -126,7 +126,13 @@ impl AtpClient {
 
         let resp = rx.await.context("response channel closed")?;
         if let Some(err) = resp.get("error") {
-            anyhow::bail!("ATP error: {err}");
+            // Surface the bare `message` (e.g. a SQL error) when present, falling
+            // back to the whole error object for anything non-standard.
+            let msg = err
+                .get("message")
+                .and_then(Value::as_str)
+                .map_or_else(|| err.to_string(), str::to_owned);
+            anyhow::bail!("ATP error: {msg}");
         }
         Ok(resp["result"].clone())
     }
@@ -216,6 +222,116 @@ impl AtpClient {
         )
         .await
         .map(|_| ())
+    }
+
+    // ── Database helpers ──────────────────────────────────────────────────────
+
+    /// Open (or create) a `SQLite` database under connection `id` at `path`
+    /// (a file path or `:memory:`). Returns the daemon's driver name.
+    pub async fn db_connect(&self, id: &str, path: &str) -> anyhow::Result<String> {
+        let r = self
+            .request("db.connect", json!({ "id": id, "path": path }))
+            .await?;
+        Ok(r["driver"].as_str().unwrap_or("sqlite").to_owned())
+    }
+
+    /// Execute a non-row statement (DDL/DML); returns the affected row count.
+    pub async fn db_execute(&self, conn: &str, sql: &str) -> anyhow::Result<u64> {
+        let r = self
+            .request("db.execute", json!({ "conn": conn, "sql": sql }))
+            .await?;
+        Ok(r["affected"].as_u64().unwrap_or(0))
+    }
+
+    /// Run a query; returns `(columns, rows)` as strings.
+    pub async fn db_query(&self, conn: &str, sql: &str) -> anyhow::Result<(Columns, Rows)> {
+        let r = self
+            .request("db.query", json!({ "conn": conn, "sql": sql }))
+            .await?;
+        Ok(parse_columns_rows(&r))
+    }
+
+    /// List tables/views in `conn`; returns `(name, kind)` pairs.
+    pub async fn db_schema_tables(&self, conn: &str) -> anyhow::Result<Vec<(String, String)>> {
+        let r = self
+            .request("db.schema.tables", json!({ "conn": conn }))
+            .await?;
+        let tables = r["tables"]
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .map(|t| {
+                        (
+                            t["name"].as_str().unwrap_or_default().to_owned(),
+                            t["kind"].as_str().unwrap_or("table").to_owned(),
+                        )
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        Ok(tables)
+    }
+
+    /// Browse one page of a table; returns `(columns, rows, total)`.
+    pub async fn db_table_browse(
+        &self,
+        conn: &str,
+        table: &str,
+        page: u64,
+        size: u64,
+    ) -> anyhow::Result<(Columns, Rows, u64)> {
+        let r = self
+            .request(
+                "db.table.browse",
+                json!({ "conn": conn, "table": table, "page": page, "size": size }),
+            )
+            .await?;
+        let total = r["total"].as_u64().unwrap_or(0);
+        let (cols, rows) = parse_columns_rows(&r);
+        Ok((cols, rows, total))
+    }
+}
+
+/// Column headers of a result set.
+pub type Columns = Vec<String>;
+/// Row cells of a result set (all stringified, matching `batches_to_json`).
+pub type Rows = Vec<Vec<String>>;
+
+/// Parse a `{ columns: [..], rows: [[..]] }` payload into typed vectors.
+///
+/// `batches_to_json` already stringifies every cell, so a cell is normally a
+/// JSON string; non-string cells (e.g. JSON `null`) fall back to an empty
+/// string so the grid stays rectangular.
+fn parse_columns_rows(v: &Value) -> (Columns, Rows) {
+    let columns = v["columns"]
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .map(|c| c.as_str().unwrap_or_default().to_owned())
+                .collect()
+        })
+        .unwrap_or_default();
+    let rows = v["rows"]
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .map(|r| {
+                    r.as_array()
+                        .map(|cells| cells.iter().map(cell_to_string).collect())
+                        .unwrap_or_default()
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    (columns, rows)
+}
+
+/// Stringify a single JSON result cell.
+fn cell_to_string(c: &Value) -> String {
+    match c {
+        Value::String(s) => s.clone(),
+        Value::Null => String::new(),
+        other => other.to_string(),
     }
 }
 
@@ -461,6 +577,35 @@ mod tests {
         let mut got: Option<DaemonMessage> = None;
         handle_notification("block.clear", &v, &mut |m| got = Some(m));
         assert!(matches!(got, Some(DaemonMessage::BlockClear { id }) if id == "b1"));
+    }
+
+    #[test]
+    fn parse_columns_rows_basic() {
+        let v = json!({
+            "columns": ["id", "name"],
+            "rows": [["1", "alice"], ["2", "bob"]]
+        });
+        let (cols, rows) = super::parse_columns_rows(&v);
+        assert_eq!(cols, vec!["id", "name"]);
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0], vec!["1", "alice"]);
+        assert_eq!(rows[1], vec!["2", "bob"]);
+    }
+
+    #[test]
+    fn parse_columns_rows_handles_nulls_and_numbers() {
+        // A non-string cell (null) becomes "", a JSON number stringifies.
+        let v = json!({ "columns": ["a", "b"], "rows": [[null, 7]] });
+        let (_cols, rows) = super::parse_columns_rows(&v);
+        assert_eq!(rows[0], vec!["", "7"]);
+    }
+
+    #[test]
+    fn parse_columns_rows_empty() {
+        let v = json!({});
+        let (cols, rows) = super::parse_columns_rows(&v);
+        assert!(cols.is_empty());
+        assert!(rows.is_empty());
     }
 
     #[test]

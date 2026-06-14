@@ -235,7 +235,43 @@ pub struct QueryTab {
     pub sql: String,
 }
 
+/// One table or view in a connection's schema.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TableInfo {
+    /// Object name.
+    pub name: String,
+    /// `"table"` or `"view"`.
+    pub kind: String,
+}
+
+/// A live database connection mirrored on the client.
+///
+/// `id` is the ATP connection id used in `db.*` requests; the daemon owns the
+/// real driver/pool. `tables` is populated from `db.schema.tables` once the
+/// connection is established.
+#[derive(Clone, Debug)]
+pub struct DbConnection {
+    /// ATP connection id (e.g. `"db-0"`).
+    pub id: String,
+    /// Display name shown in the sidebar (e.g. `"SQLite · demo.db"`).
+    pub name: String,
+    /// File path or `:memory:` the connection points at.
+    pub path: String,
+    /// Driver name reported by the daemon (e.g. `"sqlite"`).
+    pub driver: String,
+    /// Tables/views in this connection's schema.
+    pub tables: Vec<TableInfo>,
+}
+
+/// Default page size for table browsing / pagination.
+pub const DB_PAGE_SIZE: u64 = 100;
+
 /// Database surface state: connections + multiple SQL query tabs + result table.
+///
+/// All result data is owned by the daemon and streamed back over ATP; this
+/// struct holds only what the renderer needs. There is no demo/sample data —
+/// an empty state renders an empty surface until a real connection is made.
+#[derive(Default)]
 pub struct DbState {
     /// Open query tabs.
     pub tabs: Vec<QueryTab>,
@@ -253,59 +289,74 @@ pub struct DbState {
     pub result_scroll: usize,
     /// Execution time of the last query in milliseconds.
     pub query_ms: Option<u64>,
-    /// Configured connections (display names).
-    pub connections: Vec<String>,
+    /// Configured connections (real, daemon-backed).
+    pub connections: Vec<DbConnection>,
     /// Active connection index.
     pub active_conn_idx: usize,
-    /// Tables in the active connection's schema (display only for now).
-    pub tables: Vec<String>,
+    /// Table currently being browsed (paginated), if any.
+    pub browsing: Option<String>,
+    /// Total row count of the browsed table (drives the pager), if known.
+    pub total_rows: Option<u64>,
+    /// Current page index when browsing a table.
+    pub page: u64,
+    /// Whether the "add connection" dialog is open.
+    pub dialog_open: bool,
+    /// Display-name field in the add-connection dialog.
+    pub dialog_name: String,
+    /// Driver field in the add-connection dialog (display only; SQLite for now).
+    pub dialog_driver: String,
+    /// Path / connection-string field in the add-connection dialog.
+    pub dialog_path: String,
+    /// "Store in vault" toggle in the add-connection dialog.
+    pub dialog_vault: bool,
+    /// "Unlock with Touch ID" toggle in the add-connection dialog.
+    pub dialog_touchid: bool,
+    /// Whether a query/browse request is in flight (drives the RUN spinner).
+    pub running: bool,
     /// Next tab number for naming.
     next_tab: u32,
+    /// Next connection number for id generation.
+    next_conn: u32,
 }
 
 impl DbState {
-    /// Initial demo state with sample data.
+    /// Fresh, empty state with a single blank query tab and no connections.
     #[must_use]
-    pub fn demo() -> Self {
-        let cols = ["id", "name", "email"].map(String::from).to_vec();
-        let rows = [
-            ("1", "Alice", "alice@example.com"),
-            ("2", "Bob", "bob@example.com"),
-            ("3", "Carol", "carol@example.com"),
-            ("4", "Dave", "dave@example.com"),
-            ("5", "Eve", "eve@example.com"),
-            ("6", "Frank", "frank@example.com"),
-        ]
-        .iter()
-        .map(|(a, b, c)| vec![(*a).to_owned(), (*b).to_owned(), (*c).to_owned()])
-        .collect();
+    pub fn new() -> Self {
         Self {
             tabs: vec![QueryTab {
                 title: "query 1".to_owned(),
-                sql: "SELECT id, name, email FROM users LIMIT 10;".to_owned(),
+                sql: String::new(),
             }],
-            active_tab: 0,
-            cursor: 0,
-            columns: cols,
-            rows,
-            error: None,
-            result_scroll: 0,
-            query_ms: Some(12),
-            connections: vec!["SQLite · enzo.db".to_owned()],
-            active_conn_idx: 0,
-            tables: ["users", "orders", "products", "sessions"]
-                .map(String::from)
-                .to_vec(),
+            page: 0,
             next_tab: 1,
+            ..Self::default()
         }
+    }
+
+    /// The active connection, if any.
+    #[must_use]
+    pub fn active_connection(&self) -> Option<&DbConnection> {
+        self.connections.get(self.active_conn_idx)
+    }
+
+    /// ATP id of the active connection, if any.
+    #[must_use]
+    pub fn active_conn_id(&self) -> Option<&str> {
+        self.active_connection().map(|c| c.id.as_str())
     }
 
     /// Display name of the active connection.
     #[must_use]
     pub fn active_conn(&self) -> &str {
-        self.connections
-            .get(self.active_conn_idx)
-            .map_or("no connection", String::as_str)
+        self.active_connection()
+            .map_or("no connection", |c| c.name.as_str())
+    }
+
+    /// Tables of the active connection (empty if none).
+    #[must_use]
+    pub fn active_tables(&self) -> &[TableInfo] {
+        self.active_connection().map_or(&[], |c| &c.tables)
     }
 
     /// Mutable SQL of the active query tab (for the editor).
@@ -315,6 +366,24 @@ impl DbState {
         }
         let i = self.active_tab.min(self.tabs.len() - 1);
         &mut self.tabs[i].sql
+    }
+
+    /// SQL of the active query tab.
+    #[must_use]
+    pub fn active_sql(&self) -> &str {
+        self.tabs
+            .get(self.active_tab)
+            .map_or("", |t| t.sql.as_str())
+    }
+
+    /// Open the add-connection dialog with sensible SQLite defaults.
+    pub fn open_dialog(&mut self) {
+        self.dialog_open = true;
+        self.dialog_name = "local · sqlite".to_owned();
+        self.dialog_driver = "SQLite (ADBC)".to_owned();
+        self.dialog_path.clear();
+        self.dialog_vault = true;
+        self.dialog_touchid = false;
     }
 
     /// Open a new empty query tab and make it active.
@@ -327,10 +396,60 @@ impl DbState {
         self.active_tab = self.tabs.len() - 1;
     }
 
-    /// Add a new connection and make it active.
-    pub fn add_connection(&mut self, name: impl Into<String>) {
-        self.connections.push(name.into());
+    /// Allocate a fresh ATP connection id (e.g. `"db-0"`).
+    pub fn next_conn_id(&mut self) -> String {
+        let id = format!("db-{}", self.next_conn);
+        self.next_conn += 1;
+        id
+    }
+
+    /// Register a new (pending) connection and make it active. Returns its id.
+    pub fn add_connection(&mut self, name: impl Into<String>, path: impl Into<String>) -> String {
+        let id = self.next_conn_id();
+        self.connections.push(DbConnection {
+            id: id.clone(),
+            name: name.into(),
+            path: path.into(),
+            driver: String::new(),
+            tables: Vec::new(),
+        });
         self.active_conn_idx = self.connections.len() - 1;
+        id
+    }
+
+    /// Record the driver reported by the daemon for connection `id`.
+    pub fn set_driver(&mut self, id: &str, driver: impl Into<String>) {
+        if let Some(c) = self.connections.iter_mut().find(|c| c.id == id) {
+            c.driver = driver.into();
+        }
+    }
+
+    /// Replace the table list for connection `id`.
+    pub fn set_tables(&mut self, id: &str, tables: Vec<TableInfo>) {
+        if let Some(c) = self.connections.iter_mut().find(|c| c.id == id) {
+            c.tables = tables;
+        }
+    }
+
+    /// Apply a successful query/browse result set.
+    pub fn apply_result(&mut self, columns: Vec<String>, rows: Vec<Vec<String>>, ms: u64) {
+        self.columns = columns;
+        self.rows = rows;
+        self.query_ms = Some(ms);
+        self.error = None;
+        self.result_scroll = 0;
+        self.running = false;
+    }
+
+    /// Apply a query error (clears the previous result set's rows).
+    pub fn apply_error(&mut self, message: impl Into<String>) {
+        self.error = Some(message.into());
+        self.columns.clear();
+        self.rows.clear();
+        self.query_ms = None;
+        self.running = false;
+        self.browsing = None;
+        self.total_rows = None;
     }
 }
 

@@ -115,7 +115,7 @@ fn db_plus_adds_query_tab() {
     settle(&mut h);
 
     let before = h.state().__db_tab_count();
-    assert_eq!(before, 1, "demo DB state starts with one query tab");
+    assert_eq!(before, 1, "DB state starts with one query tab");
 
     // Clicking the "+" in the DB tab strip opens a new query tab.
     h.state_mut().__db_add_query_tab();
@@ -126,6 +126,49 @@ fn db_plus_adds_query_tab() {
 
     // Follow-up snapshot shows the second tab chip in the strip.
     h.snapshot("interaction_db_added_tab");
+}
+
+#[test]
+fn db_connected_results() {
+    let mut h = harness();
+    h.state_mut().__set_surface(Surface::Database);
+    // Inject a real-shaped connection + result set (offline, no daemon).
+    h.state_mut().__db_add_connection(
+        "SQLite · demo.db",
+        "/home/u/.enzo/demo.db",
+        &["users", "products"],
+    );
+    h.state_mut().__db_apply_result(
+        &["id", "name", "email"],
+        &[
+            &["1", "Alice", "alice@example.com"],
+            &["2", "Bob", "bob@example.com"],
+            &["3", "Carol", "carol@example.com"],
+        ],
+        7,
+    );
+    settle(&mut h);
+    h.snapshot("db_connected_results");
+}
+
+#[test]
+fn db_connection_dialog() {
+    let mut h = harness();
+    h.state_mut().__set_surface(Surface::Database);
+    h.state_mut().__db_set_dialog_open(true);
+    settle(&mut h);
+    h.snapshot("db_connection_dialog");
+}
+
+#[test]
+fn db_error_state() {
+    let mut h = harness();
+    h.state_mut().__set_surface(Surface::Database);
+    h.state_mut()
+        .__db_add_connection("SQLite · demo.db", ":memory:", &["users"]);
+    h.state_mut().__db_set_error("no such table: nope");
+    settle(&mut h);
+    h.snapshot("db_error_state");
 }
 
 #[test]
