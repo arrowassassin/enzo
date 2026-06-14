@@ -89,6 +89,19 @@ pub enum Command {
         language: String,
         source: String,
     },
+    BrowserLaunch {
+        id: String,
+        width: u32,
+        height: u32,
+    },
+    BrowserNavigate {
+        id: String,
+        url: String,
+    },
+    /// Request a PNG screenshot of the page → [`Incoming::BrowserShot`].
+    BrowserShot {
+        id: String,
+    },
 }
 
 /// daemon → UI events, drained by the GPUI thread.
@@ -120,6 +133,9 @@ pub enum Incoming {
     Output {
         session_id: String,
         data: Vec<u8>,
+    },
+    BrowserShot {
+        png: Vec<u8>,
     },
     Highlight {
         path: String,
@@ -432,6 +448,30 @@ async fn handle_command(client: &Client, tx: &Sender<Incoming>, cmd: Command) {
                     })
                     .unwrap_or_default();
                 let _ = tx.send(Incoming::Highlight { path, spans });
+            }
+        }
+        Command::BrowserLaunch { id, width, height } => {
+            let _ = client
+                .request(
+                    "browser.launch",
+                    json!({ "id": id, "width": width, "height": height }),
+                )
+                .await;
+        }
+        Command::BrowserNavigate { id, url } => {
+            let _ = client
+                .request("browser.navigate", json!({ "id": id, "url": url }))
+                .await;
+        }
+        Command::BrowserShot { id } => {
+            if let Ok(r) = client
+                .request("browser.screenshot", json!({ "id": id }))
+                .await
+                && let Some(b64) = r["png"].as_str()
+                && let Ok(png) =
+                    base64::Engine::decode(&base64::engine::general_purpose::STANDARD, b64)
+            {
+                let _ = tx.send(Incoming::BrowserShot { png });
             }
         }
     }

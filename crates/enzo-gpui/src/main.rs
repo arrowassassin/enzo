@@ -14,6 +14,7 @@ use gpui::{
 use gpui_platform::application;
 
 mod atp;
+mod browser;
 mod database;
 mod ide;
 mod terminal;
@@ -30,7 +31,7 @@ use ide::IdeState;
 use text_input::TextInput;
 use widgets::text;
 
-actions!(enzo, [RunQuery, CommitEdit, CancelEdit, SaveFile]);
+actions!(enzo, [RunQuery, CommitEdit, CancelEdit, SaveFile, Navigate]);
 
 /// Which top-level surface is displayed.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -61,6 +62,8 @@ pub struct EnzoApp {
     agent_prompt: Option<AgentPrompt>,
     /// AI agent blocks composited in the terminal column (id → title, body).
     agent_blocks: Vec<AgentBlock>,
+    browser: browser::BrowserState,
+    url_input: Entity<TextInput>,
 }
 
 /// An AI-CLI approval prompt awaiting a decision (`prompt.show`).
@@ -90,6 +93,7 @@ impl EnzoApp {
         let dialog_name = cx.new(|cx| TextInput::new(cx, "my database", ""));
         let dialog_path = cx.new(|cx| TextInput::new(cx, "/path/to/db.sqlite", ""));
         let cell_input = cx.new(|cx| TextInput::new(cx, "", ""));
+        let url_input = cx.new(|cx| TextInput::new(cx, "https://example.com", ""));
 
         // Spawn the first PTY session (buffered until the daemon connects).
         let term_id = "term-0".to_owned();
@@ -147,6 +151,61 @@ impl EnzoApp {
             ide: IdeState::new(),
             agent_prompt: None,
             agent_blocks: Vec::new(),
+            browser: browser::BrowserState::new(),
+            url_input,
+        }
+    }
+
+    // ── Browser ───────────────────────────────────────────────────────────
+    /// Navigate the headless browser to the URL bar's contents + grab a shot.
+    fn browse(&mut self, cx: &mut Context<Self>) {
+        let mut url = self.url_input.read(cx).text().trim().to_owned();
+        if url.is_empty() {
+            return;
+        }
+        if !url.contains("://") {
+            url = format!("https://{url}");
+        }
+        self.browser.url = url.clone();
+        self.browser.loading = true;
+        if !self.browser.launched {
+            let _ = self.atp.commands.send(Command::BrowserLaunch {
+                id: browser::PAGE_ID.into(),
+                width: 1024,
+                height: 720,
+            });
+            self.browser.launched = true;
+        }
+        let _ = self.atp.commands.send(Command::BrowserNavigate {
+            id: browser::PAGE_ID.into(),
+            url,
+        });
+        // Screenshot once the page has settled.
+        let cmds = self.atp.commands.clone();
+        cx.spawn(async move |_this, cx| {
+            cx.background_executor()
+                .timer(Duration::from_millis(1300))
+                .await;
+            let _ = cmds.send(Command::BrowserShot {
+                id: browser::PAGE_ID.into(),
+            });
+        })
+        .detach();
+        cx.notify();
+    }
+
+    fn refresh_browser(&mut self, cx: &mut Context<Self>) {
+        if self.browser.launched {
+            let _ = self.atp.commands.send(Command::BrowserShot {
+                id: browser::PAGE_ID.into(),
+            });
+            cx.notify();
+        }
+    }
+
+    fn on_navigate(&mut self, _: &Navigate, _: &mut Window, cx: &mut Context<Self>) {
+        if self.surface == Surface::Browser {
+            self.browse(cx);
         }
     }
 
@@ -483,7 +542,13 @@ impl EnzoApp {
                 }
                 // Highlighting is now done locally by gpui-component's editor.
                 Incoming::Highlight { .. } => {}
-                // agent prompt/block surfaces wired in a later segment
+                Incoming::BrowserShot { png } => {
+                    self.browser.shot = Some(std::sync::Arc::new(gpui::Image::from_bytes(
+                        gpui::ImageFormat::Png,
+                        png,
+                    )));
+                    self.browser.loading = false;
+                }
                 Incoming::PromptShow {
                     id,
                     title,
@@ -597,6 +662,7 @@ impl Render for EnzoApp {
             .on_action(cx.listener(Self::on_commit_edit))
             .on_action(cx.listener(Self::on_cancel_edit))
             .on_action(cx.listener(Self::on_save_file))
+            .on_action(cx.listener(Self::on_navigate))
             .child(self.dock(cx))
             .child(self.sidebar(cx))
             .child(self.surface_column(cx))
@@ -769,7 +835,11 @@ impl EnzoApp {
                         window.focus(&handle, cx);
                     }
                     Surface::Terminal => window.focus(&this.term_focus, cx),
-                    _ => {}
+                    Surface::Browser => {
+                        let handle = this.url_input.read(cx).handle();
+                        window.focus(&handle, cx);
+                    }
+                    Surface::Editor => {}
                 }
                 cx.notify();
             }))
@@ -817,9 +887,9 @@ impl EnzoApp {
                     ide::status_bar(&self.ide).into_any_element(),
                 ),
                 Surface::Browser => (
-                    placeholder_bar("BROWSER"),
-                    placeholder_body("◍ enter a URL to start the headless browser"),
-                    placeholder_bar("about:blank"),
+                    browser::tab_bar(&self.browser, &self.url_input, cx).into_any_element(),
+                    browser::content(&self.browser).into_any_element(),
+                    browser::status_bar(&self.browser).into_any_element(),
                 ),
             };
         div()
@@ -1026,37 +1096,6 @@ fn dock_glyph(glyph: &str) -> impl IntoElement {
         .child(theme::icon(glyph))
 }
 
-/// A placeholder bar (used by not-yet-built surfaces).
-fn placeholder_bar(label: &str) -> AnyElement {
-    div()
-        .flex()
-        .items_center()
-        .px(px(12.0))
-        .py(px(8.0))
-        .bg(theme::BG_BAR)
-        .border_b_2()
-        .border_color(theme::BORDER)
-        .child(
-            div()
-                .text_size(px(8.0))
-                .font_family(theme::FONT_PIXEL)
-                .text_color(theme::FG1)
-                .child(gpui::SharedString::from(label.to_owned())),
-        )
-        .into_any_element()
-}
-
-/// A centered placeholder body (used by not-yet-built surfaces).
-fn placeholder_body(label: &str) -> AnyElement {
-    div()
-        .flex()
-        .size_full()
-        .items_center()
-        .justify_center()
-        .child(text(label, 14.0, theme::FAINT))
-        .into_any_element()
-}
-
 /// Map gpui-component's theme tokens onto the Enzo palette so the embedded code
 /// editor matches the rest of the app.
 fn apply_enzo_theme(cx: &mut App) {
@@ -1107,6 +1146,7 @@ fn main() {
                 gpui::KeyBinding::new("escape", CancelEdit, db),
                 gpui::KeyBinding::new("cmd-s", SaveFile, Some("Editor")),
                 gpui::KeyBinding::new("ctrl-s", SaveFile, Some("Editor")),
+                gpui::KeyBinding::new("enter", Navigate, Some("Browser")),
             ]);
             let bounds = Bounds::centered(None, size(px(1280.0), px(800.0)), cx);
             cx.open_window(
