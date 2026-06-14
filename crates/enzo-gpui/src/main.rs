@@ -1122,19 +1122,33 @@ impl Render for EnzoApp {
 impl EnzoApp {
     /// AI-CLI approval card: title, body, and one button per action.
     fn agent_prompt_overlay(&self, p: &AgentPrompt, cx: &mut Context<Self>) -> impl IntoElement {
-        let mut buttons = div().flex().gap(px(10.0)).pt(px(4.0));
-        for action in &p.actions {
-            let (bg, fg) = match action.as_str() {
-                "accept" => (theme::GREEN, theme::GREEN_INK),
-                "reject" => (theme::RED, theme::FG0),
-                _ => (theme::PURPLE_BG, theme::PURPLE_FG),
+        // Buttons wrap so an arbitrary number of options (multiselect) fit.
+        let mut buttons = div().flex().flex_wrap().gap(px(8.0)).pt(px(4.0));
+        for (i, action) in p.actions.iter().enumerate() {
+            let lower = action.to_ascii_lowercase();
+            let (bg, fg) = if lower.contains("accept")
+                || lower.starts_with("yes")
+                || lower == "y"
+                || lower.contains("allow")
+                || lower.contains("approve")
+            {
+                (theme::GREEN, theme::GREEN_INK)
+            } else if lower.contains("reject")
+                || lower.starts_with("no")
+                || lower == "n"
+                || lower.contains("deny")
+                || lower.contains("cancel")
+            {
+                (theme::RED, theme::FG0)
+            } else {
+                (theme::PURPLE_BG, theme::PURPLE_FG)
             };
             let act = action.clone();
             buttons = buttons.child(
                 div()
-                    .id(SharedString::from(format!("prompt-{action}")))
+                    .id(SharedString::from(format!("prompt-{i}")))
                     .cursor_pointer()
-                    .px(px(16.0))
+                    .px(px(14.0))
                     .py(px(9.0))
                     .rounded(px(5.0))
                     .bg(bg)
@@ -1158,7 +1172,7 @@ impl EnzoApp {
             .bg(gpui::rgba(0x0e0c14cc))
             .child(
                 div()
-                    .w(px(460.0))
+                    .w(px(520.0))
                     .bg(theme::BG_SURFACE)
                     .border_3()
                     .border_color(theme::PURPLE_BG)
@@ -1197,14 +1211,18 @@ impl EnzoApp {
                         div()
                             .flex()
                             .flex_col()
-                            .gap(px(8.0))
+                            .gap(px(10.0))
                             .px(px(20.0))
                             .py(px(16.0))
                             .child(
+                                // Body rendered as Markdown (code blocks, lists,
+                                // emphasis) instead of flat text.
                                 div()
+                                    .max_h(px(380.0))
+                                    .overflow_hidden()
                                     .text_size(px(12.5))
                                     .text_color(theme::FG2)
-                                    .child(SharedString::from(p.body.clone())),
+                                    .child(gpui_component::text::markdown(p.body.clone())),
                             )
                             .child(buttons),
                     ),

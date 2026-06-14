@@ -49,6 +49,9 @@ pub struct DetectedPrompt {
     pub body: String,
     /// Parsed unified diff, if one is present in the context.
     pub diff: Option<ParsedDiff>,
+    /// Numbered menu options (e.g. Claude's "1. Yes / 2. … / 3. No"), in order.
+    /// Empty for a plain yes/no prompt.
+    pub options: Vec<String>,
 }
 
 /// A parsed unified diff with file path and hunk information.
@@ -104,7 +107,47 @@ impl PromptDetector {
         let body: String = self.lines.iter().cloned().collect::<Vec<_>>().join("\n");
         let diff = extract_diff(&body);
         let title = extract_title(&body, prompt_line);
-        DetectedPrompt { title, body, diff }
+        let options = extract_options(&body);
+        DetectedPrompt {
+            title,
+            body,
+            diff,
+            options,
+        }
+    }
+}
+
+/// Parse a numbered selection menu from the context (`1. Yes` / `❯ 2. No …`).
+///
+/// Returns the option labels in order only when the body contains a genuine
+/// sequential menu (`1..=n`, at least two options); otherwise empty, so stray
+/// `"1."`-style text in normal output isn't mistaken for a menu.
+fn extract_options(body: &str) -> Vec<String> {
+    let mut out: Vec<(u32, String)> = Vec::new();
+    for line in body.lines() {
+        let t = line.trim_start_matches(|c: char| {
+            c == '❯' || c == '>' || c == '*' || c == '·' || c.is_whitespace()
+        });
+        let Some(dot) = t.find('.') else { continue };
+        let (num, rest) = t.split_at(dot);
+        let Ok(n) = num.trim().parse::<u32>() else {
+            continue;
+        };
+        let text = rest[1..].trim().to_owned();
+        if !text.is_empty() && !out.iter().any(|(m, _)| *m == n) {
+            out.push((n, text));
+        }
+    }
+    out.sort_by_key(|(n, _)| *n);
+    let sequential = out.len() >= 2
+        && out
+            .iter()
+            .enumerate()
+            .all(|(i, (n, _))| *n as usize == i + 1);
+    if sequential {
+        out.into_iter().map(|(_, t)| t).collect()
+    } else {
+        Vec::new()
     }
 }
 
@@ -230,6 +273,19 @@ mod tests {
         let diff = extract_diff(body);
         assert!(diff.is_some());
         assert_eq!(diff.unwrap().path, "src/foo.rs");
+    }
+
+    #[test]
+    fn extract_options_parses_numbered_menu() {
+        let body = "Do you want to proceed?\n❯ 1. Yes\n  2. Yes, and don't ask again\n  3. No";
+        let opts = extract_options(body);
+        assert_eq!(opts, vec!["Yes", "Yes, and don't ask again", "No"]);
+    }
+
+    #[test]
+    fn extract_options_ignores_non_menu_text() {
+        let body = "Step 1. do a thing\nversion 2.0 released";
+        assert!(extract_options(body).is_empty());
     }
 
     #[test]
