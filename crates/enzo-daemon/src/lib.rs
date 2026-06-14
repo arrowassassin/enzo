@@ -4,6 +4,7 @@ pub mod atp;
 pub mod error;
 pub mod pty;
 pub mod session;
+pub mod shell_integration;
 pub mod state;
 
 use std::path::PathBuf;

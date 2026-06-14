@@ -74,6 +74,17 @@ impl Session {
     }
 }
 
+impl Drop for Session {
+    /// Kill the child shell when the session is dropped (e.g. `session.close`),
+    /// so the PTY closes and the daemon's read task observes EOF instead of
+    /// blocking forever on a still-running interactive shell.
+    fn drop(&mut self) {
+        if let Ok(mut child) = self.child.lock() {
+            let _ = child.kill();
+        }
+    }
+}
+
 /// Stub reader that immediately returns EOF — installed after the real reader is taken.
 struct EofReader;
 

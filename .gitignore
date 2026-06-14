@@ -1,4 +1,6 @@
 /target
+# nested workspace build dirs (e.g. crates/enzo-gpui/target)
+target/
 **/*.rs.bk
 *.profraw
 /coverage

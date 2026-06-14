@@ -1,6 +1,6 @@
 //! PTY spawn helpers.
 
-use portable_pty::{CommandBuilder, PtySize, native_pty_system};
+use portable_pty::{PtySize, native_pty_system};
 
 use crate::error::DaemonError;
 use crate::session::Session;
@@ -27,7 +27,8 @@ pub fn spawn_session(
         .or_else(|| std::env::var("SHELL").ok())
         .unwrap_or_else(|| "/bin/sh".to_owned());
 
-    let mut cmd = CommandBuilder::new(&shell);
+    // Inject OSC-133 shell integration when supported (graceful fallback).
+    let mut cmd = crate::shell_integration::command_for(&shell);
     cmd.env("TERM", "xterm-256color");
 
     let child = pair

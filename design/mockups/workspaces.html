@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Enzo — Workspaces</title>
+<link href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.7.0/dist/tabler-icons.min.css">
+<style>
+  body{margin:0;background:#0e0c14;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:18px;box-sizing:border-box;}
+  .px{font-family:'Silkscreen';font-size:8px;}
+  .frame{display:flex;flex-direction:column;width:720px;height:480px;background:#16131f;border:3px solid #3a3450;border-radius:10px;overflow:hidden;font-family:'JetBrains Mono',monospace;}
+  /* project tab bar (the menu-bar row) */
+  .projects{display:flex;align-items:center;gap:6px;height:34px;padding:0 10px;background:#120f1a;border-bottom:2px solid #3a3450;}
+  .brand{color:#5dcaa5;font-weight:600;font-size:13px;margin-right:6px;}
+  .ptab{display:flex;align-items:center;gap:6px;padding:4px 10px;border-radius:6px 6px 0 0;font-size:11px;color:#9f97c4;border:1px solid transparent;border-bottom:none;}
+  .ptab.on{background:#16131f;color:#e8e4f5;border-color:#3a3450;}
+  .ptab.on .dot{color:#5dcaa5;}
+  .ptab.hib{color:#5f5e6e;}
+  .ptab .dot{font-size:8px;color:#534ab7;}
+  .ptab.hib .dot{color:#5f5e6e;}
+  .add{color:#7f77dd;font-size:11px;padding:4px 8px;}
+  .px-r{margin-left:auto;color:#5f5e6e;}
+  .row{display:flex;flex:1;min-height:0;}
+  /* dock */
+  .dock{width:46px;background:#120f1a;border-right:2px solid #3a3450;display:flex;flex-direction:column;align-items:center;padding-top:12px;gap:16px;color:#5f5e6e;font-size:18px;}
+  .dock .on{color:#5dcaa5;}
+  .dock .bot{margin-top:auto;margin-bottom:12px;display:flex;flex-direction:column;gap:16px;align-items:center;}
+  /* sidebar — recent projects */
+  .side{width:150px;background:#1a1626;border-right:2px solid #3a3450;padding:10px 0;}
+  .cap{color:#7f77dd;padding:0 12px 8px;display:block;}
+  .pj{display:flex;align-items:center;gap:7px;padding:5px 12px;font-size:11px;color:#9f97c4;}
+  .pj.on{background:#534ab7;color:#eeedfe;}
+  .pj.hib{color:#5f5e6e;}
+  .pj i{font-size:12px;}
+  /* main — workspace overview */
+  .main{flex:1;display:flex;flex-direction:column;min-width:0;}
+  .head{display:flex;align-items:center;gap:10px;padding:11px 16px;border-bottom:2px solid #3a3450;}
+  .title{color:#e8e4f5;font-size:14px;font-weight:500;}
+  .chip{display:flex;align-items:center;gap:5px;font-size:10px;padding:3px 8px;border-radius:4px;background:#1d1a28;border:1px solid #3a3450;color:#97c459;}
+  .chip i{font-size:11px;}
+  .path{margin-left:auto;color:#5f5e6e;font-size:11px;}
+  .body{flex:1;padding:14px 16px;overflow:auto;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .card{background:#1d1a28;border:1px solid #3a3450;border-radius:6px;padding:10px 11px;}
+  .card .ch{display:flex;align-items:center;gap:7px;margin-bottom:7px;}
+  .card .ic{font-size:14px;color:#5dcaa5;}
+  .card .nm{font-size:11px;color:#e8e4f5;}
+  .card .st{margin-left:auto;color:#5dcaa5;}
+  .card .st.z{color:#5f5e6e;}
+  .ln{display:flex;gap:6px;font-size:11px;color:#9f97c4;padding:2px 0;}
+  .ln .k{color:#7f77dd;font-family:'Silkscreen';font-size:8px;width:54px;flex:none;padding-top:2px;}
+  .ln .v{color:#c9c4dc;}
+  .ln .v b{color:#85b7eb;font-weight:400;}
+  /* hibernation / resource strip */
+  .hibbar{margin-top:12px;background:#16131f;border:1px solid #3a3450;border-radius:6px;padding:9px 11px;}
+  .hibrow{display:flex;align-items:center;gap:8px;font-size:11px;color:#9f97c4;padding:3px 0;}
+  .badge{font-family:'Silkscreen';font-size:8px;padding:2px 6px;border-radius:3px;}
+  .badge.live{background:#173404;color:#97c459;}
+  .badge.zzz{background:#221d30;color:#5f5e6e;}
+  .meter{margin-left:auto;width:120px;height:6px;background:#221d30;border-radius:3px;overflow:hidden;}
+  .meter i{display:block;height:100%;}
+  /* footer */
+  .foot{display:flex;gap:14px;padding:6px 14px;background:#221d30;border-top:2px solid #3a3450;color:#9f97c4;}
+  .foot .r{margin-left:auto;color:#5f5e6e;}
+</style></head><body>
+<div class="frame">
+
+  <!-- project tabs (browser-style) -->
+  <div class="projects">
+    <span class="brand">▘ enzo</span>
+    <div class="ptab on"><i class="ti ti-folder dot"></i> enzo</div>
+    <div class="ptab"><span class="dot">●</span> api-gateway</div>
+    <div class="ptab hib"><i class="ti ti-zzz dot"></i> ml-pipeline</div>
+    <div class="add">＋ open folder…</div>
+    <span class="px px-r">3 PROJECTS · ⌘K SEARCH</span>
+  </div>
+
+  <div class="row">
+    <!-- dock -->
+    <div class="dock">
+      <i class="ti ti-terminal-2"></i><i class="ti ti-code"></i><i class="ti ti-world"></i><i class="ti ti-database"></i>
+      <i class="ti ti-stack-2 on"></i>
+      <div class="bot"><i class="ti ti-robot"></i><i class="ti ti-settings"></i></div>
+    </div>
+
+    <!-- sidebar: recent projects -->
+    <div class="side">
+      <span class="cap px">PROJECTS</span>
+      <div class="pj on"><i class="ti ti-folder"></i> enzo</div>
+      <div class="pj"><i class="ti ti-folder"></i> api-gateway</div>
+      <div class="pj hib"><i class="ti ti-folder"></i> ml-pipeline</div>
+      <span class="cap px" style="padding-top:14px;">WORKTREES</span>
+      <div class="pj"><i class="ti ti-git-branch"></i> main ✓</div>
+      <div class="pj"><i class="ti ti-git-branch"></i> feat/atp-v1</div>
+    </div>
+
+    <!-- main: workspace overview -->
+    <div class="main">
+      <div class="head">
+        <span class="title">enzo</span>
+        <span class="chip"><i class="ti ti-git-branch"></i> main · worktree</span>
+        <span class="path">~/github/enzo</span>
+      </div>
+
+      <div class="body">
+        <div class="grid">
+          <!-- terminal card -->
+          <div class="card">
+            <div class="ch"><i class="ti ti-terminal-2 ic"></i><span class="nm">Terminal</span><span class="st px">● 3 TABS</span></div>
+            <div class="ln"><span class="k">TABS</span><span class="v">zsh · api · <b>ssh prod ⚡</b></span></div>
+            <div class="ln"><span class="k">CWD</span><span class="v">~/github/enzo</span></div>
+          </div>
+          <!-- ide card -->
+          <div class="card">
+            <div class="ch"><i class="ti ti-code ic"></i><span class="nm">IDE</span><span class="st px">● 4 FILES</span></div>
+            <div class="ln"><span class="k">OPEN</span><span class="v"><b>renderer.rs</b> +3 · L142</span></div>
+            <div class="ln"><span class="k">LSP</span><span class="v">rust-analyzer · ✓</span></div>
+          </div>
+          <!-- database card -->
+          <div class="card">
+            <div class="ch"><i class="ti ti-database ic"></i><span class="nm">Database</span><span class="st px">● 1 CONN</span></div>
+            <div class="ln"><span class="k">CONN</span><span class="v">prod · postgres</span></div>
+            <div class="ln"><span class="k">QUERIES</span><span class="v">2 tabs · users, events</span></div>
+          </div>
+          <!-- browser card -->
+          <div class="card">
+            <div class="ch"><i class="ti ti-world ic"></i><span class="nm">Browser</span><span class="st px z">○ HIBERNATED</span></div>
+            <div class="ln"><span class="k">TABS</span><span class="v">localhost:8080 · /api/me</span></div>
+            <div class="ln"><span class="k">STATE</span><span class="v">snapshot saved · resume on open</span></div>
+          </div>
+        </div>
+
+        <!-- hibernation + resource budget -->
+        <div class="hibbar">
+          <div class="hibrow"><span class="badge live">LIVE</span> enzo <span style="color:#5f5e6e;">· lsp + db + pty</span><span class="meter"><i style="width:46%;background:#639922;"></i></span></div>
+          <div class="hibrow"><span class="badge live">LIVE</span> api-gateway <span style="color:#5f5e6e;">· pty</span><span class="meter"><i style="width:14%;background:#5dcaa5;"></i></span></div>
+          <div class="hibrow"><span class="badge zzz">ZZZ</span> ml-pipeline <span style="color:#5f5e6e;">· parked · state serialized</span><span class="meter"><i style="width:3%;background:#3a3450;"></i></span></div>
+        </div>
+      </div>
+
+      <div class="foot px">
+        <span style="color:#5dcaa5;">● WORKSPACE · enzo</span><span>SNAPSHOT 12s AGO</span><span>2 LIVE · 1 ZZZ</span><span class="r">RESOURCE BUDGET 61%</span>
+      </div>
+    </div>
+  </div>
+</div>
+</body></html>

@@ -1,0 +1,583 @@
+//! Database surface — real, daemon-backed (HANDOFF Task 1). Connections, schema,
+//! query results, errors and pagination all come over ATP; no demo data lives
+//! here. Styled faithful to `design/mockups/database.html`.
+
+use gpui::{
+    Context, Entity, IntoElement, ParentElement, SharedString, Styled, div, prelude::*, px,
+};
+
+use crate::EnzoApp;
+use crate::atp::TableInfo;
+use crate::text_input::TextInput;
+use crate::theme;
+use crate::widgets::{icon, pixel_header, text};
+
+/// Default page size for table browsing.
+pub const PAGE_SIZE: u64 = 100;
+
+/// A live, daemon-backed connection mirrored on the client.
+pub struct DbConn {
+    /// ATP connection id (e.g. `"db-0"`).
+    pub id: String,
+    /// Sidebar display name.
+    pub name: String,
+    /// Driver reported by the daemon (e.g. `"sqlite"`).
+    pub driver: String,
+    /// Tables/views from `db.schema.tables`.
+    pub tables: Vec<TableInfo>,
+}
+
+/// Database surface state. All result data is owned by the daemon and streamed
+/// in over ATP — this only holds what the renderer needs.
+pub struct DbState {
+    pub connections: Vec<DbConn>,
+    pub active: usize,
+    pub columns: Vec<String>,
+    pub rows: Vec<Vec<String>>,
+    pub error: Option<String>,
+    pub query_ms: Option<u64>,
+    pub running: bool,
+    pub browsing: Option<String>,
+    pub total: Option<u64>,
+    pub page: u64,
+    /// Primary-key column names for the browsed table (empty → not editable).
+    pub pk_columns: Vec<String>,
+    /// Cell `(row, col)` currently being edited, if any.
+    pub editing: Option<(usize, usize)>,
+}
+
+impl DbState {
+    /// Initial state with a single pending connection (the first-run demo db).
+    pub fn new(demo_id: &str, demo_name: &str) -> Self {
+        Self {
+            connections: vec![DbConn {
+                id: demo_id.to_owned(),
+                name: demo_name.to_owned(),
+                driver: String::new(),
+                tables: Vec::new(),
+            }],
+            active: 0,
+            columns: Vec::new(),
+            rows: Vec::new(),
+            error: None,
+            query_ms: None,
+            running: false,
+            browsing: None,
+            total: None,
+            page: 0,
+            pk_columns: Vec::new(),
+            editing: None,
+        }
+    }
+
+    pub fn active_conn_id(&self) -> Option<&str> {
+        self.connections.get(self.active).map(|c| c.id.as_str())
+    }
+
+    fn conn_mut(&mut self, id: &str) -> Option<&mut DbConn> {
+        self.connections.iter_mut().find(|c| c.id == id)
+    }
+
+    pub fn set_driver(&mut self, id: &str, driver: String) {
+        if let Some(c) = self.conn_mut(id) {
+            c.driver = driver;
+        }
+    }
+
+    pub fn set_tables(&mut self, id: &str, tables: Vec<TableInfo>) {
+        if let Some(c) = self.conn_mut(id) {
+            c.tables = tables;
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn apply_result(
+        &mut self,
+        columns: Vec<String>,
+        rows: Vec<Vec<String>>,
+        ms: u64,
+        total: Option<u64>,
+        page: u64,
+        browsing: Option<String>,
+        pk_columns: Vec<String>,
+    ) {
+        self.columns = columns;
+        self.rows = rows;
+        self.query_ms = Some(ms);
+        self.error = None;
+        self.running = false;
+        self.total = total;
+        self.page = page;
+        self.browsing = browsing;
+        self.pk_columns = pk_columns;
+        self.editing = None;
+    }
+
+    /// Whether the current result set is an editable table view.
+    pub fn editable(&self) -> bool {
+        self.browsing.is_some() && !self.pk_columns.is_empty()
+    }
+
+    pub fn apply_error(&mut self, message: String) {
+        self.error = Some(message);
+        self.columns.clear();
+        self.rows.clear();
+        self.query_ms = None;
+        self.running = false;
+        self.browsing = None;
+        self.total = None;
+        self.editing = None;
+    }
+
+    /// Add a new (pending) connection and make it active.
+    pub fn add_connection(&mut self, id: String, name: String) {
+        self.connections.push(DbConn {
+            id,
+            name,
+            driver: String::new(),
+            tables: Vec::new(),
+        });
+        self.active = self.connections.len() - 1;
+        self.columns.clear();
+        self.rows.clear();
+        self.error = None;
+        self.browsing = None;
+        self.total = None;
+    }
+}
+
+// ── Render (state-driven) ───────────────────────────────────────────────────
+
+/// Connections + schema sidebar; clicking a table browses it.
+pub fn sidebar(db: &DbState, cx: &mut Context<EnzoApp>) -> impl IntoElement {
+    let new_conn = div()
+        .id("db-new-conn")
+        .cursor_pointer()
+        .flex()
+        .items_center()
+        .gap(px(5.0))
+        .px(px(12.0))
+        .pb(px(6.0))
+        .text_size(px(8.0))
+        .font_family(theme::FONT_PIXEL)
+        .text_color(theme::PURPLE)
+        .child("＋ NEW CONNECTION")
+        .on_click(cx.listener(|this, _, window, cx| this.open_connection_dialog(window, cx)));
+    let mut col = div()
+        .flex()
+        .flex_col()
+        .child(pixel_header("CONNECTIONS"))
+        .child(new_conn);
+    for (i, conn) in db.connections.iter().enumerate() {
+        let active = i == db.active;
+        let (glyph, color) = if active {
+            (theme::ICON_PLUG_CONNECTED, theme::TEAL)
+        } else {
+            (theme::ICON_PLUG, theme::MUTED)
+        };
+        col = col.child(
+            div()
+                .flex()
+                .items_center()
+                .gap(px(5.0))
+                .pl(px(10.0))
+                .pr(px(10.0))
+                .py(px(3.0))
+                .child(icon(glyph, 11.0, color))
+                .child(text(&conn.name, 11.0, color)),
+        );
+    }
+    col = col.child(div().h(px(8.0))).child(pixel_header("SCHEMA"));
+    if let Some(conn) = db.connections.get(db.active) {
+        if conn.tables.is_empty() {
+            col = col.child(
+                div()
+                    .pl(px(12.0))
+                    .child(text("no tables", 11.0, theme::FAINT)),
+            );
+        }
+        for t in &conn.tables {
+            let name = t.name.clone();
+            let browsing = db.browsing.as_deref() == Some(name.as_str());
+            let color = if browsing { theme::TEAL } else { theme::BLUE };
+            col = col.child(
+                div()
+                    .id(SharedString::from(format!("tbl-{name}")))
+                    .cursor_pointer()
+                    .flex()
+                    .items_center()
+                    .gap(px(5.0))
+                    .pl(px(24.0))
+                    .pr(px(10.0))
+                    .py(px(2.0))
+                    .child(icon(theme::ICON_TABLE, 11.0, color))
+                    .child(text(&name, 11.0, color))
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.browse_table(name.clone(), 0, cx);
+                    })),
+            );
+        }
+    }
+    col
+}
+
+/// Query-tab strip with the green RUN button.
+pub fn tab_bar(db: &DbState, cx: &mut Context<EnzoApp>) -> impl IntoElement {
+    let run = div()
+        .id("db-run")
+        .cursor_pointer()
+        .ml_auto()
+        .flex()
+        .items_center()
+        .gap(px(4.0))
+        .px(px(9.0))
+        .py(px(4.0))
+        .rounded(px(3.0))
+        .bg(theme::GREEN)
+        .text_color(theme::GREEN_INK)
+        .child(icon(theme::ICON_PLAYER_PLAY, 10.0, theme::GREEN_INK))
+        .child(
+            div()
+                .text_size(px(8.0))
+                .font_family(theme::FONT_PIXEL)
+                .child(if db.running {
+                    "RUNNING…"
+                } else {
+                    "RUN ⌘↵"
+                }),
+        )
+        .on_click(cx.listener(|this, _, _, cx| this.run_query(cx)));
+    div()
+        .flex()
+        .items_center()
+        .gap(px(8.0))
+        .px(px(12.0))
+        .py(px(7.0))
+        .bg(theme::BG_BAR)
+        .border_b_2()
+        .border_color(theme::BORDER)
+        .child(
+            div()
+                .px(px(8.0))
+                .py(px(4.0))
+                .rounded(px(3.0))
+                .bg(theme::BG_SURFACE)
+                .text_size(px(8.0))
+                .font_family(theme::FONT_PIXEL)
+                .text_color(theme::TEAL)
+                .child("query 1"),
+        )
+        .child(run)
+}
+
+/// Editable SQL line + result grid (or error banner) from real state.
+pub fn content(
+    db: &DbState,
+    sql_input: &Entity<TextInput>,
+    cell_input: &Entity<TextInput>,
+    cx: &mut Context<EnzoApp>,
+) -> impl IntoElement {
+    let sql_line = div()
+        .py(px(10.0))
+        .px(px(12.0))
+        .text_size(px(12.0))
+        .font_family(theme::FONT_MONO)
+        .text_color(theme::FG0)
+        .border_b_2()
+        .border_color(theme::BORDER)
+        .child(sql_input.clone());
+
+    let body = if let Some(err) = &db.error {
+        div()
+            .m(px(12.0))
+            .px(px(10.0))
+            .py(px(8.0))
+            .bg(theme::rgb_hex(0x2a1416))
+            .border_1()
+            .border_color(theme::RED)
+            .rounded(px(5.0))
+            .child(text(&format!("✗ {err}"), 12.0, theme::RED_LT))
+            .into_any_element()
+    } else if db.columns.is_empty() {
+        div().into_any_element()
+    } else {
+        result_grid(db, cell_input, cx).into_any_element()
+    };
+
+    div()
+        .flex()
+        .flex_col()
+        .size_full()
+        .child(sql_line)
+        .child(body)
+}
+
+/// One flex grid cell base (equal-weight columns).
+fn grid_cell() -> gpui::Div {
+    div()
+        .flex_grow(1.0)
+        .flex_shrink(1.0)
+        .flex_basis(px(0.0))
+        .px(px(10.0))
+        .py(px(5.0))
+}
+
+/// Result grid from real `columns`/`rows`; double-click a cell to edit (when the
+/// view is an editable table with a known primary key).
+fn result_grid(
+    db: &DbState,
+    cell_input: &Entity<TextInput>,
+    cx: &mut Context<EnzoApp>,
+) -> impl IntoElement {
+    let editable = db.editable();
+    let mut header = div()
+        .flex()
+        .bg(theme::BG_CARD)
+        .text_size(px(8.0))
+        .font_family(theme::FONT_PIXEL);
+    for c in &db.columns {
+        header = header.child(
+            grid_cell()
+                .text_color(theme::PURPLE)
+                .child(SharedString::from(c.to_uppercase())),
+        );
+    }
+
+    let mut grid = div()
+        .flex()
+        .flex_col()
+        .flex_1()
+        .overflow_hidden()
+        .child(header);
+    for (ri, row) in db.rows.iter().enumerate() {
+        let mut r = div()
+            .flex()
+            .border_b_1()
+            .border_color(theme::DIVIDER)
+            .text_size(px(11.0));
+        if ri % 2 == 1 {
+            r = r.bg(theme::BG_SIDE);
+        }
+        for (ci, v) in row.iter().enumerate() {
+            let cell_el: gpui::AnyElement = if db.editing == Some((ri, ci)) {
+                grid_cell()
+                    .bg(theme::BG_CARD)
+                    .font_family(theme::FONT_MONO)
+                    .text_color(theme::FG0)
+                    .child(cell_input.clone())
+                    .into_any_element()
+            } else {
+                let color = if ci == 0 { theme::TEAL } else { theme::FG2 };
+                let base = grid_cell()
+                    .text_color(color)
+                    .child(SharedString::from(v.clone()));
+                if editable {
+                    base.id(SharedString::from(format!("cell-{ri}-{ci}")))
+                        .cursor_pointer()
+                        .on_click(cx.listener(move |this, ev: &gpui::ClickEvent, window, cx| {
+                            if ev.click_count() == 2 {
+                                this.start_edit(ri, ci, window, cx);
+                            }
+                        }))
+                        .into_any_element()
+                } else {
+                    base.into_any_element()
+                }
+            };
+            r = r.child(cell_el);
+        }
+        grid = grid.child(r);
+    }
+    grid
+}
+
+/// Status bar: connection + row count + timing (+ clickable pager when browsing).
+pub fn status_bar(db: &DbState, cx: &mut Context<EnzoApp>) -> impl IntoElement {
+    let cell = |s: String, c: gpui::Rgba| {
+        div()
+            .text_size(px(8.0))
+            .font_family(theme::FONT_PIXEL)
+            .text_color(c)
+            .child(SharedString::from(s))
+    };
+    let pager_btn = |id: &'static str,
+                     glyph: &'static str,
+                     enabled: bool,
+                     delta: i64,
+                     cx: &mut Context<EnzoApp>| {
+        let mut b = div()
+            .id(id)
+            .px(px(4.0))
+            .text_size(px(8.0))
+            .font_family(theme::FONT_PIXEL)
+            .text_color(if enabled { theme::TEAL } else { theme::FAINT })
+            .child(glyph);
+        if enabled {
+            b = b
+                .cursor_pointer()
+                .on_click(cx.listener(move |this, _, _, cx| this.page_relative(delta, cx)));
+        }
+        b
+    };
+    let conn = db.connections.get(db.active).map_or_else(
+        || "no connection".to_owned(),
+        |c| {
+            format!(
+                "ADBC {}",
+                if c.driver.is_empty() {
+                    "…"
+                } else {
+                    &c.driver
+                }
+            )
+        },
+    );
+    let mut bar = div()
+        .flex()
+        .items_center()
+        .gap(px(14.0))
+        .px(px(12.0))
+        .py(px(6.0))
+        .bg(theme::BG_BAR)
+        .border_t_2()
+        .border_color(theme::BORDER)
+        .child(cell(format!("● {conn}"), theme::TEAL))
+        .child(cell(format!("{} rows", db.rows.len()), theme::FG1));
+    if let Some(ms) = db.query_ms {
+        bar = bar.child(cell(format!("{ms}ms · Arrow stream"), theme::FG1));
+    }
+    if let (Some(total), Some(table)) = (db.total, db.browsing.as_ref()) {
+        let pages = total.div_ceil(PAGE_SIZE).max(1);
+        bar = bar
+            .child(
+                div()
+                    .ml_auto()
+                    .flex()
+                    .items_center()
+                    .gap(px(6.0))
+                    .child(pager_btn("pg-prev", "‹ PREV", db.page > 0, -1, cx))
+                    .child(cell(
+                        format!("{} · page {}/{}", table, db.page + 1, pages),
+                        theme::FAINT,
+                    ))
+                    .child(pager_btn("pg-next", "NEXT ›", db.page + 1 < pages, 1, cx)),
+            )
+            .child(cell("⌘K".to_owned(), theme::FAINT));
+        return bar;
+    }
+    bar.child(div().ml_auto().child(cell("⌘K".to_owned(), theme::FAINT)))
+}
+
+// ── Add-connection dialog (modal overlay) ───────────────────────────────────
+
+/// Modal overlay to add a connection by file path, faithful to
+/// `design/mockups/db-connection.html` (NAME + DATABASE PATH for our path-based
+/// `db.connect`).
+pub fn connection_dialog(
+    name: &Entity<TextInput>,
+    path: &Entity<TextInput>,
+    cx: &mut Context<EnzoApp>,
+) -> impl IntoElement {
+    // A captioned, framed input field (`.cap` + `.inp` in the mockup).
+    let field = |cap: &str, input: &Entity<TextInput>| {
+        div()
+            .flex()
+            .flex_col()
+            .child(
+                div()
+                    .pb(px(5.0))
+                    .text_size(px(8.0))
+                    .font_family(theme::FONT_PIXEL)
+                    .text_color(theme::PURPLE)
+                    .child(SharedString::from(cap.to_owned())),
+            )
+            .child(
+                div()
+                    .px(px(10.0))
+                    .py(px(8.0))
+                    .bg(theme::BG_CARD)
+                    .border_1()
+                    .border_color(theme::BORDER)
+                    .rounded(px(5.0))
+                    .text_size(px(12.0))
+                    .font_family(theme::FONT_MONO)
+                    .text_color(theme::FG0)
+                    .child(input.clone()),
+            )
+    };
+    let button = |id: &'static str, label: &'static str, save: bool| {
+        let mut b = div()
+            .id(id)
+            .cursor_pointer()
+            .px(px(16.0))
+            .py(px(9.0))
+            .rounded(px(5.0))
+            .text_size(px(9.0))
+            .font_family(theme::FONT_PIXEL);
+        b = if save {
+            b.bg(theme::GREEN).text_color(theme::GREEN_INK)
+        } else {
+            b.bg(theme::BG_CARD)
+                .border_1()
+                .border_color(theme::BORDER)
+                .text_color(theme::FG1)
+        };
+        b.child(label)
+    };
+
+    // Dim backdrop covering the window, centered card.
+    div()
+        .absolute()
+        .top_0()
+        .left_0()
+        .size_full()
+        .flex()
+        .items_center()
+        .justify_center()
+        .bg(gpui::rgba(0x0e0c14cc))
+        .child(
+            div()
+                .w(px(440.0))
+                .bg(theme::BG_SURFACE)
+                .border_3()
+                .border_color(theme::BORDER)
+                .rounded(px(12.0))
+                .overflow_hidden()
+                .child(
+                    div()
+                        .px(px(16.0))
+                        .py(px(10.0))
+                        .bg(theme::BG_BAR)
+                        .border_b_2()
+                        .border_color(theme::BORDER)
+                        .text_size(px(10.0))
+                        .font_family(theme::FONT_PIXEL)
+                        .text_color(theme::FG1)
+                        .child("NEW CONNECTION · sqlite / duckdb"),
+                )
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap(px(12.0))
+                        .px(px(20.0))
+                        .py(px(16.0))
+                        .child(field("NAME", name))
+                        .child(field("DATABASE PATH", path))
+                        .child(
+                            div()
+                                .flex()
+                                .gap(px(10.0))
+                                .pt(px(4.0))
+                                .child(
+                                    button("dlg-cancel", "CANCEL", false).on_click(
+                                        cx.listener(|this, _, _, cx| this.close_dialog(cx)),
+                                    ),
+                                )
+                                .child(button("dlg-save", "CONNECT", true).on_click(
+                                    cx.listener(|this, _, _, cx| this.save_connection(cx)),
+                                )),
+                        ),
+                ),
+        )
+}

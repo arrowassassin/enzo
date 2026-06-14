@@ -1,0 +1,47 @@
+[package]
+name = "enzo-gpui"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Enzo GPU client — GPUI workspace UI over the ATP daemon connection"
+
+# Isolated from the main workspace during the egui → GPUI migration so the
+# heavy GPUI dependency tree can't destabilise the existing client build.
+[workspace]
+
+[dependencies]
+# Editable fork of GPUI (pinned commit df9c9f0), vendored to a durable path so
+# we can add a Linux headless renderer (offscreen render→image) for in-cloud
+# snapshot verification. `gpui_platform` is not on crates.io regardless.
+gpui = { path = "/root/zed/crates/gpui" }
+gpui_platform = { path = "/root/zed/crates/gpui_platform", features = [
+    "x11",
+    "wayland",
+    "font-kit",
+] }
+# Production code editor (ropey buffer + tree-sitter highlight for ~35 langs +
+# LSP). Its gpui is one commit from ours; the [patch] below unifies them.
+gpui-component = { path = "/root/gpui-component/crates/ui", features = [
+    "tree-sitter-languages",
+] }
+gpui-component-assets = { path = "/root/gpui-component/crates/assets" }
+log = "0.4"
+
+# ATP client (async, talks to enzo-daemon over a Unix socket)
+tokio = { version = "1", features = ["full"] }
+serde_json = "1"
+anyhow = "1"
+base64 = "0.22"
+unicode-segmentation = "1"
+vte = "0.13"
+
+[dev-dependencies]
+image = "0.25"
+
+# Unify gpui across our code + gpui-component (which depends on zed by git) onto
+# our single vendored checkout, so there's exactly one gpui in the tree.
+[patch."https://github.com/zed-industries/zed"]
+gpui = { path = "/root/zed/crates/gpui" }
+gpui_platform = { path = "/root/zed/crates/gpui_platform" }
+gpui_macros = { path = "/root/zed/crates/gpui_macros" }
+gpui_web = { path = "/root/zed/crates/gpui_web" }

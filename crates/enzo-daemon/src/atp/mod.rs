@@ -278,6 +278,12 @@ async fn session_spawn(
     let rows = u16::try_from(p["rows"].as_u64().unwrap_or(50)).unwrap_or(50);
     let shell = p["shell"].as_str().map(str::to_owned);
 
+    // Idempotent: re-spawning an existing id must not replace (and so kill, via
+    // Session::drop) the live shell already running under it.
+    if state.session_exists(&session_id).await {
+        return Response::ok(id, json!({ "existing": true }));
+    }
+
     match spawn_session(session_id.clone(), shell.as_deref(), cols, rows) {
         Ok(session) => {
             if let Some(pty_reader) = session.take_reader() {

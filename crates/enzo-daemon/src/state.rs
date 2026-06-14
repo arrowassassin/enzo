@@ -69,6 +69,11 @@ impl DaemonState {
             .insert(session.id.clone(), session);
     }
 
+    /// Whether a session with `id` already exists.
+    pub async fn session_exists(&self, id: &str) -> bool {
+        self.0.lock().await.sessions.contains_key(id)
+    }
+
     /// Remove and return the session with `id`, if present.
     pub async fn remove_session(&self, id: &str) -> Option<Session> {
         self.0.lock().await.sessions.remove(id)
