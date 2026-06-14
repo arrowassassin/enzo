@@ -30,7 +30,10 @@ use database::DbState;
 use ide::IdeState;
 use text_input::TextInput;
 
-actions!(enzo, [RunQuery, CommitEdit, CancelEdit, SaveFile, Navigate]);
+actions!(
+    enzo,
+    [RunQuery, CommitEdit, CancelEdit, SaveFile, Navigate]
+);
 
 /// Which top-level surface is displayed.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -56,7 +59,11 @@ pub struct EnzoApp {
     term: terminal_state::Terminal,
     term_id: String,
     term_focus: FocusHandle,
+    /// Block-cursor blink phase (toggled on a timer while the terminal is active).
+    cursor_on: bool,
     ide: IdeState,
+    /// Whether the Editor surface has been opened yet (drives first-entry file open).
+    ide_opened: bool,
     /// Active AI-CLI approval prompt (id, title, body, actions), if any.
     agent_prompt: Option<AgentPrompt>,
     /// AI agent blocks composited in the terminal column (id → title, body).
@@ -135,6 +142,36 @@ impl EnzoApp {
         })
         .detach();
 
+        // Block-cursor blink: flip ~every 530ms, repaint only while the terminal
+        // surface is showing (so an idle Database/IDE view isn't woken).
+        cx.spawn(async move |this, cx| {
+            loop {
+                cx.background_executor()
+                    .timer(Duration::from_millis(530))
+                    .await;
+                let alive = this
+                    .update(cx, |this, cx| {
+                        this.cursor_on = !this.cursor_on;
+                        if this.surface == Surface::Terminal {
+                            cx.notify();
+                        }
+                    })
+                    .is_ok();
+                if !alive {
+                    break;
+                }
+            }
+        })
+        .detach();
+
+        // Fetch git status up front so the Terminal/IDE sidebars show the real
+        // branch immediately (buffered until the daemon connects).
+        let _ = atp.commands.send(Command::GitStatus {
+            root: std::env::current_dir()
+                .map(|p| p.to_string_lossy().into_owned())
+                .unwrap_or_else(|_| ".".to_owned()),
+        });
+
         Self {
             surface: Surface::Terminal,
             atp,
@@ -149,12 +186,29 @@ impl EnzoApp {
             term: terminal_state::Terminal::new(TERM_COLS, TERM_ROWS),
             term_id,
             term_focus: cx.focus_handle(),
+            cursor_on: true,
             ide: IdeState::new(),
+            ide_opened: false,
             agent_prompt: None,
             agent_blocks: Vec::new(),
             browser: browser::BrowserState::new(),
             url_input,
             git_commit_input,
+        }
+    }
+
+    // ── IDE entry ─────────────────────────────────────────────────────────
+    /// Switch to the Editor surface: refresh git, and on first entry open a
+    /// default file so the editor demonstrably renders rather than sitting blank.
+    fn enter_editor(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.git_refresh(cx);
+        if !self.ide_opened {
+            self.ide_opened = true;
+            if self.ide.open_path.is_none()
+                && let Some(path) = self.ide.default_file()
+            {
+                self.open_file(&path, window, cx);
+            }
         }
     }
 
@@ -200,6 +254,7 @@ impl EnzoApp {
         }
         self.browser.url = url.clone();
         self.browser.loading = true;
+        self.browser.error = None;
         if !self.browser.launched {
             let _ = self.atp.commands.send(Command::BrowserLaunch {
                 id: browser::PAGE_ID.into(),
@@ -426,37 +481,45 @@ impl EnzoApp {
         });
     }
 
-    /// Terminal surface: OSC-133 command blocks when the shell emits marks,
-    /// else the raw VT grid. Focusable; keystrokes go to the PTY.
+    /// Terminal surface: the live VT grid (a real terminal viewport). Always
+    /// renders the grid so interactive TUIs (claude, vim, menus) work; OSC-133
+    /// semantic blocks, when present, are surfaced as AI blocks above it.
+    /// Clicking anywhere refocuses the PTY so keystrokes always reach it.
     fn terminal_view(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        // Blocks once OSC-133 marks exist, except while a full-screen TUI is up
-        // (vim/less use the alternate screen → render the raw grid).
-        let body: gpui::AnyElement = if self.term.alt_screen() || self.term.blocks().is_empty() {
-            self.terminal_grid().into_any_element()
-        } else {
-            terminal_blocks(self.term.blocks()).into_any_element()
-        };
         div()
             .id("terminal")
             .track_focus(&self.term_focus)
             .key_context("Terminal")
             .on_key_down(cx.listener(Self::on_term_key))
+            // Refocus the PTY on click — otherwise interacting with other chrome
+            // steals focus and keys (Enter on a TUI menu) silently go nowhere.
+            .on_mouse_down(
+                gpui::MouseButton::Left,
+                cx.listener(|this, _, window, cx| {
+                    window.focus(&this.term_focus, cx);
+                    cx.notify();
+                }),
+            )
             .flex()
             .flex_col()
             .size_full()
             .overflow_hidden()
-            .px(px(14.0))
             .py(px(8.0))
             .children(self.agent_blocks.iter().map(agent_block_card))
-            .child(body)
+            .child(self.terminal_grid())
     }
 
-    /// Raw VT grid render (per-cell ANSI colour via run-coalescing).
+    /// Raw VT grid render (per-cell ANSI colour via run-coalescing), with a
+    /// blinking block cursor at the PTY cursor position.
     fn terminal_grid(&self) -> impl IntoElement {
         use terminal_state::Cell;
         let cols = self.term.cols() as usize;
         let rows = self.term.rows() as usize;
         let cells = self.term.cells();
+        let (cur_col, cur_row) = self.term.cursor();
+        let cur_col = cur_col as usize;
+        let cur_row = cur_row as usize;
+        let show_cursor = self.surface == Surface::Terminal && self.cursor_on;
         let mut col = div()
             .flex()
             .flex_col()
@@ -471,13 +534,18 @@ impl EnzoApp {
         let key = |c: &Cell| (c.style.fg, c.style.bg, c.style.bold, c.style.reverse);
         for r in 0..rows {
             let row = &cells[r * cols..r * cols + cols];
-            // Trim trailing blank cells (keep coloured/reverse padding).
-            let last = row
+            let cursor_here = show_cursor && r == cur_row;
+            // Trim trailing blank cells (keep coloured/reverse padding), but
+            // always extend to the cursor column so the caret shows at EOL.
+            let mut last = row
                 .iter()
                 .rposition(|c| {
                     c.ch != ' ' || c.style.reverse || c.style.bg != terminal_state::Color::Default
                 })
                 .map_or(0, |i| i + 1);
+            if cursor_here {
+                last = last.max(cur_col + 1);
+            }
             if last == 0 {
                 col = col.child(div().child(SharedString::from(" ")));
                 continue;
@@ -485,7 +553,15 @@ impl EnzoApp {
             let mut line = div().flex();
             let mut buf = String::new();
             let mut cur = key(&row[0]);
-            for cell in &row[..last] {
+            for (ci, cell) in row[..last].iter().enumerate() {
+                if cursor_here && ci == cur_col {
+                    if !buf.is_empty() {
+                        line = line.child(run_span(cur, std::mem::take(&mut buf)));
+                    }
+                    line = line.child(cursor_span(cell.ch));
+                    cur = key(cell);
+                    continue;
+                }
                 let k = key(cell);
                 if k != cur && !buf.is_empty() {
                     line = line.child(run_span(cur, std::mem::take(&mut buf)));
@@ -580,6 +656,13 @@ impl EnzoApp {
                         png,
                     )));
                     self.browser.loading = false;
+                    self.browser.error = None;
+                }
+                Incoming::BrowserError { message } => {
+                    self.browser.loading = false;
+                    // Allow a later retry to relaunch (e.g. once Chrome is present).
+                    self.browser.launched = false;
+                    self.browser.error = Some(message);
                 }
                 Incoming::GitStatus { branch, entries } => {
                     self.ide.git_branch = branch;
@@ -875,7 +958,7 @@ impl EnzoApp {
                         let handle = this.url_input.read(cx).handle();
                         window.focus(&handle, cx);
                     }
-                    Surface::Editor => this.git_refresh(cx),
+                    Surface::Editor => this.enter_editor(window, cx),
                 }
                 cx.notify();
             }))
@@ -884,7 +967,9 @@ impl EnzoApp {
     /// Per-surface context sidebar.
     fn sidebar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let inner: AnyElement = match self.surface {
-            Surface::Terminal => terminal::sidebar().into_any_element(),
+            Surface::Terminal => {
+                terminal::sidebar(&self.ide.root(), &self.ide.git_branch).into_any_element()
+            }
             Surface::Database => database::sidebar(&self.db, cx).into_any_element(),
             Surface::Editor => {
                 ide::sidebar(&self.ide, &self.git_commit_input, cx).into_any_element()
@@ -909,9 +994,10 @@ impl EnzoApp {
         let (tab_bar, content, status_bar): (AnyElement, AnyElement, AnyElement) =
             match self.surface {
                 Surface::Terminal => (
-                    terminal::tab_bar().into_any_element(),
+                    terminal::tab_bar(self.connected).into_any_element(),
                     self.terminal_view(cx).into_any_element(),
-                    terminal::status_bar().into_any_element(),
+                    terminal::status_bar(self.connected, self.term.cols(), self.term.rows())
+                        .into_any_element(),
                 ),
                 Surface::Database => (
                     database::tab_bar(&self.db, cx).into_any_element(),
@@ -987,67 +1073,13 @@ fn agent_block_card(b: &AgentBlock) -> impl IntoElement {
         )
 }
 
-/// Render OSC-133 command blocks as cards (`design/mockups/terminal.html`).
-fn terminal_blocks(blocks: &[terminal_state::Block]) -> impl IntoElement {
-    let mut col = div()
-        .flex()
-        .flex_col()
-        .size_full()
-        .px(px(14.0))
-        .py(px(12.0))
-        .font_family(theme::FONT_MONO)
-        .text_size(px(12.5))
-        .line_height(px(18.0));
-    for b in blocks {
-        col = col.child(block_card(b));
-    }
-    col
-}
-
-/// One command block: coloured left rail by exit status, command line with an
-/// exit badge (or live cursor while running), then output lines.
-fn block_card(b: &terminal_state::Block) -> impl IntoElement {
-    let (rail, badge_color, badge) = match (b.running, b.exit) {
-        (true, _) => (theme::PURPLE_BG, theme::PURPLE_LT, String::new()),
-        (false, Some(0)) => (theme::GREEN, theme::GREEN, "✓ EXIT 0".to_owned()),
-        (false, Some(code)) => (theme::RED, theme::RED_LT, format!("✗ EXIT {code}")),
-        (false, None) => (theme::BORDER, theme::FAINT, String::new()),
-    };
-    let mut cmd_row = div()
-        .flex()
-        .items_center()
-        .child(div().text_color(theme::TEAL).child("❯ "))
-        .child(
-            div()
-                .text_color(theme::FG0)
-                .child(SharedString::from(b.command.clone())),
-        );
-    if b.running {
-        cmd_row = cmd_row.child(div().ml(px(2.0)).w(px(7.0)).h(px(13.0)).bg(theme::TEAL));
-    } else if !badge.is_empty() {
-        cmd_row = cmd_row.child(
-            div()
-                .ml_auto()
-                .text_size(px(8.0))
-                .font_family(theme::FONT_PIXEL)
-                .text_color(badge_color)
-                .child(SharedString::from(badge)),
-        );
-    }
-    let mut card = div()
-        .border_l_3()
-        .border_color(rail)
-        .pl(px(10.0))
-        .mb(px(12.0))
-        .child(cmd_row);
-    if !b.output.trim_end().is_empty() {
-        let mut out = div().flex().flex_col().text_color(theme::MUTED);
-        for line in b.output.trim_end().lines() {
-            out = out.child(div().child(SharedString::from(line.to_owned())));
-        }
-        card = card.child(out);
-    }
-    card
+/// The block cursor: a reverse-video cell at the PTY cursor position.
+fn cursor_span(ch: char) -> impl IntoElement {
+    let ch = if ch == ' ' || ch == '\0' { ' ' } else { ch };
+    div()
+        .bg(theme::TEAL)
+        .text_color(theme::BG_SURFACE)
+        .child(SharedString::from(ch.to_string()))
 }
 
 /// A coloured run of terminal text. `key` is `(fg, bg, bold, reverse)`.

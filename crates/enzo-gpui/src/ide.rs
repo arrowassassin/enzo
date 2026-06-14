@@ -90,6 +90,21 @@ impl IdeState {
         self.rebuild_tree();
     }
 
+    /// A sensible file to open on first entry so the editor isn't blank:
+    /// a friendly entry point if present, else the first top-level file.
+    pub fn default_file(&self) -> Option<PathBuf> {
+        for name in ["README.md", "README", "Cargo.toml", "package.json"] {
+            let p = self.root.join(name);
+            if p.is_file() {
+                return Some(p);
+            }
+        }
+        self.tree
+            .iter()
+            .find(|e| !e.is_dir)
+            .map(|e| e.path.clone())
+    }
+
     /// Read a file's content + detect its language. The caller (which has a
     /// `Window`) builds the editor entity from this.
     pub fn open_file(&mut self, path: &Path) {

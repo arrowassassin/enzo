@@ -553,7 +553,7 @@ pub fn connection_dialog(
                         .text_size(px(10.0))
                         .font_family(theme::FONT_PIXEL)
                         .text_color(theme::FG1)
-                        .child("NEW CONNECTION · sqlite / duckdb"),
+                        .child("NEW CONNECTION · SQLITE"),
                 )
                 .child(
                     div()
@@ -562,8 +562,13 @@ pub fn connection_dialog(
                         .gap(px(12.0))
                         .px(px(20.0))
                         .py(px(16.0))
+                        .child(text(
+                            "Open a local SQLite database file. Use :memory: for a scratch in-memory DB.",
+                            11.0,
+                            theme::FAINT,
+                        ))
                         .child(field("NAME", name))
-                        .child(field("DATABASE PATH", path))
+                        .child(field("DATABASE FILE  (.sqlite / .db / :memory:)", path))
                         .child(
                             div()
                                 .flex()

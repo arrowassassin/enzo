@@ -24,6 +24,8 @@ pub struct BrowserState {
     /// Latest decoded page screenshot.
     pub shot: Option<Arc<Image>>,
     pub loading: bool,
+    /// Last launch/navigate/screenshot error, if any (shown in the page area).
+    pub error: Option<String>,
 }
 
 impl BrowserState {
@@ -33,6 +35,7 @@ impl BrowserState {
             url: String::new(),
             shot: None,
             loading: false,
+            error: None,
         }
     }
 }
@@ -88,9 +91,24 @@ pub fn tab_bar(
         )
 }
 
-/// Page area: the rendered screenshot, or a placeholder.
+/// Page area: the rendered screenshot, an error, or a placeholder.
 pub fn content(b: &BrowserState) -> impl IntoElement {
-    let body = if let Some(shot) = &b.shot {
+    let body = if let Some(err) = &b.error {
+        div()
+            .flex()
+            .flex_col()
+            .size_full()
+            .items_center()
+            .justify_center()
+            .gap(px(8.0))
+            .child(text(&format!("✗ {err}"), 13.0, theme::RED_LT))
+            .child(text(
+                "the daemon's headless browser needs a Chrome/Chromium install",
+                11.0,
+                theme::FAINT,
+            ))
+            .into_any_element()
+    } else if let Some(shot) = &b.shot {
         img(ImageSource::Image(shot.clone()))
             .size_full()
             .into_any_element()

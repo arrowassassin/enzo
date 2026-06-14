@@ -157,6 +157,10 @@ pub enum Incoming {
     BrowserShot {
         png: Vec<u8>,
     },
+    /// A browser launch/navigate/screenshot failed (e.g. Chrome not installed).
+    BrowserError {
+        message: String,
+    },
     GitStatus {
         branch: String,
         entries: Vec<GitEntry>,
@@ -475,29 +479,46 @@ async fn handle_command(client: &Client, tx: &Sender<Incoming>, cmd: Command) {
             }
         }
         Command::BrowserLaunch { id, width, height } => {
-            let _ = client
+            if let Err(e) = client
                 .request(
                     "browser.launch",
                     json!({ "id": id, "width": width, "height": height }),
                 )
-                .await;
-        }
-        Command::BrowserNavigate { id, url } => {
-            let _ = client
-                .request("browser.navigate", json!({ "id": id, "url": url }))
-                .await;
-        }
-        Command::BrowserShot { id } => {
-            if let Ok(r) = client
-                .request("browser.screenshot", json!({ "id": id }))
                 .await
-                && let Some(b64) = r["png"].as_str()
-                && let Ok(png) =
-                    base64::Engine::decode(&base64::engine::general_purpose::STANDARD, b64)
             {
-                let _ = tx.send(Incoming::BrowserShot { png });
+                let _ = tx.send(Incoming::BrowserError {
+                    message: format!("launch failed: {e}"),
+                });
             }
         }
+        Command::BrowserNavigate { id, url } => {
+            if let Err(e) = client
+                .request("browser.navigate", json!({ "id": id, "url": url }))
+                .await
+            {
+                let _ = tx.send(Incoming::BrowserError {
+                    message: format!("navigate failed: {e}"),
+                });
+            }
+        }
+        Command::BrowserShot { id } => match client
+            .request("browser.screenshot", json!({ "id": id }))
+            .await
+        {
+            Ok(r) => {
+                if let Some(b64) = r["png"].as_str()
+                    && let Ok(png) =
+                        base64::Engine::decode(&base64::engine::general_purpose::STANDARD, b64)
+                {
+                    let _ = tx.send(Incoming::BrowserShot { png });
+                }
+            }
+            Err(e) => {
+                let _ = tx.send(Incoming::BrowserError {
+                    message: format!("screenshot failed: {e}"),
+                });
+            }
+        },
         Command::GitStatus { root } => {
             send_git_status(client, tx, &root).await;
         }
