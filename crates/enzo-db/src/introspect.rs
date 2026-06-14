@@ -56,23 +56,32 @@ pub fn quote_ident(name: &str) -> String {
 /// # Errors
 /// Returns an error if the query fails.
 pub async fn list_tables(pool: &AnyPool) -> anyhow::Result<Vec<TableInfo>> {
-    let batches = pool
-        .query(
-            "SELECT name, type FROM sqlite_master \
-             WHERE type IN ('table','view') AND name NOT LIKE 'sqlite_%' \
-             ORDER BY name",
-        )
-        .await?;
+    // DuckDB has no `sqlite_master`; use the SQL-standard information_schema.
+    let sql = if pool.driver_name() == "duckdb" {
+        "SELECT table_name, table_type FROM information_schema.tables \
+         WHERE table_schema NOT IN ('information_schema','pg_catalog') \
+         ORDER BY table_name"
+    } else {
+        "SELECT name, type FROM sqlite_master \
+         WHERE type IN ('table','view') AND name NOT LIKE 'sqlite_%' \
+         ORDER BY name"
+    };
+    let batches = pool.query(sql).await?;
     let json = batches_to_json(&batches)?;
     let rows = json["rows"].as_array().cloned().unwrap_or_default();
     Ok(rows
         .iter()
         .filter_map(|r| {
             let cols = r.as_array()?;
-            Some(TableInfo {
-                name: cols.first()?.as_str()?.to_owned(),
-                kind: cols.get(1)?.as_str()?.to_owned(),
-            })
+            let name = cols.first()?.as_str()?.to_owned();
+            // Normalise the kind ('BASE TABLE'/'VIEW' → 'table'/'view').
+            let raw = cols.get(1)?.as_str()?;
+            let kind = if raw.eq_ignore_ascii_case("view") {
+                "view".to_owned()
+            } else {
+                "table".to_owned()
+            };
+            Some(TableInfo { name, kind })
         })
         .collect())
 }
@@ -93,7 +102,8 @@ pub async fn columns(pool: &AnyPool, table: &str) -> anyhow::Result<Vec<ColumnDe
             let cols = r.as_array()?;
             let name = cols.get(1)?.as_str()?.to_owned();
             let sql_type = cols.get(2)?.as_str().unwrap_or("").to_owned();
-            let not_null = cols.get(3)?.as_str().is_some_and(|s| s == "1");
+            // SQLite reports 0/1; DuckDB reports false/true — accept both.
+            let not_null = cols.get(3)?.as_str().is_some_and(truthy);
             let default = cols
                 .get(4)
                 .and_then(|v| v.as_str())
@@ -102,7 +112,7 @@ pub async fn columns(pool: &AnyPool, table: &str) -> anyhow::Result<Vec<ColumnDe
             let primary_key = cols
                 .get(5)
                 .and_then(|v| v.as_str())
-                .is_some_and(|s| s != "0");
+                .is_some_and(truthy_pk);
             Some(ColumnDef {
                 name,
                 sql_type,
@@ -119,7 +129,27 @@ pub async fn columns(pool: &AnyPool, table: &str) -> anyhow::Result<Vec<ColumnDe
 /// # Errors
 /// Returns an error if the query fails.
 pub async fn indexes(pool: &AnyPool, table: &str) -> anyhow::Result<Vec<IndexInfo>> {
-    // PRAGMA index_list returns: seq, name, unique, origin, partial
+    if pool.driver_name() == "duckdb" {
+        // DuckDB exposes indexes via the duckdb_indexes() table function.
+        let sql = format!(
+            "SELECT index_name, is_unique FROM duckdb_indexes() WHERE table_name = '{}'",
+            table.replace('\'', "''")
+        );
+        let batches = pool.query(&sql).await?;
+        let json = batches_to_json(&batches)?;
+        let rows = json["rows"].as_array().cloned().unwrap_or_default();
+        return Ok(rows
+            .iter()
+            .filter_map(|r| {
+                let cols = r.as_array()?;
+                Some(IndexInfo {
+                    name: cols.first()?.as_str()?.to_owned(),
+                    unique: cols.get(1).and_then(|v| v.as_str()).is_some_and(truthy),
+                })
+            })
+            .collect());
+    }
+    // SQLite: PRAGMA index_list returns seq, name, unique, origin, partial.
     let sql = format!("PRAGMA index_list({})", quote_ident(table));
     let batches = pool.query(&sql).await?;
     let json = batches_to_json(&batches)?;
@@ -130,13 +160,20 @@ pub async fn indexes(pool: &AnyPool, table: &str) -> anyhow::Result<Vec<IndexInf
             let cols = r.as_array()?;
             Some(IndexInfo {
                 name: cols.get(1)?.as_str()?.to_owned(),
-                unique: cols
-                    .get(2)
-                    .and_then(|v| v.as_str())
-                    .is_some_and(|s| s == "1"),
+                unique: cols.get(2).and_then(|v| v.as_str()).is_some_and(truthy),
             })
         })
         .collect())
+}
+
+/// SQLite reports booleans as `0`/`1`, DuckDB as `false`/`true`.
+fn truthy(s: &str) -> bool {
+    s == "1" || s.eq_ignore_ascii_case("true")
+}
+
+/// Primary-key flag: SQLite uses the 1-based PK ordinal (`>0`), DuckDB a boolean.
+fn truthy_pk(s: &str) -> bool {
+    s.eq_ignore_ascii_case("true") || s.parse::<i64>().is_ok_and(|n| n > 0)
 }
 
 /// Return the primary-key column names of `table`, in declaration order.

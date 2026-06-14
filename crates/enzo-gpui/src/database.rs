@@ -2,18 +2,41 @@
 //! query results, errors and pagination all come over ATP; no demo data lives
 //! here. Styled faithful to `design/mockups/database.html`.
 
+use std::collections::{HashMap, HashSet};
+
 use gpui::{
     Context, Entity, IntoElement, ParentElement, SharedString, Styled, div, prelude::*, px,
 };
+use gpui_component::input::{Input, InputState};
 
 use crate::EnzoApp;
-use crate::atp::TableInfo;
+use crate::atp::{ColumnMeta, TableInfo};
 use crate::text_input::TextInput;
 use crate::theme;
 use crate::widgets::{icon, pixel_header, text};
 
 /// Default page size for table browsing.
 pub const PAGE_SIZE: u64 = 100;
+
+/// One query editor tab (Harlequin-style multi-buffer SQL workflow). Each tab
+/// owns a real multi-line code editor (tree-sitter SQL highlighting + LSP-ready).
+pub struct QueryTab {
+    /// Stable client-side id.
+    pub id: u32,
+    /// User-facing title (`Query 1`, …).
+    pub title: String,
+    /// The live SQL code editor for this tab.
+    pub editor: Entity<InputState>,
+}
+
+/// One executed statement in the query history.
+#[derive(Clone)]
+pub struct HistEntry {
+    pub sql: String,
+    pub ms: u64,
+    pub rows: usize,
+    pub ok: bool,
+}
 
 /// A live, daemon-backed connection mirrored on the client.
 pub struct DbConn {
@@ -44,6 +67,12 @@ pub struct DbState {
     pub pk_columns: Vec<String>,
     /// Cell `(row, col)` currently being edited, if any.
     pub editing: Option<(usize, usize)>,
+    /// Catalog: expanded table names (showing their columns).
+    pub expanded: HashSet<String>,
+    /// Catalog: cached column schema per table (lazily fetched on expand).
+    pub table_columns: HashMap<String, Vec<ColumnMeta>>,
+    /// Transient status line after an export (path or error).
+    pub export_msg: Option<String>,
 }
 
 impl DbState {
@@ -67,7 +96,15 @@ impl DbState {
             page: 0,
             pk_columns: Vec::new(),
             editing: None,
+            expanded: HashSet::new(),
+            table_columns: HashMap::new(),
+            export_msg: None,
         }
+    }
+
+    /// Store the fetched column schema for `table`.
+    pub fn set_table_columns(&mut self, table: String, columns: Vec<ColumnMeta>) {
+        self.table_columns.insert(table, columns);
     }
 
     pub fn active_conn_id(&self) -> Option<&str> {
@@ -111,6 +148,7 @@ impl DbState {
         self.browsing = browsing;
         self.pk_columns = pk_columns;
         self.editing = None;
+        self.export_msg = None;
     }
 
     /// Whether the current result set is an editable table view.
@@ -143,13 +181,19 @@ impl DbState {
         self.error = None;
         self.browsing = None;
         self.total = None;
+        self.expanded.clear();
+        self.table_columns.clear();
     }
 }
 
 // ── Render (state-driven) ───────────────────────────────────────────────────
 
-/// Connections + schema sidebar; clicking a table browses it.
-pub fn sidebar(db: &DbState, cx: &mut Context<EnzoApp>) -> impl IntoElement {
+/// Connections + schema + history sidebar; clicking a table browses it.
+pub fn sidebar(
+    db: &DbState,
+    history: &[HistEntry],
+    cx: &mut Context<EnzoApp>,
+) -> impl IntoElement {
     let new_conn = div()
         .id("db-new-conn")
         .cursor_pointer()
@@ -198,22 +242,106 @@ pub fn sidebar(db: &DbState, cx: &mut Context<EnzoApp>) -> impl IntoElement {
         }
         for t in &conn.tables {
             let name = t.name.clone();
+            let expanded = db.expanded.contains(&name);
             let browsing = db.browsing.as_deref() == Some(name.as_str());
             let color = if browsing { theme::TEAL } else { theme::BLUE };
+            let chevron = if expanded {
+                theme::ICON_CHEVRON_DOWN
+            } else {
+                theme::ICON_CHEVRON_RIGHT
+            };
+            // Table row: chevron toggles the column list; the name browses rows.
             col = col.child(
                 div()
-                    .id(SharedString::from(format!("tbl-{name}")))
+                    .flex()
+                    .items_center()
+                    .gap(px(3.0))
+                    .pl(px(12.0))
+                    .pr(px(10.0))
+                    .py(px(2.0))
+                    .child(
+                        div()
+                            .id(SharedString::from(format!("tblx-{name}")))
+                            .cursor_pointer()
+                            .child(icon(chevron, 10.0, theme::FAINT))
+                            .on_click(cx.listener({
+                                let n = name.clone();
+                                move |this, _, _, cx| this.toggle_table(n.clone(), cx)
+                            })),
+                    )
+                    .child(icon(theme::ICON_TABLE, 11.0, color))
+                    .child(
+                        div()
+                            .id(SharedString::from(format!("tbl-{name}")))
+                            .cursor_pointer()
+                            .child(text(&name, 11.0, color))
+                            .on_click(cx.listener({
+                                let n = name.clone();
+                                move |this, _, window, cx| this.browse_table(n.clone(), 0, window, cx)
+                            })),
+                    ),
+            );
+            // Expanded: one row per column with its type + PK / not-null marker.
+            if expanded {
+                if let Some(columns) = db.table_columns.get(&name) {
+                    for c in columns {
+                        let badge = if c.primary_key {
+                            " PK"
+                        } else if c.not_null {
+                            " ●"
+                        } else {
+                            ""
+                        };
+                        let cc = if c.primary_key { theme::TEAL } else { theme::FG2 };
+                        col = col.child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .pl(px(34.0))
+                                .pr(px(10.0))
+                                .py(px(1.0))
+                                .child(text(&format!("{}{}", c.name, badge), 10.5, cc))
+                                .child(div().ml_auto().child(text(
+                                    &c.sql_type.to_lowercase(),
+                                    9.0,
+                                    theme::FAINT,
+                                ))),
+                        );
+                    }
+                } else {
+                    col = col.child(
+                        div()
+                            .pl(px(34.0))
+                            .child(text("loading…", 10.0, theme::FAINT)),
+                    );
+                }
+            }
+        }
+    }
+
+    // ── History ──
+    if !history.is_empty() {
+        col = col.child(div().h(px(8.0))).child(pixel_header("HISTORY"));
+        for (i, h) in history.iter().take(20).enumerate() {
+            let mark = if h.ok { "✓" } else { "✗" };
+            let mark_color = if h.ok { theme::GREEN_LT } else { theme::RED_LT };
+            let one_line: String = h.sql.split_whitespace().collect::<Vec<_>>().join(" ");
+            let preview: String = one_line.chars().take(28).collect();
+            let sql = h.sql.clone();
+            col = col.child(
+                div()
+                    .id(SharedString::from(format!("hist-{i}")))
                     .cursor_pointer()
                     .flex()
                     .items_center()
                     .gap(px(5.0))
-                    .pl(px(24.0))
+                    .pl(px(12.0))
                     .pr(px(10.0))
                     .py(px(2.0))
-                    .child(icon(theme::ICON_TABLE, 11.0, color))
-                    .child(text(&name, 11.0, color))
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.browse_table(name.clone(), 0, cx);
+                    .child(text(mark, 9.0, mark_color))
+                    .child(text(&preview, 10.5, theme::FG2))
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.open_history(sql.clone(), window, cx);
                     })),
             );
         }
@@ -221,8 +349,14 @@ pub fn sidebar(db: &DbState, cx: &mut Context<EnzoApp>) -> impl IntoElement {
     col
 }
 
-/// Query-tab strip with the green RUN button.
-pub fn tab_bar(db: &DbState, cx: &mut Context<EnzoApp>) -> impl IntoElement {
+/// Query-tab strip: one chip per query buffer (click to switch, × to close),
+/// a `＋` to open a new buffer, and the green RUN button.
+pub fn tab_bar(
+    tabs: &[QueryTab],
+    active_tab: usize,
+    db: &DbState,
+    cx: &mut Context<EnzoApp>,
+) -> impl IntoElement {
     let run = div()
         .id("db-run")
         .cursor_pointer()
@@ -240,52 +374,86 @@ pub fn tab_bar(db: &DbState, cx: &mut Context<EnzoApp>) -> impl IntoElement {
             div()
                 .text_size(px(8.0))
                 .font_family(theme::FONT_PIXEL)
-                .child(if db.running {
-                    "RUNNING…"
-                } else {
-                    "RUN ⌘↵"
-                }),
+                .child(if db.running { "RUNNING…" } else { "RUN ⌘↵" }),
         )
-        .on_click(cx.listener(|this, _, _, cx| this.run_query(cx)));
-    div()
+        .on_click(cx.listener(|this, _, window, cx| this.run_query(window, cx)));
+
+    let mut bar = div()
         .flex()
         .items_center()
-        .gap(px(8.0))
+        .gap(px(6.0))
         .px(px(12.0))
         .py(px(7.0))
         .bg(theme::BG_BAR)
         .border_b_2()
-        .border_color(theme::BORDER)
-        .child(
-            div()
-                .px(px(8.0))
-                .py(px(4.0))
-                .rounded(px(3.0))
-                .bg(theme::BG_SURFACE)
-                .text_size(px(8.0))
-                .font_family(theme::FONT_PIXEL)
-                .text_color(theme::TEAL)
-                .child("query 1"),
-        )
-        .child(run)
+        .border_color(theme::BORDER);
+
+    for (i, tab) in tabs.iter().enumerate() {
+        let active = i == active_tab;
+        let id = tab.id;
+        let mut chip = div()
+            .id(SharedString::from(format!("qtab-{id}")))
+            .cursor_pointer()
+            .flex()
+            .items_center()
+            .gap(px(5.0))
+            .px(px(8.0))
+            .py(px(4.0))
+            .rounded(px(3.0))
+            .text_size(px(8.0))
+            .font_family(theme::FONT_PIXEL)
+            .on_click(cx.listener(move |this, _, window, cx| this.switch_tab(i, window, cx)));
+        if active {
+            chip = chip.bg(theme::BG_SURFACE).text_color(theme::TEAL);
+        } else {
+            chip = chip.text_color(theme::FG1);
+        }
+        chip = chip.child(SharedString::from(tab.title.clone()));
+        if tabs.len() > 1 {
+            chip = chip.child(
+                div()
+                    .id(SharedString::from(format!("qtab-x-{id}")))
+                    .cursor_pointer()
+                    .text_color(theme::FAINT)
+                    .child("×")
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.close_tab(i, window, cx);
+                    })),
+            );
+        }
+        bar = bar.child(chip);
+    }
+
+    bar.child(
+        div()
+            .id("db-new-tab")
+            .cursor_pointer()
+            .px(px(6.0))
+            .py(px(4.0))
+            .text_size(px(10.0))
+            .text_color(theme::PURPLE)
+            .child("＋")
+            .on_click(cx.listener(|this, _, window, cx| this.add_tab(window, cx))),
+    )
+    .child(run)
 }
 
-/// Editable SQL line + result grid (or error banner) from real state.
+/// Multi-line SQL editor (the active query buffer) + result grid (or error).
 pub fn content(
     db: &DbState,
-    sql_input: &Entity<TextInput>,
+    editor: &Entity<InputState>,
     cell_input: &Entity<TextInput>,
     cx: &mut Context<EnzoApp>,
 ) -> impl IntoElement {
     let sql_line = div()
-        .py(px(10.0))
-        .px(px(12.0))
-        .text_size(px(12.0))
-        .font_family(theme::FONT_MONO)
-        .text_color(theme::FG0)
+        .h(px(190.0))
+        .flex_none()
+        .flex()
+        .flex_col()
+        .text_size(px(13.0))
         .border_b_2()
         .border_color(theme::BORDER)
-        .child(sql_input.clone());
+        .child(Input::new(editor).h_full());
 
     let body = if let Some(err) = &db.error {
         div()
@@ -361,6 +529,7 @@ fn result_grid(
         for (ci, v) in row.iter().enumerate() {
             let cell_el: gpui::AnyElement = if db.editing == Some((ri, ci)) {
                 grid_cell()
+                    .key_context("DbCell")
                     .bg(theme::BG_CARD)
                     .font_family(theme::FONT_MONO)
                     .text_color(theme::FG0)
@@ -415,7 +584,9 @@ pub fn status_bar(db: &DbState, cx: &mut Context<EnzoApp>) -> impl IntoElement {
         if enabled {
             b = b
                 .cursor_pointer()
-                .on_click(cx.listener(move |this, _, _, cx| this.page_relative(delta, cx)));
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    this.page_relative(delta, window, cx)
+                }));
         }
         b
     };
@@ -432,6 +603,20 @@ pub fn status_bar(db: &DbState, cx: &mut Context<EnzoApp>) -> impl IntoElement {
             )
         },
     );
+    let export_btn = |id: &'static str, label: &'static str, json: bool, cx: &mut Context<EnzoApp>| {
+        div()
+            .id(id)
+            .cursor_pointer()
+            .px(px(6.0))
+            .py(px(2.0))
+            .rounded(px(3.0))
+            .bg(theme::BG_CARD)
+            .text_size(px(8.0))
+            .font_family(theme::FONT_PIXEL)
+            .text_color(theme::TEAL)
+            .child(label)
+            .on_click(cx.listener(move |this, _, _, cx| this.export_results(json, cx)))
+    };
     let mut bar = div()
         .flex()
         .items_center()
@@ -445,6 +630,14 @@ pub fn status_bar(db: &DbState, cx: &mut Context<EnzoApp>) -> impl IntoElement {
         .child(cell(format!("{} rows", db.rows.len()), theme::FG1));
     if let Some(ms) = db.query_ms {
         bar = bar.child(cell(format!("{ms}ms · Arrow stream"), theme::FG1));
+    }
+    if let Some(msg) = &db.export_msg {
+        bar = bar.child(cell(format!("⤓ {msg}"), theme::GREEN_LT));
+    }
+    if !db.columns.is_empty() {
+        bar = bar
+            .child(export_btn("exp-csv", "⤓ CSV", false, cx))
+            .child(export_btn("exp-json", "⤓ JSON", true, cx));
     }
     if let (Some(total), Some(table)) = (db.total, db.browsing.as_ref()) {
         let pages = total.div_ceil(PAGE_SIZE).max(1);
@@ -476,8 +669,50 @@ pub fn status_bar(db: &DbState, cx: &mut Context<EnzoApp>) -> impl IntoElement {
 pub fn connection_dialog(
     name: &Entity<TextInput>,
     path: &Entity<TextInput>,
+    driver: &str,
     cx: &mut Context<EnzoApp>,
 ) -> impl IntoElement {
+    // Driver selector chip.
+    let driver_chip = |id: &'static str, label: &'static str, value: &'static str, active: bool| {
+        let mut c = div()
+            .id(id)
+            .cursor_pointer()
+            .px(px(12.0))
+            .py(px(6.0))
+            .rounded(px(5.0))
+            .text_size(px(9.0))
+            .font_family(theme::FONT_PIXEL)
+            .child(label)
+            .on_click(cx.listener(move |this, _, _, cx| this.set_dialog_driver(value, cx)));
+        if active {
+            c = c.bg(theme::TEAL).text_color(theme::GREEN_INK);
+        } else {
+            c = c
+                .bg(theme::BG_CARD)
+                .border_1()
+                .border_color(theme::BORDER)
+                .text_color(theme::FG1);
+        }
+        c
+    };
+    let driver_row = div()
+        .flex()
+        .flex_col()
+        .child(
+            div()
+                .pb(px(5.0))
+                .text_size(px(8.0))
+                .font_family(theme::FONT_PIXEL)
+                .text_color(theme::PURPLE)
+                .child("DRIVER"),
+        )
+        .child(
+            div()
+                .flex()
+                .gap(px(8.0))
+                .child(driver_chip("drv-sqlite", "SQLITE", "sqlite", driver == "sqlite"))
+                .child(driver_chip("drv-duckdb", "DUCKDB", "duckdb", driver == "duckdb")),
+        );
     // A captioned, framed input field (`.cap` + `.inp` in the mockup).
     let field = |cap: &str, input: &Entity<TextInput>| {
         div()
@@ -553,7 +788,7 @@ pub fn connection_dialog(
                         .text_size(px(10.0))
                         .font_family(theme::FONT_PIXEL)
                         .text_color(theme::FG1)
-                        .child("NEW CONNECTION · sqlite / duckdb"),
+                        .child("NEW CONNECTION"),
                 )
                 .child(
                     div()
@@ -562,8 +797,14 @@ pub fn connection_dialog(
                         .gap(px(12.0))
                         .px(px(20.0))
                         .py(px(16.0))
+                        .child(text(
+                            "Open a local database file. Use :memory: for a scratch in-memory DB.",
+                            11.0,
+                            theme::FAINT,
+                        ))
+                        .child(driver_row)
                         .child(field("NAME", name))
-                        .child(field("DATABASE PATH", path))
+                        .child(field("DATABASE FILE  (.sqlite / .db / .duckdb / :memory:)", path))
                         .child(
                             div()
                                 .flex()

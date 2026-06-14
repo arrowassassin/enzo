@@ -8,6 +8,7 @@
 //! [`Driver`] trait and are registered at startup.
 
 pub mod driver;
+pub mod duckdb;
 pub mod introspect;
 pub mod paginate;
 pub mod pool;

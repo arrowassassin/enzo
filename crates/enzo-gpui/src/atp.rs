@@ -30,6 +30,60 @@ pub struct TableInfo {
     pub kind: String,
 }
 
+/// One column in a table's schema (for the expandable catalog).
+#[derive(Clone, Debug)]
+pub struct ColumnMeta {
+    pub name: String,
+    pub sql_type: String,
+    pub primary_key: bool,
+    pub not_null: bool,
+}
+
+/// One LSP diagnostic (a squiggle), in LSP 0-based line/character coordinates.
+#[derive(Clone, Debug)]
+pub struct DiagItem {
+    pub start_line: u32,
+    pub start_col: u32,
+    pub end_line: u32,
+    pub end_col: u32,
+    pub message: String,
+    /// LSP severity: 1=Error, 2=Warning, 3=Info, 4=Hint.
+    pub severity: u8,
+}
+
+/// A debug call-stack frame.
+#[derive(Clone, Debug)]
+pub struct StackFrame {
+    pub id: u64,
+    pub name: String,
+    pub path: String,
+    pub line: u32,
+}
+
+/// A scope (Locals/Globals/…) at a stack frame.
+#[derive(Clone, Debug)]
+pub struct DapScope {
+    pub name: String,
+    pub reference: u64,
+}
+
+/// A debugger variable (name/value/type + child reference for expansion).
+#[derive(Clone, Debug)]
+pub struct DapVar {
+    pub name: String,
+    pub value: String,
+    pub ty: String,
+    pub reference: u64,
+}
+
+/// Which step a debug step command performs.
+#[derive(Clone, Copy, Debug)]
+pub enum DapStepKind {
+    Over,
+    In,
+    Out,
+}
+
 /// A tree-sitter highlight span (byte range + capture name).
 #[derive(Clone, Debug)]
 pub struct HlSpan {
@@ -52,6 +106,8 @@ pub enum Command {
     DbConnect {
         conn: String,
         path: String,
+        /// Driver to use (`"sqlite"` | `"duckdb"`; empty → inferred from path).
+        driver: String,
         seed: bool,
     },
     DbQuery {
@@ -63,6 +119,11 @@ pub enum Command {
         table: String,
         page: u64,
         size: u64,
+    },
+    /// Fetch the column schema of `table` (for the expandable catalog).
+    DbColumns {
+        conn: String,
+        table: String,
     },
     DbUpdate {
         conn: String,
@@ -110,6 +171,13 @@ pub enum Command {
     BrowserShot {
         id: String,
     },
+    /// Generic CDP passthrough (mouse/keyboard input, screencast control, …).
+    /// `method`/`params` are forwarded verbatim to the page's CDP session.
+    BrowserInput {
+        id: String,
+        method: String,
+        params: serde_json::Value,
+    },
     GitStatus {
         root: String,
     },
@@ -121,6 +189,69 @@ pub enum Command {
     GitCommit {
         root: String,
         message: String,
+    },
+    /// Start a language server (`id` per language) and run the LSP `initialize`
+    /// handshake rooted at `root_uri`. Processed before any later `LspDidOpen`.
+    LspStart {
+        id: String,
+        cmd: String,
+        args: Vec<String>,
+        root_uri: String,
+    },
+    /// Notify the server that `uri` was opened (`textDocument/didOpen`).
+    LspDidOpen {
+        id: String,
+        uri: String,
+        language_id: String,
+        version: i64,
+        text: String,
+    },
+    /// Notify the server of a full-text edit (`textDocument/didChange`).
+    LspDidChange {
+        id: String,
+        uri: String,
+        version: i64,
+        text: String,
+    },
+    /// Start a debug adapter and run initialize → launch (deferred response).
+    DapStart {
+        id: String,
+        cmd: String,
+        args: Vec<String>,
+        adapter_id: String,
+        launch: serde_json::Value,
+    },
+    DapSetBreakpoints {
+        id: String,
+        path: String,
+        lines: Vec<u32>,
+    },
+    DapConfigDone {
+        id: String,
+    },
+    DapStackTrace {
+        id: String,
+        thread_id: u64,
+    },
+    DapScopes {
+        id: String,
+        frame_id: u64,
+    },
+    DapVariables {
+        id: String,
+        reference: u64,
+    },
+    DapContinue {
+        id: String,
+        thread_id: u64,
+    },
+    DapStep {
+        id: String,
+        thread_id: u64,
+        kind: DapStepKind,
+    },
+    DapStop {
+        id: String,
     },
 }
 
@@ -147,6 +278,11 @@ pub enum Incoming {
         /// Primary-key column names (empty for ad-hoc queries → not editable).
         pk_columns: Vec<String>,
     },
+    DbColumns {
+        conn: String,
+        table: String,
+        columns: Vec<ColumnMeta>,
+    },
     DbError {
         message: String,
     },
@@ -156,6 +292,15 @@ pub enum Incoming {
     },
     BrowserShot {
         png: Vec<u8>,
+    },
+    /// A live screencast frame (JPEG) plus the CDP `session_id` to ack.
+    BrowserFrame {
+        jpeg: Vec<u8>,
+        session_id: i64,
+    },
+    /// A browser launch/navigate/screenshot failed (e.g. Chrome not installed).
+    BrowserError {
+        message: String,
     },
     GitStatus {
         branch: String,
@@ -178,6 +323,34 @@ pub enum Incoming {
     },
     BlockClear {
         id: String,
+    },
+    /// Diagnostics for `uri` from `textDocument/publishDiagnostics`.
+    LspDiagnostics {
+        uri: String,
+        items: Vec<DiagItem>,
+    },
+    /// The adapter is ready for breakpoint configuration (`initialized` event).
+    DapInitialized,
+    /// Execution stopped (breakpoint/step/entry) on `thread_id`.
+    DapStopped {
+        thread_id: u64,
+        reason: String,
+    },
+    DapContinued,
+    DapOutput {
+        category: String,
+        text: String,
+    },
+    DapTerminated,
+    DapStackTraceResult {
+        frames: Vec<StackFrame>,
+    },
+    DapScopesResult {
+        scopes: Vec<DapScope>,
+    },
+    DapVariablesResult {
+        reference: u64,
+        vars: Vec<DapVar>,
     },
 }
 
@@ -213,6 +386,7 @@ pub fn connect() -> Atp {
 type PendingMap = Arc<Mutex<HashMap<u64, oneshot::Sender<Value>>>>;
 
 /// The async client: writer + pending response map.
+#[derive(Clone)]
 struct Client {
     writer: Arc<Mutex<tokio::net::unix::OwnedWriteHalf>>,
     pending: PendingMap,
@@ -291,9 +465,17 @@ async fn run(sock: String, tx: Sender<Incoming>, mut cmd_rx: mpsc::UnboundedRece
 #[allow(clippy::too_many_lines)]
 async fn handle_command(client: &Client, tx: &Sender<Incoming>, cmd: Command) {
     match cmd {
-        Command::DbConnect { conn, path, seed } => {
+        Command::DbConnect {
+            conn,
+            path,
+            driver,
+            seed,
+        } => {
             match client
-                .request("db.connect", json!({ "id": conn, "path": path }))
+                .request(
+                    "db.connect",
+                    json!({ "id": conn, "path": path, "driver": driver }),
+                )
                 .await
             {
                 Ok(r) => {
@@ -390,6 +572,31 @@ async fn handle_command(client: &Client, tx: &Sender<Incoming>, cmd: Command) {
                 }
             }
         }
+        Command::DbColumns { conn, table } => {
+            if let Ok(r) = client
+                .request("db.schema.columns", json!({ "conn": conn, "table": table }))
+                .await
+            {
+                let columns = r["columns"]
+                    .as_array()
+                    .map(|a| {
+                        a.iter()
+                            .map(|c| ColumnMeta {
+                                name: c["name"].as_str().unwrap_or_default().to_owned(),
+                                sql_type: c["sql_type"].as_str().unwrap_or_default().to_owned(),
+                                primary_key: c["primary_key"].as_bool().unwrap_or(false),
+                                not_null: c["not_null"].as_bool().unwrap_or(false),
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                let _ = tx.send(Incoming::DbColumns {
+                    conn,
+                    table,
+                    columns,
+                });
+            }
+        }
         Command::DbUpdate {
             conn,
             table,
@@ -475,29 +682,55 @@ async fn handle_command(client: &Client, tx: &Sender<Incoming>, cmd: Command) {
             }
         }
         Command::BrowserLaunch { id, width, height } => {
-            let _ = client
+            if let Err(e) = client
                 .request(
                     "browser.launch",
                     json!({ "id": id, "width": width, "height": height }),
                 )
-                .await;
-        }
-        Command::BrowserNavigate { id, url } => {
-            let _ = client
-                .request("browser.navigate", json!({ "id": id, "url": url }))
-                .await;
-        }
-        Command::BrowserShot { id } => {
-            if let Ok(r) = client
-                .request("browser.screenshot", json!({ "id": id }))
                 .await
-                && let Some(b64) = r["png"].as_str()
-                && let Ok(png) =
-                    base64::Engine::decode(&base64::engine::general_purpose::STANDARD, b64)
             {
-                let _ = tx.send(Incoming::BrowserShot { png });
+                let _ = tx.send(Incoming::BrowserError {
+                    message: format!("launch failed: {e}"),
+                });
             }
         }
+        Command::BrowserNavigate { id, url } => {
+            if let Err(e) = client
+                .request("browser.navigate", json!({ "id": id, "url": url }))
+                .await
+            {
+                let _ = tx.send(Incoming::BrowserError {
+                    message: format!("navigate failed: {e}"),
+                });
+            }
+        }
+        Command::BrowserInput { id, method, params } => {
+            // Fire-and-forget CDP call; errors (e.g. closed page) are non-fatal.
+            let _ = client
+                .request(
+                    "browser.input",
+                    json!({ "id": id, "method": method, "params": params }),
+                )
+                .await;
+        }
+        Command::BrowserShot { id } => match client
+            .request("browser.screenshot", json!({ "id": id }))
+            .await
+        {
+            Ok(r) => {
+                if let Some(b64) = r["png"].as_str()
+                    && let Ok(png) =
+                        base64::Engine::decode(&base64::engine::general_purpose::STANDARD, b64)
+                {
+                    let _ = tx.send(Incoming::BrowserShot { png });
+                }
+            }
+            Err(e) => {
+                let _ = tx.send(Incoming::BrowserError {
+                    message: format!("screenshot failed: {e}"),
+                });
+            }
+        },
         Command::GitStatus { root } => {
             send_git_status(client, tx, &root).await;
         }
@@ -522,7 +755,247 @@ async fn handle_command(client: &Client, tx: &Sender<Incoming>, cmd: Command) {
             }
             send_git_status(client, tx, &root).await;
         }
+        Command::LspStart {
+            id,
+            cmd,
+            args,
+            root_uri,
+        } => {
+            // Spawn the server; if the binary is missing this fails and we just
+            // skip LSP for this language (the editor still works, no squiggles).
+            if client
+                .request("lsp.start", json!({ "id": id, "cmd": cmd, "args": args }))
+                .await
+                .is_err()
+            {
+                return;
+            }
+            let init = json!({
+                "processId": null,
+                "rootUri": root_uri,
+                "capabilities": {
+                    "textDocument": {
+                        "synchronization": { "didSave": false, "dynamicRegistration": false },
+                        "publishDiagnostics": { "relatedInformation": false }
+                    }
+                }
+            });
+            let _ = client
+                .request(
+                    "lsp.request",
+                    json!({ "id": id, "method": "initialize", "params": init }),
+                )
+                .await;
+            let _ = client
+                .request(
+                    "lsp.notify",
+                    json!({ "id": id, "method": "initialized", "params": {} }),
+                )
+                .await;
+        }
+        Command::LspDidOpen {
+            id,
+            uri,
+            language_id,
+            version,
+            text,
+        } => {
+            let params = json!({
+                "textDocument": {
+                    "uri": uri, "languageId": language_id, "version": version, "text": text
+                }
+            });
+            let _ = client
+                .request(
+                    "lsp.notify",
+                    json!({ "id": id, "method": "textDocument/didOpen", "params": params }),
+                )
+                .await;
+        }
+        Command::LspDidChange {
+            id,
+            uri,
+            version,
+            text,
+        } => {
+            let params = json!({
+                "textDocument": { "uri": uri, "version": version },
+                "contentChanges": [ { "text": text } ]
+            });
+            let _ = client
+                .request(
+                    "lsp.notify",
+                    json!({ "id": id, "method": "textDocument/didChange", "params": params }),
+                )
+                .await;
+        }
+        // ── DAP ───────────────────────────────────────────────────────────
+        // DAP requests run on spawned tasks so the deferred `launch` response
+        // doesn't block setBreakpoints/configurationDone on the command loop.
+        Command::DapStart {
+            id,
+            cmd,
+            args,
+            adapter_id,
+            launch,
+        } => {
+            let c = client.clone();
+            tokio::spawn(async move {
+                if c.request("dap.start", json!({ "id": id, "cmd": cmd, "args": args }))
+                    .await
+                    .is_err()
+                {
+                    return;
+                }
+                let _ = dap_req(
+                    &c,
+                    &id,
+                    "initialize",
+                    json!({
+                        "clientID": "enzo", "adapterID": adapter_id,
+                        "linesStartAt1": true, "columnsStartAt1": true,
+                        "pathFormat": "path", "supportsRunInTerminalRequest": false
+                    }),
+                )
+                .await;
+                // Deferred until configurationDone — only blocks this task.
+                let _ = dap_req(&c, &id, "launch", launch).await;
+            });
+        }
+        Command::DapSetBreakpoints { id, path, lines } => {
+            let c = client.clone();
+            tokio::spawn(async move {
+                let bps: Vec<Value> = lines.iter().map(|l| json!({ "line": l })).collect();
+                let _ = dap_req(
+                    &c,
+                    &id,
+                    "setBreakpoints",
+                    json!({ "source": { "path": path }, "breakpoints": bps }),
+                )
+                .await;
+            });
+        }
+        Command::DapConfigDone { id } => {
+            let c = client.clone();
+            tokio::spawn(async move {
+                let _ = dap_req(&c, &id, "configurationDone", json!({})).await;
+            });
+        }
+        Command::DapStackTrace { id, thread_id } => {
+            let c = client.clone();
+            let tx = tx.clone();
+            tokio::spawn(async move {
+                if let Ok(body) = dap_req(
+                    &c,
+                    &id,
+                    "stackTrace",
+                    json!({ "threadId": thread_id, "startFrame": 0, "levels": 20 }),
+                )
+                .await
+                {
+                    let frames = body["stackFrames"]
+                        .as_array()
+                        .map(|a| {
+                            a.iter()
+                                .map(|fr| StackFrame {
+                                    id: fr["id"].as_u64().unwrap_or(0),
+                                    name: fr["name"].as_str().unwrap_or_default().to_owned(),
+                                    path: fr["source"]["path"].as_str().unwrap_or_default().to_owned(),
+                                    line: u32::try_from(fr["line"].as_u64().unwrap_or(0)).unwrap_or(0),
+                                })
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    let _ = tx.send(Incoming::DapStackTraceResult { frames });
+                }
+            });
+        }
+        Command::DapScopes { id, frame_id } => {
+            let c = client.clone();
+            let tx = tx.clone();
+            tokio::spawn(async move {
+                if let Ok(body) =
+                    dap_req(&c, &id, "scopes", json!({ "frameId": frame_id })).await
+                {
+                    let scopes = body["scopes"]
+                        .as_array()
+                        .map(|a| {
+                            a.iter()
+                                .map(|s| DapScope {
+                                    name: s["name"].as_str().unwrap_or_default().to_owned(),
+                                    reference: s["variablesReference"].as_u64().unwrap_or(0),
+                                })
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    let _ = tx.send(Incoming::DapScopesResult { scopes });
+                }
+            });
+        }
+        Command::DapVariables { id, reference } => {
+            let c = client.clone();
+            let tx = tx.clone();
+            tokio::spawn(async move {
+                if let Ok(body) = dap_req(
+                    &c,
+                    &id,
+                    "variables",
+                    json!({ "variablesReference": reference }),
+                )
+                .await
+                {
+                    let vars = body["variables"]
+                        .as_array()
+                        .map(|a| {
+                            a.iter()
+                                .map(|v| DapVar {
+                                    name: v["name"].as_str().unwrap_or_default().to_owned(),
+                                    value: v["value"].as_str().unwrap_or_default().to_owned(),
+                                    ty: v["type"].as_str().unwrap_or_default().to_owned(),
+                                    reference: v["variablesReference"].as_u64().unwrap_or(0),
+                                })
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    let _ = tx.send(Incoming::DapVariablesResult { reference, vars });
+                }
+            });
+        }
+        Command::DapContinue { id, thread_id } => {
+            let c = client.clone();
+            tokio::spawn(async move {
+                let _ = dap_req(&c, &id, "continue", json!({ "threadId": thread_id })).await;
+            });
+        }
+        Command::DapStep {
+            id,
+            thread_id,
+            kind,
+        } => {
+            let command = match kind {
+                DapStepKind::Over => "next",
+                DapStepKind::In => "stepIn",
+                DapStepKind::Out => "stepOut",
+            };
+            let c = client.clone();
+            tokio::spawn(async move {
+                let _ = dap_req(&c, &id, command, json!({ "threadId": thread_id })).await;
+            });
+        }
+        Command::DapStop { id } => {
+            let _ = client.request("dap.stop", json!({ "id": id })).await;
+        }
     }
+}
+
+/// Forward a single DAP request through the daemon and return the adapter body.
+async fn dap_req(client: &Client, id: &str, command: &str, arguments: Value) -> anyhow::Result<Value> {
+    client
+        .request(
+            "dap.request",
+            json!({ "id": id, "command": command, "arguments": arguments }),
+        )
+        .await
 }
 
 /// Fetch branch + status and push a [`Incoming::GitStatus`].
@@ -695,6 +1168,69 @@ fn handle_notification(method: &str, v: &Value, tx: &Sender<Incoming>) {
         "block.clear" => {
             if let Some(id) = p["id"].as_str() {
                 let _ = tx.send(Incoming::BlockClear { id: id.to_owned() });
+            }
+        }
+        "browser.event" => {
+            // Live screencast frames arrive as CDP Page.screencastFrame events.
+            if p["method"].as_str() == Some("Page.screencastFrame") {
+                let ep = &p["params"];
+                if let Some(b64) = ep["data"].as_str()
+                    && let Ok(jpeg) =
+                        base64::Engine::decode(&base64::engine::general_purpose::STANDARD, b64)
+                {
+                    let session_id = ep["sessionId"].as_i64().unwrap_or(0);
+                    let _ = tx.send(Incoming::BrowserFrame { jpeg, session_id });
+                }
+            }
+        }
+        "dap.event" => {
+            let event = p["event"].as_str().unwrap_or("");
+            let body = &p["body"];
+            let inc = match event {
+                "initialized" => Some(Incoming::DapInitialized),
+                "stopped" => Some(Incoming::DapStopped {
+                    thread_id: body["threadId"].as_u64().unwrap_or(0),
+                    reason: body["reason"].as_str().unwrap_or_default().to_owned(),
+                }),
+                "continued" => Some(Incoming::DapContinued),
+                "output" => Some(Incoming::DapOutput {
+                    category: body["category"].as_str().unwrap_or("console").to_owned(),
+                    text: body["output"].as_str().unwrap_or_default().to_owned(),
+                }),
+                "terminated" | "exited" => Some(Incoming::DapTerminated),
+                _ => None,
+            };
+            if let Some(inc) = inc {
+                let _ = tx.send(inc);
+            }
+        }
+        "lsp.notification" => {
+            if p["method"].as_str() == Some("textDocument/publishDiagnostics") {
+                let dp = &p["params"];
+                let uri = dp["uri"].as_str().unwrap_or_default().to_owned();
+                let items = dp["diagnostics"]
+                    .as_array()
+                    .map(|a| {
+                        a.iter()
+                            .map(|d| {
+                                let r = &d["range"];
+                                let n = |path: &Value| {
+                                    u32::try_from(path.as_u64().unwrap_or(0)).unwrap_or(0)
+                                };
+                                DiagItem {
+                                    start_line: n(&r["start"]["line"]),
+                                    start_col: n(&r["start"]["character"]),
+                                    end_line: n(&r["end"]["line"]),
+                                    end_col: n(&r["end"]["character"]),
+                                    message: d["message"].as_str().unwrap_or_default().to_owned(),
+                                    severity: u8::try_from(d["severity"].as_u64().unwrap_or(1))
+                                        .unwrap_or(1),
+                                }
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                let _ = tx.send(Incoming::LspDiagnostics { uri, items });
             }
         }
         other => log::debug!("unknown notification: {other}"),

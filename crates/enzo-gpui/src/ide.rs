@@ -90,6 +90,21 @@ impl IdeState {
         self.rebuild_tree();
     }
 
+    /// A sensible file to open on first entry so the editor isn't blank:
+    /// a friendly entry point if present, else the first top-level file.
+    pub fn default_file(&self) -> Option<PathBuf> {
+        for name in ["README.md", "README", "Cargo.toml", "package.json"] {
+            let p = self.root.join(name);
+            if p.is_file() {
+                return Some(p);
+            }
+        }
+        self.tree
+            .iter()
+            .find(|e| !e.is_dir)
+            .map(|e| e.path.clone())
+    }
+
     /// Read a file's content + detect its language. The caller (which has a
     /// `Window`) builds the editor entity from this.
     pub fn open_file(&mut self, path: &Path) {
@@ -326,38 +341,6 @@ fn source_control(
     )
 }
 
-/// Tab bar showing the open file.
-pub fn tab_bar(ide: &IdeState) -> impl IntoElement {
-    let name = ide
-        .open_path
-        .as_ref()
-        .and_then(|p| p.file_name())
-        .map_or_else(
-            || "no file".to_owned(),
-            |n| n.to_string_lossy().into_owned(),
-        );
-    div()
-        .flex()
-        .items_center()
-        .gap(px(6.0))
-        .px(px(12.0))
-        .py(px(7.0))
-        .bg(theme::BG_BAR)
-        .border_b_2()
-        .border_color(theme::BORDER)
-        .child(
-            div()
-                .px(px(8.0))
-                .py(px(4.0))
-                .rounded(px(3.0))
-                .bg(theme::BG_SURFACE)
-                .text_size(px(8.0))
-                .font_family(theme::FONT_PIXEL)
-                .text_color(theme::TEAL)
-                .child(SharedString::from(name)),
-        )
-}
-
 /// Editor: the gpui-component CodeEditor (ropey + tree-sitter + LSP), or a
 /// placeholder / error.
 pub fn content(ide: &IdeState) -> impl IntoElement {
@@ -372,9 +355,11 @@ pub fn content(ide: &IdeState) -> impl IntoElement {
     }
     match &ide.editor {
         Some(editor) => div()
+            .flex()
+            .flex_col()
             .size_full()
             .text_size(px(12.5))
-            .child(Input::new(editor))
+            .child(Input::new(editor).h_full())
             .into_any_element(),
         None => div()
             .flex()

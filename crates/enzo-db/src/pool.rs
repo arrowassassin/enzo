@@ -7,6 +7,7 @@
 use std::sync::Arc;
 
 use crate::driver::{Driver, MemDriver, QueryResult};
+use crate::duckdb::DuckDbDriver;
 use crate::sqlite::SqliteDriver;
 
 /// A cheaply-cloneable handle to a shared driver instance.
@@ -57,6 +58,8 @@ impl<D: Driver> Pool<D> {
 pub enum AnyPool {
     /// `SQLite` connection pool.
     Sqlite(Pool<SqliteDriver>),
+    /// `DuckDB` connection pool.
+    DuckDb(Pool<DuckDbDriver>),
     /// In-memory mock pool (testing / demo).
     Mem(Pool<MemDriver>),
 }
@@ -65,6 +68,25 @@ impl AnyPool {
     /// Open a `SQLite` pool at `path` (use `":memory:"` for a transient DB).
     pub fn sqlite(path: &str) -> anyhow::Result<Self> {
         Ok(Self::Sqlite(Pool::new(SqliteDriver::open(path)?)))
+    }
+
+    /// Open a `DuckDB` pool at `path` (use `":memory:"` for a transient DB).
+    pub fn duckdb(path: &str) -> anyhow::Result<Self> {
+        Ok(Self::DuckDb(Pool::new(DuckDbDriver::open(path)?)))
+    }
+
+    /// Open a pool for the named `driver` (`"sqlite"` | `"duckdb"`) at `path`.
+    /// An unknown/empty driver name is inferred from the path extension, then
+    /// falls back to `SQLite`.
+    pub fn open(driver: &str, path: &str) -> anyhow::Result<Self> {
+        match driver.to_ascii_lowercase().as_str() {
+            "duckdb" | "duck" => Self::duckdb(path),
+            "sqlite" | "sqlite3" => Self::sqlite(path),
+            _ => match driver_from_path(path) {
+                "duckdb" => Self::duckdb(path),
+                _ => Self::sqlite(path),
+            },
+        }
     }
 
     /// Create an in-memory mock pool.
@@ -77,6 +99,7 @@ impl AnyPool {
     pub async fn query(&self, sql: &str) -> anyhow::Result<QueryResult> {
         match self {
             Self::Sqlite(p) => p.query(sql).await,
+            Self::DuckDb(p) => p.query(sql).await,
             Self::Mem(p) => p.query(sql).await,
         }
     }
@@ -85,6 +108,7 @@ impl AnyPool {
     pub async fn execute(&self, sql: &str) -> anyhow::Result<u64> {
         match self {
             Self::Sqlite(p) => p.execute(sql).await,
+            Self::DuckDb(p) => p.execute(sql).await,
             Self::Mem(p) => p.execute(sql).await,
         }
     }
@@ -94,8 +118,19 @@ impl AnyPool {
     pub fn driver_name(&self) -> &'static str {
         match self {
             Self::Sqlite(p) => p.driver_name(),
+            Self::DuckDb(p) => p.driver_name(),
             Self::Mem(p) => p.driver_name(),
         }
+    }
+}
+
+/// Infer a driver name from a database file's extension.
+fn driver_from_path(path: &str) -> &'static str {
+    let lower = path.to_ascii_lowercase();
+    if lower.ends_with(".duckdb") || lower.ends_with(".ddb") {
+        "duckdb"
+    } else {
+        "sqlite"
     }
 }
 

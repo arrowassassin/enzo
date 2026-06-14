@@ -55,6 +55,7 @@ use anyhow::Context;
 use enzo_browser::browser::Browser;
 use enzo_browser::cdp::CdpEvent;
 use enzo_db::pool::AnyPool;
+use enzo_editor::dap::{DapClient, DapEvent};
 use enzo_editor::lsp::{LspClient, LspNotification};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -135,14 +136,22 @@ pub async fn handle_connection(stream: UnixStream, state: DaemonState) -> anyhow
         }
         debug!(line = %line, "← ATP");
 
-        let response = match serde_json::from_str::<Request>(&line) {
-            Ok(req) => dispatch(req, &state, Arc::clone(&writer)).await,
-            Err(e) => Response::err(Value::Null, -32700, format!("parse error: {e}")),
-        };
-
-        send_line(&writer, &response)
-            .await
-            .context("write response")?;
+        // Dispatch each request on its own task so a request whose response is
+        // legitimately deferred by a downstream process — notably DAP `launch`,
+        // which only completes after `configurationDone` — does not block the
+        // connection's other requests. Responses carry their JSON-RPC id, so
+        // out-of-order completion is correct.
+        let state = state.clone();
+        let writer = Arc::clone(&writer);
+        tokio::spawn(async move {
+            let response = match serde_json::from_str::<Request>(&line) {
+                Ok(req) => dispatch(req, &state, Arc::clone(&writer)).await,
+                Err(e) => Response::err(Value::Null, -32700, format!("parse error: {e}")),
+            };
+            if let Err(e) = send_line(&writer, &response).await {
+                warn!("ATP write response: {e:#}");
+            }
+        });
     }
 
     Ok(())
@@ -190,6 +199,10 @@ async fn dispatch(req: Request, state: &DaemonState, writer: SharedWriter) -> Re
         "lsp.request" => lsp_request(id, p, state).await,
         "lsp.notify" => lsp_notify(id, p, state).await,
         "lsp.stop" => lsp_stop(id, p, state).await,
+        // ── dap.* (debug adapter pass-through) ──────────────────────────────────
+        "dap.start" => dap_start(id, p, state, writer).await,
+        "dap.request" => dap_request(id, p, state).await,
+        "dap.stop" => dap_stop(id, p, state).await,
 
         // ── browser.* ─────────────────────────────────────────────────────────
         "browser.connect" => browser_connect(id, p, state, writer).await,
@@ -348,7 +361,10 @@ async fn db_connect(id: Value, p: &Value, state: &DaemonState) -> Response {
         return Response::err(id, -32602, "missing id");
     };
     let path = p["path"].as_str().unwrap_or(":memory:");
-    match AnyPool::sqlite(path) {
+    // Optional explicit driver ("sqlite" | "duckdb"); otherwise inferred from
+    // the path extension (.duckdb/.ddb → DuckDB), defaulting to SQLite.
+    let driver = p["driver"].as_str().unwrap_or("");
+    match AnyPool::open(driver, path) {
         Ok(pool) => {
             let driver = pool.driver_name();
             state.insert_db_conn(conn_id.to_owned(), pool).await;
@@ -499,6 +515,82 @@ async fn lsp_stop(id: Value, p: &Value, state: &DaemonState) -> Response {
     match client.shutdown().await {
         Ok(()) | Err(_) => Response::ok(id, json!({})),
     }
+}
+
+// ── DAP handlers (thin pass-through, mirrors lsp_start/request/stop) ──────────
+
+/// Spawn a debug adapter under `id` and stream its events as `dap.event`.
+async fn dap_start(id: Value, p: &Value, state: &DaemonState, writer: SharedWriter) -> Response {
+    let Some(dap_id) = p["id"].as_str() else {
+        return Response::err(id, -32602, "missing id");
+    };
+    let Some(cmd) = p["cmd"].as_str() else {
+        return Response::err(id, -32602, "missing cmd");
+    };
+    let args: Vec<String> = p["args"]
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str().map(str::to_owned))
+                .collect()
+        })
+        .unwrap_or_default();
+    let args_ref: Vec<&str> = args.iter().map(String::as_str).collect();
+
+    let dap_id_owned = dap_id.to_owned();
+    let on_event = {
+        let w = Arc::clone(&writer);
+        move |ev: DapEvent| {
+            let n = Notification {
+                jsonrpc: "2.0",
+                method: "dap.event",
+                params: json!({ "id": dap_id_owned, "event": ev.event, "body": ev.body }),
+            };
+            let w = Arc::clone(&w);
+            tokio::spawn(async move {
+                let _ = send_line(&w, &n).await;
+            });
+        }
+    };
+
+    match DapClient::spawn(cmd, &args_ref, on_event) {
+        Ok(client) => {
+            state.insert_dap_client(dap_id.to_owned(), client).await;
+            Response::ok(id, json!({}))
+        }
+        Err(e) => Response::err(id, -32000, e.to_string()),
+    }
+}
+
+/// Forward a DAP request (initialize/launch/setBreakpoints/continue/…) and
+/// return the adapter's response body.
+async fn dap_request(id: Value, p: &Value, state: &DaemonState) -> Response {
+    let Some(dap_id) = p["id"].as_str() else {
+        return Response::err(id, -32602, "missing id");
+    };
+    let Some(command) = p["command"].as_str() else {
+        return Response::err(id, -32602, "missing command");
+    };
+    let arguments = p["arguments"].clone();
+    let Some(client) = state.get_dap_client(dap_id).await else {
+        return Response::err(id, -32001, "unknown DAP client");
+    };
+    match client.request(command, arguments).await {
+        Ok(result) => Response::ok(id, result),
+        Err(e) => Response::err(id, -32000, e.to_string()),
+    }
+}
+
+/// Disconnect and drop the debug adapter under `id`.
+async fn dap_stop(id: Value, p: &Value, state: &DaemonState) -> Response {
+    let Some(dap_id) = p["id"].as_str() else {
+        return Response::err(id, -32602, "missing id");
+    };
+    let Some(client) = state.remove_dap_client(dap_id).await else {
+        return Response::err(id, -32001, "unknown DAP client");
+    };
+    let _ = client.disconnect(true).await;
+    Response::ok(id, json!({}))
 }
 
 // ── Browser handlers ──────────────────────────────────────────────────────────

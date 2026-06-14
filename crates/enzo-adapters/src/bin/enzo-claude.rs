@@ -173,17 +173,22 @@ fn handle_prompt(
         .as_ref()
         .map(|d| json!({ "path": d.path, "raw": d.raw }));
 
+    // Multi-option menus surface every option as a button; plain prompts keep
+    // the yes/no/edit triple.
+    let actions: Vec<String> = if prompt.options.is_empty() {
+        vec!["accept".to_owned(), "reject".to_owned(), "edit".to_owned()]
+    } else {
+        prompt.options.clone()
+    };
+    let action_refs: Vec<&str> = actions.iter().map(String::as_str).collect();
+
     let action = match client.lock().expect("atp lock").prompt_show(
         &prompt_id,
-        if prompt.diff.is_some() {
-            "diff"
-        } else {
-            "text"
-        },
+        if prompt.diff.is_some() { "diff" } else { "text" },
         &prompt.title,
         &prompt.body,
         diff_val.as_ref(),
-        &["accept", "reject", "edit"],
+        &action_refs,
     ) {
         Ok(a) => a,
         Err(e) => {
@@ -192,20 +197,32 @@ fn handle_prompt(
         }
     };
 
-    let keystroke: &[u8] = match action.as_str() {
-        "accept" => b"y\r",
-        "reject" => b"n\r",
-        "edit" => return, // leave the cursor at the prompt for manual input
-        other => {
-            eprintln!("[enzo-claude] unknown action '{other}', treating as reject");
-            b"n\r"
+    let keystroke: Vec<u8> = if prompt.options.is_empty() {
+        match action.as_str() {
+            "accept" => b"y\r".to_vec(),
+            "reject" => b"n\r".to_vec(),
+            "edit" => return, // leave the cursor at the prompt for manual input
+            other => {
+                eprintln!("[enzo-claude] unknown action '{other}', treating as reject");
+                b"n\r".to_vec()
+            }
         }
+    } else {
+        // Arrow-driven menu: step down to the chosen option (menus default to
+        // the first item highlighted), then Enter.
+        let idx = prompt.options.iter().position(|o| *o == action).unwrap_or(0);
+        let mut k = Vec::new();
+        for _ in 0..idx {
+            k.extend_from_slice(b"\x1b[B"); // cursor-down
+        }
+        k.extend_from_slice(b"\r");
+        k
     };
 
     if let Err(e) = pty_writer
         .lock()
         .expect("pty writer lock")
-        .write_all(keystroke)
+        .write_all(&keystroke)
     {
         eprintln!("[enzo-claude] PTY write error: {e}");
     }
