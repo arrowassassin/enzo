@@ -1,5 +1,9 @@
 //! Glyph atlas: rasterises glyphs with cosmic-text/swash and packs them
 //! into a single RGBA8 texture uploaded to the GPU.
+//!
+//! The first cell slot `(0, 0)` is pre-filled as a solid white rectangle and
+//! exposed as `solid_rect`.  The renderer uses it to draw filled background
+//! quads by tinting it with the desired colour.
 
 use std::collections::HashMap;
 
@@ -44,6 +48,9 @@ pub struct GlyphAtlas {
     pub cell_w: u32,
     /// Monospace cell height (pixels).
     pub cell_h: u32,
+    /// A fully opaque solid-white cell at (0, 0) — use with any `fg` colour
+    /// to draw filled background rectangles.
+    pub solid_rect: GlyphRect,
     cache: HashMap<char, GlyphRect>,
     cursor_x: u32,
     cursor_y: u32,
@@ -52,7 +59,7 @@ pub struct GlyphAtlas {
 }
 
 impl GlyphAtlas {
-    /// Create a new atlas for the given font size (pixels).
+    /// Create a new atlas for the given font size (physical pixels).
     #[allow(
         clippy::cast_possible_truncation,
         clippy::cast_sign_loss,
@@ -61,7 +68,29 @@ impl GlyphAtlas {
     pub fn new(font_size: f32) -> Self {
         let mut font_system = FontSystem::new();
         let swash_cache = SwashCache::new();
-        let pixels = vec![0u8; (ATLAS_W * ATLAS_H * 4) as usize];
+
+        let cell_w = font_size as u32;
+        let cell_h = (font_size * 1.2) as u32;
+
+        // Allocate the atlas and pre-fill the first cell slot as solid white.
+        let mut pixels = vec![0u8; (ATLAS_W * ATLAS_H * 4) as usize];
+        let cw = cell_w as usize;
+        let ch = cell_h as usize;
+        for py in 0..ch {
+            for px in 0..cw {
+                let idx = (py * ATLAS_W as usize + px) * 4;
+                pixels[idx] = 255;
+                pixels[idx + 1] = 255;
+                pixels[idx + 2] = 255;
+                pixels[idx + 3] = 255;
+            }
+        }
+        let solid_rect = GlyphRect {
+            x: 0,
+            y: 0,
+            w: cell_w,
+            h: cell_h,
+        };
 
         let metrics = Metrics::new(font_size, font_size * 1.2);
         let mut buf = Buffer::new(&mut font_system, metrics);
@@ -69,17 +98,15 @@ impl GlyphAtlas {
         buf.set_text(&mut font_system, "M", Attrs::new(), Shaping::Advanced);
         buf.shape_until_scroll(&mut font_system, false);
 
-        let cell_w = font_size as u32;
-        let cell_h = (font_size * 1.2) as u32;
-
         Self {
             font_system,
             swash_cache,
             pixels,
             cell_w,
             cell_h,
+            solid_rect,
             cache: HashMap::new(),
-            cursor_x: 0,
+            cursor_x: cell_w, // skip the solid rect slot
             cursor_y: 0,
             row_h: 0,
             measure_buf: buf,
@@ -198,7 +225,6 @@ impl GlyphAtlas {
                             + u16::from(data[src + 1])
                             + u16::from(data[src + 2]))
                             / 3;
-                        // avg is 0..=255 (average of three u8 values).
                         self.pixels[dst] = 255;
                         self.pixels[dst + 1] = 255;
                         self.pixels[dst + 2] = 255;

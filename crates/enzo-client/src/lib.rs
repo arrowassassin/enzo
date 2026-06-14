@@ -2,5 +2,6 @@
 
 pub mod atp;
 pub mod renderer;
+pub mod surface;
 pub mod terminal;
 pub mod ui;
