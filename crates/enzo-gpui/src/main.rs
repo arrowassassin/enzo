@@ -61,6 +61,8 @@ pub struct EnzoApp {
     dialog_open: bool,
     dialog_name: Entity<TextInput>,
     dialog_path: Entity<TextInput>,
+    /// Driver selected in the connection dialog (`"sqlite"` | `"duckdb"`).
+    dialog_driver: String,
     next_conn: u32,
     cell_input: Entity<TextInput>,
     term: terminal_state::Terminal,
@@ -139,6 +141,7 @@ impl EnzoApp {
             let _ = atp.commands.send(Command::DbConnect {
                 conn: "db-0".into(),
                 path,
+                driver: "sqlite".into(),
                 seed: true,
             });
         }
@@ -207,6 +210,7 @@ impl EnzoApp {
             dialog_open: false,
             dialog_name,
             dialog_path,
+            dialog_driver: "sqlite".to_owned(),
             next_conn: 1,
             cell_input,
             term: terminal_state::Terminal::new(TERM_COLS, TERM_ROWS),
@@ -662,6 +666,11 @@ impl EnzoApp {
         cx.notify();
     }
 
+    fn set_dialog_driver(&mut self, driver: &str, cx: &mut Context<Self>) {
+        self.dialog_driver = driver.to_owned();
+        cx.notify();
+    }
+
     /// Read the dialog fields, open a real connection by path, and close.
     fn save_connection(&mut self, cx: &mut Context<Self>) {
         let path = self.dialog_path.read(cx).text().trim().to_owned();
@@ -669,10 +678,11 @@ impl EnzoApp {
             return;
         }
         let name = self.dialog_name.read(cx).text().trim().to_owned();
+        let driver = self.dialog_driver.clone();
         let id = format!("db-{}", self.next_conn);
         self.next_conn += 1;
         let display = if name.is_empty() {
-            format!("conn · {id}")
+            format!("{driver} · {id}")
         } else {
             name
         };
@@ -680,6 +690,7 @@ impl EnzoApp {
         let _ = self.atp.commands.send(Command::DbConnect {
             conn: id,
             path,
+            driver,
             seed: false,
         });
         self.dialog_open = false;
@@ -919,7 +930,13 @@ impl EnzoApp {
 impl Render for EnzoApp {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let dialog = self.dialog_open.then(|| {
-            database::connection_dialog(&self.dialog_name, &self.dialog_path, cx).into_any_element()
+            database::connection_dialog(
+                &self.dialog_name,
+                &self.dialog_path,
+                &self.dialog_driver,
+                cx,
+            )
+            .into_any_element()
         });
         let prompt = self
             .agent_prompt

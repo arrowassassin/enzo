@@ -667,8 +667,50 @@ pub fn status_bar(db: &DbState, cx: &mut Context<EnzoApp>) -> impl IntoElement {
 pub fn connection_dialog(
     name: &Entity<TextInput>,
     path: &Entity<TextInput>,
+    driver: &str,
     cx: &mut Context<EnzoApp>,
 ) -> impl IntoElement {
+    // Driver selector chip.
+    let driver_chip = |id: &'static str, label: &'static str, value: &'static str, active: bool| {
+        let mut c = div()
+            .id(id)
+            .cursor_pointer()
+            .px(px(12.0))
+            .py(px(6.0))
+            .rounded(px(5.0))
+            .text_size(px(9.0))
+            .font_family(theme::FONT_PIXEL)
+            .child(label)
+            .on_click(cx.listener(move |this, _, _, cx| this.set_dialog_driver(value, cx)));
+        if active {
+            c = c.bg(theme::TEAL).text_color(theme::GREEN_INK);
+        } else {
+            c = c
+                .bg(theme::BG_CARD)
+                .border_1()
+                .border_color(theme::BORDER)
+                .text_color(theme::FG1);
+        }
+        c
+    };
+    let driver_row = div()
+        .flex()
+        .flex_col()
+        .child(
+            div()
+                .pb(px(5.0))
+                .text_size(px(8.0))
+                .font_family(theme::FONT_PIXEL)
+                .text_color(theme::PURPLE)
+                .child("DRIVER"),
+        )
+        .child(
+            div()
+                .flex()
+                .gap(px(8.0))
+                .child(driver_chip("drv-sqlite", "SQLITE", "sqlite", driver == "sqlite"))
+                .child(driver_chip("drv-duckdb", "DUCKDB", "duckdb", driver == "duckdb")),
+        );
     // A captioned, framed input field (`.cap` + `.inp` in the mockup).
     let field = |cap: &str, input: &Entity<TextInput>| {
         div()
@@ -744,7 +786,7 @@ pub fn connection_dialog(
                         .text_size(px(10.0))
                         .font_family(theme::FONT_PIXEL)
                         .text_color(theme::FG1)
-                        .child("NEW CONNECTION · SQLITE"),
+                        .child("NEW CONNECTION"),
                 )
                 .child(
                     div()
@@ -754,12 +796,13 @@ pub fn connection_dialog(
                         .px(px(20.0))
                         .py(px(16.0))
                         .child(text(
-                            "Open a local SQLite database file. Use :memory: for a scratch in-memory DB.",
+                            "Open a local database file. Use :memory: for a scratch in-memory DB.",
                             11.0,
                             theme::FAINT,
                         ))
+                        .child(driver_row)
                         .child(field("NAME", name))
-                        .child(field("DATABASE FILE  (.sqlite / .db / :memory:)", path))
+                        .child(field("DATABASE FILE  (.sqlite / .db / .duckdb / :memory:)", path))
                         .child(
                             div()
                                 .flex()

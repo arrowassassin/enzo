@@ -61,6 +61,8 @@ pub enum Command {
     DbConnect {
         conn: String,
         path: String,
+        /// Driver to use (`"sqlite"` | `"duckdb"`; empty → inferred from path).
+        driver: String,
         seed: bool,
     },
     DbQuery {
@@ -314,9 +316,17 @@ async fn run(sock: String, tx: Sender<Incoming>, mut cmd_rx: mpsc::UnboundedRece
 #[allow(clippy::too_many_lines)]
 async fn handle_command(client: &Client, tx: &Sender<Incoming>, cmd: Command) {
     match cmd {
-        Command::DbConnect { conn, path, seed } => {
+        Command::DbConnect {
+            conn,
+            path,
+            driver,
+            seed,
+        } => {
             match client
-                .request("db.connect", json!({ "id": conn, "path": path }))
+                .request(
+                    "db.connect",
+                    json!({ "id": conn, "path": path, "driver": driver }),
+                )
                 .await
             {
                 Ok(r) => {
