@@ -1,7 +1,8 @@
 //! wgpu + cosmic-text terminal renderer.
 //!
 //! Uploads a glyph atlas as a GPU texture and draws one quad per visible
-//! cell using the cell's fg colour.
+//! cell using the cell's fg colour.  Two chrome rows (tab bar + status bar)
+//! are drawn around the terminal content using the same pipeline.
 
 mod atlas;
 
@@ -13,10 +14,21 @@ use winit::window::Window;
 use atlas::{ATLAS_H, ATLAS_W, GlyphAtlas};
 
 use crate::terminal::{Color, Terminal};
+use crate::ui::UiState;
 
 const FONT_SIZE: f32 = 14.0;
-/// Maximum quads (one per visible cell) pre-allocated.
-const MAX_CELLS: usize = 220 * 50;
+/// Maximum quads pre-allocated (terminal cells + chrome).
+const MAX_CELLS: usize = 220 * 52;
+
+// ── Colours used for chrome rows ────────────────────────────────────────────
+
+const FG_LOGO: [f32; 4] = [0.0, 1.0, 0.0, 1.0];
+const FG_TAB_ACTIVE: [f32; 4] = [1.0, 1.0, 1.0, 1.0];
+const FG_TAB_INACTIVE: [f32; 4] = [0.45, 0.45, 0.45, 1.0];
+const FG_TAB_ADD: [f32; 4] = [0.3, 0.3, 0.3, 1.0];
+const FG_STATUS: [f32; 4] = [0.38, 0.38, 0.38, 1.0];
+const FG_CONNECTED: [f32; 4] = [0.0, 0.78, 0.0, 1.0];
+const FG_DISCONNECTED: [f32; 4] = [0.78, 0.0, 0.0, 1.0];
 
 /// One vertex of a glyph quad.
 #[repr(C)]
@@ -224,9 +236,9 @@ impl Renderer {
         self.surface.configure(&self.device, &self.config);
     }
 
-    /// Render one frame from the terminal state.
-    pub fn render(&mut self, terminal: &Terminal) {
-        self.build_quads(terminal);
+    /// Render one frame: tab bar + terminal content + status bar.
+    pub fn render(&mut self, terminal: &Terminal, ui: &UiState) {
+        self.build_quads(terminal, ui);
         self.upload_atlas();
 
         self.queue
@@ -273,12 +285,14 @@ impl Renderer {
         frame.present();
     }
 
+    // ── Quad builders ────────────────────────────────────────────────────────
+
     #[allow(
         clippy::cast_precision_loss,
         clippy::cast_possible_truncation,
-        reason = "terminal coords are small (≤ 220×50) and atlas coords ≤ 2048; f32 is sufficient"
+        reason = "terminal coords are small (≤ 220×52) and atlas coords ≤ 2048; safe"
     )]
-    fn build_quads(&mut self, terminal: &Terminal) {
+    fn build_quads(&mut self, terminal: &Terminal, ui: &UiState) {
         self.verts.clear();
         self.indices.clear();
 
@@ -286,6 +300,11 @@ impl Renderer {
         let ch = f32::from(u16::try_from(self.atlas.cell_h).unwrap_or(20));
         let sw = self.width as f32;
         let sh = self.height as f32;
+
+        // Row 0: tab bar chrome.
+        self.build_tab_bar(ui, cw, ch, sw, sh);
+
+        // Rows 1..=terminal.rows(): terminal content, shifted down by one row.
         let (cursor_col, cursor_row) = terminal.cursor();
         let cols = terminal.cols();
         let cells = terminal.cells();
@@ -299,60 +318,157 @@ impl Renderer {
                 } else {
                     cell.ch
                 };
-
                 if ch_val == ' ' && !is_cursor {
                     continue;
                 }
-
-                let rect = self.atlas.get_or_insert(ch_val);
-                let base = u16::try_from(self.verts.len()).unwrap_or(0);
-
-                let x0 = f32::from(col) * cw / sw * 2.0 - 1.0;
-                let x1 = (f32::from(col) + 1.0) * cw / sw * 2.0 - 1.0;
-                let y0 = 1.0 - f32::from(row) * ch / sh * 2.0;
-                let y1 = 1.0 - (f32::from(row) + 1.0) * ch / sh * 2.0;
-
-                let atlas_w = ATLAS_W as f32;
-                let atlas_h = ATLAS_H as f32;
-                let u0 = rect.x as f32 / atlas_w;
-                let u1 = (rect.x + rect.w) as f32 / atlas_w;
-                let v0 = rect.y as f32 / atlas_h;
-                let v1 = (rect.y + rect.h) as f32 / atlas_h;
-
+                let visual_row = row + 1; // offset by tab bar
                 let fg = resolve_fg(cell.style.fg);
-
-                self.verts.extend_from_slice(&[
-                    Vertex {
-                        pos: [x0, y0],
-                        uv: [u0, v0],
-                        fg,
-                    },
-                    Vertex {
-                        pos: [x1, y0],
-                        uv: [u1, v0],
-                        fg,
-                    },
-                    Vertex {
-                        pos: [x1, y1],
-                        uv: [u1, v1],
-                        fg,
-                    },
-                    Vertex {
-                        pos: [x0, y1],
-                        uv: [u0, v1],
-                        fg,
-                    },
-                ]);
-                self.indices.extend_from_slice(&[
-                    base,
-                    base + 1,
-                    base + 2,
-                    base,
-                    base + 2,
-                    base + 3,
-                ]);
+                self.push_chr_quad(visual_row, col, ch_val, fg, cw, ch, sw, sh);
             }
         }
+
+        // Last visual row: status bar chrome.
+        let status_row = terminal.rows() + 1;
+        self.build_status_bar(ui, terminal, status_row, cw, ch, sw, sh);
+    }
+
+    /// Emit one glyph quad at (`row`, `col`) in visual (chrome-inclusive) space.
+    #[allow(
+        clippy::cast_precision_loss,
+        clippy::too_many_arguments,
+        reason = "row/col ≤ 52, atlas coords ≤ 2048; cw/ch/sw/sh are unavoidable render params"
+    )]
+    fn push_chr_quad(
+        &mut self,
+        row: u16,
+        col: u16,
+        ch: char,
+        fg: [f32; 4],
+        cw: f32,
+        ch_h: f32,
+        sw: f32,
+        sh: f32,
+    ) {
+        let rect = self.atlas.get_or_insert(ch);
+        let base = u16::try_from(self.verts.len()).unwrap_or(0);
+
+        let x0 = f32::from(col) * cw / sw * 2.0 - 1.0;
+        let x1 = (f32::from(col) + 1.0) * cw / sw * 2.0 - 1.0;
+        let y0 = 1.0 - f32::from(row) * ch_h / sh * 2.0;
+        let y1 = 1.0 - (f32::from(row) + 1.0) * ch_h / sh * 2.0;
+
+        let aw = ATLAS_W as f32;
+        let ah = ATLAS_H as f32;
+        let u0 = rect.x as f32 / aw;
+        let u1 = (rect.x + rect.w) as f32 / aw;
+        let v0 = rect.y as f32 / ah;
+        let v1 = (rect.y + rect.h) as f32 / ah;
+
+        self.verts.extend_from_slice(&[
+            Vertex {
+                pos: [x0, y0],
+                uv: [u0, v0],
+                fg,
+            },
+            Vertex {
+                pos: [x1, y0],
+                uv: [u1, v0],
+                fg,
+            },
+            Vertex {
+                pos: [x1, y1],
+                uv: [u1, v1],
+                fg,
+            },
+            Vertex {
+                pos: [x0, y1],
+                uv: [u0, v1],
+                fg,
+            },
+        ]);
+        self.indices
+            .extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
+    }
+
+    /// Render a string starting at (`row`, `col_start`), skipping spaces.
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "cw/ch/sw/sh are unavoidable render params"
+    )]
+    fn push_str_at(
+        &mut self,
+        row: u16,
+        col_start: u16,
+        text: &str,
+        fg: [f32; 4],
+        cw: f32,
+        ch_h: f32,
+        sw: f32,
+        sh: f32,
+    ) -> u16 {
+        let mut col = col_start;
+        for ch in text.chars() {
+            if ch != ' ' {
+                self.push_chr_quad(row, col, ch, fg, cw, ch_h, sw, sh);
+            }
+            col = col.saturating_add(1);
+        }
+        col
+    }
+
+    // ── Chrome builders ──────────────────────────────────────────────────────
+
+    fn build_tab_bar(&mut self, ui: &UiState, cw: f32, ch_h: f32, sw: f32, sh: f32) {
+        // " > enzo  " in logo green, then one segment per tab, then "[+]".
+        let mut col = self.push_str_at(0, 0, " > enzo  ", FG_LOGO, cw, ch_h, sw, sh);
+
+        for (i, tab) in ui.tabs().iter().enumerate() {
+            let is_active = i == ui.active_index();
+            let fg = if is_active {
+                FG_TAB_ACTIVE
+            } else {
+                FG_TAB_INACTIVE
+            };
+            // Truncate title to 8 chars.
+            let title: String = tab.title.chars().take(8).collect();
+            let marker = if is_active { " *" } else { "  " };
+            let segment = format!(" {}:{}{} ", i + 1, title, marker);
+            col = self.push_str_at(0, col, &segment, fg, cw, ch_h, sw, sh);
+        }
+
+        self.push_str_at(0, col, " [+]", FG_TAB_ADD, cw, ch_h, sw, sh);
+    }
+
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        clippy::too_many_arguments,
+        reason = "sw/cw ratio is small (≤ 220); result fits in u16; cw/ch/sw/sh are unavoidable render params"
+    )]
+    fn build_status_bar(
+        &mut self,
+        ui: &UiState,
+        terminal: &Terminal,
+        row: u16,
+        cw: f32,
+        ch_h: f32,
+        sw: f32,
+        sh: f32,
+    ) {
+        // Left side: dimensions.
+        let dims = format!(" {}x{} ", terminal.cols(), terminal.rows());
+        self.push_str_at(row, 0, &dims, FG_STATUS, cw, ch_h, sw, sh);
+
+        // Right side: connection indicator.
+        let (indicator, ind_fg) = if ui.connected {
+            (" ATP * ", FG_CONNECTED)
+        } else {
+            (" ATP o ", FG_DISCONNECTED)
+        };
+        let total_cols = (sw / cw) as u16;
+        let ind_len = u16::try_from(indicator.len()).unwrap_or(7);
+        let ind_col = total_cols.saturating_sub(ind_len);
+        self.push_str_at(row, ind_col, indicator, ind_fg, cw, ch_h, sw, sh);
     }
 
     fn upload_atlas(&mut self) {
@@ -382,7 +498,7 @@ impl Renderer {
 
 /// Convert a terminal fg colour to linear RGBA.
 ///
-/// Default maps to Matrix-green (the enzo 8-bit flagship colour).
+/// `Default` maps to matrix-green (the enzo flagship colour).
 #[must_use]
 pub fn resolve_fg(color: Color) -> [f32; 4] {
     match color {
@@ -399,7 +515,6 @@ pub fn resolve_fg(color: Color) -> [f32; 4] {
 
 fn indexed_color(idx: u8) -> [f32; 4] {
     match idx {
-        // Standard ANSI colours.
         0 => [0.00, 0.00, 0.00, 1.0],
         1 => [0.80, 0.00, 0.00, 1.0],
         2 => [0.00, 0.80, 0.00, 1.0],
@@ -408,7 +523,6 @@ fn indexed_color(idx: u8) -> [f32; 4] {
         5 => [0.80, 0.00, 0.80, 1.0],
         6 => [0.00, 0.80, 0.80, 1.0],
         7 => [0.80, 0.80, 0.80, 1.0],
-        // Bright ANSI colours.
         8 => [0.40, 0.40, 0.40, 1.0],
         9 => [1.00, 0.20, 0.20, 1.0],
         10 => [0.20, 1.00, 0.20, 1.0],
@@ -417,7 +531,6 @@ fn indexed_color(idx: u8) -> [f32; 4] {
         13 => [1.00, 0.20, 1.00, 1.0],
         14 => [0.20, 1.00, 1.00, 1.0],
         15 => [1.00, 1.00, 1.00, 1.0],
-        // 6×6×6 colour cube.
         16..=231 => {
             let i = idx - 16;
             let r = f32::from(i / 36) / 5.0;
@@ -425,7 +538,6 @@ fn indexed_color(idx: u8) -> [f32; 4] {
             let b = f32::from(i % 6) / 5.0;
             [r, g, b, 1.0]
         }
-        // Greyscale ramp.
         232..=255 => {
             let l = f32::from(idx - 232) / 23.0;
             [l, l, l, 1.0]
@@ -497,10 +609,8 @@ mod tests {
 
     #[test]
     fn indexed_color_cube() {
-        // Index 16 = (0,0,0) in the 6x6x6 cube → black.
         let c = indexed_color(16);
         assert_eq!(c, [0.0, 0.0, 0.0, 1.0]);
-        // Index 231 = (5,5,5) → white.
         let c = indexed_color(231);
         assert_eq!(c, [1.0, 1.0, 1.0, 1.0]);
     }

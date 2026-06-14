@@ -15,41 +15,66 @@ use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::event::{ElementState, KeyEvent, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy};
-use winit::keyboard::{Key, NamedKey};
+use winit::keyboard::{Key, ModifiersState, NamedKey};
 use winit::window::{Window, WindowId};
 
 use enzo_client::atp::{AtpClient, DaemonMessage};
 use enzo_client::renderer::Renderer;
 use enzo_client::terminal::{DEFAULT_COLS, DEFAULT_ROWS, Terminal};
+use enzo_client::ui::UiState;
 
 const DEFAULT_SOCK: &str = "/tmp/enzo-atp.sock";
 
-// ── User event (tokio → winit) ───────────────────────────────────────────────
+// ── Commands: winit → tokio ──────────────────────────────────────────────────
+
+enum AppCommand {
+    Input {
+        session_id: String,
+        data: Vec<u8>,
+    },
+    NewSession {
+        session_id: String,
+        cols: u16,
+        rows: u16,
+    },
+    CloseSession {
+        session_id: String,
+    },
+}
+
+// ── Events: tokio → winit ────────────────────────────────────────────────────
 
 #[derive(Debug)]
 enum ClientEvent {
-    Output(Vec<u8>),
+    Connected,
+    Output { session_id: String, data: Vec<u8> },
     DaemonClosed,
 }
 
 // ── winit app ────────────────────────────────────────────────────────────────
 
 struct App {
-    input_tx: tokio::sync::mpsc::UnboundedSender<Vec<u8>>,
+    cmd_tx: tokio::sync::mpsc::UnboundedSender<AppCommand>,
     state: Option<AppState>,
+    mods: ModifiersState,
+    next_session: u32,
 }
 
 struct AppState {
     window: Arc<Window>,
     renderer: Renderer,
-    terminal: Terminal,
+    /// Live sessions: (`session_id`, terminal). Ordered by tab insertion.
+    terminals: Vec<(String, Terminal)>,
+    ui: UiState,
 }
 
 impl App {
-    fn new(input_tx: tokio::sync::mpsc::UnboundedSender<Vec<u8>>) -> Self {
+    fn new(cmd_tx: tokio::sync::mpsc::UnboundedSender<AppCommand>) -> Self {
         Self {
-            input_tx,
+            cmd_tx,
             state: None,
+            mods: ModifiersState::empty(),
+            next_session: 0,
         }
     }
 }
@@ -64,36 +89,73 @@ impl ApplicationHandler<ClientEvent> for App {
             .with_inner_size(LogicalSize::new(1600u32, 900u32));
         let window = Arc::new(event_loop.create_window(attrs).expect("create window"));
         let renderer = pollster::block_on(Renderer::new(Arc::clone(&window)));
-        let terminal = Terminal::new(DEFAULT_COLS, DEFAULT_ROWS);
+
+        let session_id = {
+            let id = format!("enzo-{}", self.next_session);
+            self.next_session += 1;
+            id
+        };
+        let mut ui = UiState::new();
+        ui.add_tab(session_id.clone(), "bash".into());
+
+        let _ = self.cmd_tx.send(AppCommand::NewSession {
+            session_id: session_id.clone(),
+            cols: DEFAULT_COLS,
+            rows: DEFAULT_ROWS,
+        });
+
         self.state = Some(AppState {
             window,
             renderer,
-            terminal,
+            terminals: vec![(session_id, Terminal::new(DEFAULT_COLS, DEFAULT_ROWS))],
+            ui,
         });
     }
 
     fn user_event(&mut self, _event_loop: &ActiveEventLoop, event: ClientEvent) {
         let Some(state) = &mut self.state else { return };
         match event {
-            ClientEvent::Output(data) => {
-                state.terminal.process(&data);
+            ClientEvent::Connected => {
+                state.ui.connected = true;
                 state.window.request_redraw();
+            }
+            ClientEvent::Output { session_id, data } => {
+                if let Some((_, term)) = state
+                    .terminals
+                    .iter_mut()
+                    .find(|(sid, _)| *sid == session_id)
+                {
+                    term.process(&data);
+                    if state.ui.active_session_id() == Some(session_id.as_str()) {
+                        state.window.request_redraw();
+                    }
+                }
             }
             ClientEvent::DaemonClosed => {
                 log::warn!("daemon connection closed");
+                state.ui.connected = false;
+                state.window.request_redraw();
             }
         }
     }
 
+    #[allow(
+        clippy::too_many_lines,
+        reason = "single match over all WindowEvent variants"
+    )]
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
-        let Some(state) = &mut self.state else { return };
-
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
 
+            WindowEvent::ModifiersChanged(new_mods) => {
+                self.mods = new_mods.state();
+            }
+
             WindowEvent::Resized(size) => {
-                state.renderer.resize(size);
-                state.window.request_redraw();
+                if let Some(state) = &mut self.state {
+                    state.renderer.resize(size);
+                    state.window.request_redraw();
+                }
             }
 
             WindowEvent::KeyboardInput {
@@ -106,14 +168,89 @@ impl ApplicationHandler<ClientEvent> for App {
                     },
                 ..
             } => {
+                // Tab management shortcuts take priority over terminal input.
+                if self.mods.control_key() {
+                    match &logical_key {
+                        Key::Character(s) if s.as_str() == "t" => {
+                            let n = self.next_session;
+                            self.next_session += 1;
+                            let session_id = format!("enzo-{n}");
+                            if let Some(st) = &mut self.state {
+                                st.ui.add_tab(session_id.clone(), "bash".into());
+                                st.terminals.push((
+                                    session_id.clone(),
+                                    Terminal::new(DEFAULT_COLS, DEFAULT_ROWS),
+                                ));
+                                st.window.request_redraw();
+                            }
+                            let _ = self.cmd_tx.send(AppCommand::NewSession {
+                                session_id,
+                                cols: DEFAULT_COLS,
+                                rows: DEFAULT_ROWS,
+                            });
+                            return;
+                        }
+                        Key::Character(s) if s.as_str() == "w" => {
+                            let closed_sid = if let Some(st) = &mut self.state {
+                                let sid = st.ui.close_active();
+                                if let Some(ref s) = sid {
+                                    st.terminals.retain(|(id, _)| id != s);
+                                }
+                                st.window.request_redraw();
+                                sid
+                            } else {
+                                None
+                            };
+                            if let Some(session_id) = closed_sid {
+                                let _ = self.cmd_tx.send(AppCommand::CloseSession { session_id });
+                            }
+                            return;
+                        }
+                        Key::Named(NamedKey::Tab) => {
+                            if let Some(st) = &mut self.state {
+                                if self.mods.shift_key() {
+                                    st.ui.prev_tab();
+                                } else {
+                                    st.ui.next_tab();
+                                }
+                                st.window.request_redraw();
+                            }
+                            return;
+                        }
+                        _ => {}
+                    }
+                }
+
+                // Route normal key input to the active session.
                 let bytes = key_to_bytes(&logical_key, text.as_deref());
                 if !bytes.is_empty() {
-                    let _ = self.input_tx.send(bytes);
+                    let active_id = self
+                        .state
+                        .as_ref()
+                        .and_then(|s| s.ui.active_session_id())
+                        .map(str::to_owned);
+                    if let Some(session_id) = active_id {
+                        let _ = self.cmd_tx.send(AppCommand::Input {
+                            session_id,
+                            data: bytes,
+                        });
+                    }
                 }
             }
 
             WindowEvent::RedrawRequested => {
-                state.renderer.render(&state.terminal);
+                if let Some(state) = &mut self.state {
+                    // Find the active terminal index so we can split the borrow:
+                    // state.terminals (immut) vs state.renderer (mut) are disjoint fields.
+                    let active_idx = state
+                        .ui
+                        .active_session_id()
+                        .map(str::to_owned)
+                        .and_then(|id| state.terminals.iter().position(|(sid, _)| *sid == id));
+                    if let Some(idx) = active_idx {
+                        state.renderer.render(&state.terminals[idx].1, &state.ui);
+                    }
+                }
             }
 
             _ => {}
@@ -130,14 +267,13 @@ impl ApplicationHandler<ClientEvent> for App {
 // ── Key → bytes ──────────────────────────────────────────────────────────────
 
 fn key_to_bytes(key: &Key, text: Option<&str>) -> Vec<u8> {
-    // Use the text field when available — it carries Ctrl-modified chars
-    // (e.g. Ctrl+C → "\x03") and regular printable chars already.
+    // The text field carries Ctrl-modified chars (e.g. Ctrl+C → "\x03") and
+    // regular printable chars; prefer it when present.
     if let Some(t) = text
         && !t.is_empty()
     {
         return t.as_bytes().to_vec();
     }
-    // Fall back to NamedKey escape sequences.
     match key {
         Key::Named(NamedKey::Enter) => b"\r".to_vec(),
         Key::Named(NamedKey::Tab) => b"\t".to_vec(),
@@ -162,12 +298,12 @@ fn key_to_bytes(key: &Key, text: Option<&str>) -> Vec<u8> {
 async fn run_atp(
     sock_path: String,
     proxy: EventLoopProxy<ClientEvent>,
-    mut input_rx: tokio::sync::mpsc::UnboundedReceiver<Vec<u8>>,
+    mut cmd_rx: tokio::sync::mpsc::UnboundedReceiver<AppCommand>,
 ) {
     let proxy2 = proxy.clone();
     let client = match AtpClient::connect(&sock_path, move |msg| match msg {
-        DaemonMessage::Output { data, .. } => {
-            let _ = proxy2.send_event(ClientEvent::Output(data));
+        DaemonMessage::Output { session_id, data } => {
+            let _ = proxy2.send_event(ClientEvent::Output { session_id, data });
         }
         DaemonMessage::Closed => {
             let _ = proxy2.send_event(ClientEvent::DaemonClosed);
@@ -183,18 +319,29 @@ async fn run_atp(
         }
     };
 
-    let session_id = format!("enzo-{}", std::process::id());
-    if let Err(e) = client
-        .spawn_session(&session_id, DEFAULT_COLS, DEFAULT_ROWS)
-        .await
-    {
-        error!("spawn_session: {e:#}");
-        return;
-    }
+    let _ = proxy.send_event(ClientEvent::Connected);
 
-    while let Some(bytes) = input_rx.recv().await {
-        if let Err(e) = client.send_input(&session_id, &bytes).await {
-            log::warn!("send_input: {e}");
+    while let Some(cmd) = cmd_rx.recv().await {
+        match cmd {
+            AppCommand::NewSession {
+                session_id,
+                cols,
+                rows,
+            } => {
+                if let Err(e) = client.spawn_session(&session_id, cols, rows).await {
+                    error!("spawn_session {session_id}: {e:#}");
+                }
+            }
+            AppCommand::CloseSession { session_id } => {
+                if let Err(e) = client.close_session(&session_id).await {
+                    log::warn!("close_session {session_id}: {e}");
+                }
+            }
+            AppCommand::Input { session_id, data } => {
+                if let Err(e) = client.send_input(&session_id, &data).await {
+                    log::warn!("send_input: {e}");
+                }
+            }
         }
     }
 }
@@ -206,7 +353,7 @@ fn main() {
 
     let sock_path = std::env::var("ENZO_ATP_SOCK").unwrap_or_else(|_| DEFAULT_SOCK.to_owned());
 
-    let (input_tx, input_rx) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
+    let (cmd_tx, cmd_rx) = tokio::sync::mpsc::unbounded_channel::<AppCommand>();
     let event_loop = EventLoop::<ClientEvent>::with_user_event()
         .build()
         .expect("event loop");
@@ -218,9 +365,9 @@ fn main() {
             .enable_all()
             .build()
             .expect("tokio runtime")
-            .block_on(run_atp(sock_path, proxy, input_rx));
+            .block_on(run_atp(sock_path, proxy, cmd_rx));
     });
 
-    let mut app = App::new(input_tx);
+    let mut app = App::new(cmd_tx);
     event_loop.run_app(&mut app).expect("run event loop");
 }
