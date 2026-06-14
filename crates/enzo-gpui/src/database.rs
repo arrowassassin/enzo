@@ -5,6 +5,7 @@
 use gpui::{
     Context, Entity, IntoElement, ParentElement, SharedString, Styled, div, prelude::*, px,
 };
+use gpui_component::input::{Input, InputState};
 
 use crate::EnzoApp;
 use crate::atp::TableInfo;
@@ -14,6 +15,17 @@ use crate::widgets::{icon, pixel_header, text};
 
 /// Default page size for table browsing.
 pub const PAGE_SIZE: u64 = 100;
+
+/// One query editor tab (Harlequin-style multi-buffer SQL workflow). Each tab
+/// owns a real multi-line code editor (tree-sitter SQL highlighting + LSP-ready).
+pub struct QueryTab {
+    /// Stable client-side id.
+    pub id: u32,
+    /// User-facing title (`Query 1`, …).
+    pub title: String,
+    /// The live SQL code editor for this tab.
+    pub editor: Entity<InputState>,
+}
 
 /// A live, daemon-backed connection mirrored on the client.
 pub struct DbConn {
@@ -212,8 +224,8 @@ pub fn sidebar(db: &DbState, cx: &mut Context<EnzoApp>) -> impl IntoElement {
                     .py(px(2.0))
                     .child(icon(theme::ICON_TABLE, 11.0, color))
                     .child(text(&name, 11.0, color))
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.browse_table(name.clone(), 0, cx);
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.browse_table(name.clone(), 0, window, cx);
                     })),
             );
         }
@@ -221,8 +233,14 @@ pub fn sidebar(db: &DbState, cx: &mut Context<EnzoApp>) -> impl IntoElement {
     col
 }
 
-/// Query-tab strip with the green RUN button.
-pub fn tab_bar(db: &DbState, cx: &mut Context<EnzoApp>) -> impl IntoElement {
+/// Query-tab strip: one chip per query buffer (click to switch, × to close),
+/// a `＋` to open a new buffer, and the green RUN button.
+pub fn tab_bar(
+    tabs: &[QueryTab],
+    active_tab: usize,
+    db: &DbState,
+    cx: &mut Context<EnzoApp>,
+) -> impl IntoElement {
     let run = div()
         .id("db-run")
         .cursor_pointer()
@@ -240,52 +258,84 @@ pub fn tab_bar(db: &DbState, cx: &mut Context<EnzoApp>) -> impl IntoElement {
             div()
                 .text_size(px(8.0))
                 .font_family(theme::FONT_PIXEL)
-                .child(if db.running {
-                    "RUNNING…"
-                } else {
-                    "RUN ⌘↵"
-                }),
+                .child(if db.running { "RUNNING…" } else { "RUN ⌘↵" }),
         )
-        .on_click(cx.listener(|this, _, _, cx| this.run_query(cx)));
-    div()
+        .on_click(cx.listener(|this, _, window, cx| this.run_query(window, cx)));
+
+    let mut bar = div()
         .flex()
         .items_center()
-        .gap(px(8.0))
+        .gap(px(6.0))
         .px(px(12.0))
         .py(px(7.0))
         .bg(theme::BG_BAR)
         .border_b_2()
-        .border_color(theme::BORDER)
-        .child(
-            div()
-                .px(px(8.0))
-                .py(px(4.0))
-                .rounded(px(3.0))
-                .bg(theme::BG_SURFACE)
-                .text_size(px(8.0))
-                .font_family(theme::FONT_PIXEL)
-                .text_color(theme::TEAL)
-                .child("query 1"),
-        )
-        .child(run)
+        .border_color(theme::BORDER);
+
+    for (i, tab) in tabs.iter().enumerate() {
+        let active = i == active_tab;
+        let id = tab.id;
+        let mut chip = div()
+            .id(SharedString::from(format!("qtab-{id}")))
+            .cursor_pointer()
+            .flex()
+            .items_center()
+            .gap(px(5.0))
+            .px(px(8.0))
+            .py(px(4.0))
+            .rounded(px(3.0))
+            .text_size(px(8.0))
+            .font_family(theme::FONT_PIXEL)
+            .on_click(cx.listener(move |this, _, window, cx| this.switch_tab(i, window, cx)));
+        if active {
+            chip = chip.bg(theme::BG_SURFACE).text_color(theme::TEAL);
+        } else {
+            chip = chip.text_color(theme::FG1);
+        }
+        chip = chip.child(SharedString::from(tab.title.clone()));
+        if tabs.len() > 1 {
+            chip = chip.child(
+                div()
+                    .id(SharedString::from(format!("qtab-x-{id}")))
+                    .cursor_pointer()
+                    .text_color(theme::FAINT)
+                    .child("×")
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.close_tab(i, window, cx);
+                    })),
+            );
+        }
+        bar = bar.child(chip);
+    }
+
+    bar.child(
+        div()
+            .id("db-new-tab")
+            .cursor_pointer()
+            .px(px(6.0))
+            .py(px(4.0))
+            .text_size(px(10.0))
+            .text_color(theme::PURPLE)
+            .child("＋")
+            .on_click(cx.listener(|this, _, window, cx| this.add_tab(window, cx))),
+    )
+    .child(run)
 }
 
-/// Editable SQL line + result grid (or error banner) from real state.
+/// Multi-line SQL editor (the active query buffer) + result grid (or error).
 pub fn content(
     db: &DbState,
-    sql_input: &Entity<TextInput>,
+    editor: &Entity<InputState>,
     cell_input: &Entity<TextInput>,
     cx: &mut Context<EnzoApp>,
 ) -> impl IntoElement {
     let sql_line = div()
-        .py(px(10.0))
-        .px(px(12.0))
-        .text_size(px(12.0))
-        .font_family(theme::FONT_MONO)
-        .text_color(theme::FG0)
+        .h(px(190.0))
+        .flex_none()
+        .text_size(px(13.0))
         .border_b_2()
         .border_color(theme::BORDER)
-        .child(sql_input.clone());
+        .child(Input::new(editor));
 
     let body = if let Some(err) = &db.error {
         div()
@@ -361,6 +411,7 @@ fn result_grid(
         for (ci, v) in row.iter().enumerate() {
             let cell_el: gpui::AnyElement = if db.editing == Some((ri, ci)) {
                 grid_cell()
+                    .key_context("DbCell")
                     .bg(theme::BG_CARD)
                     .font_family(theme::FONT_MONO)
                     .text_color(theme::FG0)
@@ -415,7 +466,9 @@ pub fn status_bar(db: &DbState, cx: &mut Context<EnzoApp>) -> impl IntoElement {
         if enabled {
             b = b
                 .cursor_pointer()
-                .on_click(cx.listener(move |this, _, _, cx| this.page_relative(delta, cx)));
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    this.page_relative(delta, window, cx)
+                }));
         }
         b
     };

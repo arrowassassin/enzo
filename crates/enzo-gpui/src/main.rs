@@ -50,7 +50,10 @@ pub struct EnzoApp {
     atp: Atp,
     connected: bool,
     db: DbState,
-    sql_input: Entity<TextInput>,
+    /// Open query buffers (Harlequin-style multi-tab SQL editing).
+    db_tabs: Vec<database::QueryTab>,
+    active_tab: usize,
+    next_tab: u32,
     dialog_open: bool,
     dialog_name: Entity<TextInput>,
     dialog_path: Entity<TextInput>,
@@ -93,10 +96,25 @@ const TERM_COLS: u16 = 120;
 const TERM_ROWS: u16 = 32;
 
 impl EnzoApp {
-    fn new(cx: &mut Context<Self>) -> Self {
+    /// Build a SQL code-editor entity (multi-line, tree-sitter highlight, LSP-ready).
+    fn new_sql_editor(seed: &str, window: &mut Window, cx: &mut Context<Self>) -> Entity<gpui_component::input::InputState> {
+        let seed = seed.to_owned();
+        cx.new(|cx| {
+            gpui_component::input::InputState::new(window, cx)
+                .code_editor("sql")
+                .line_number(true)
+                .placeholder("SELECT …   —   ⌘↵ to run")
+                .default_value(seed)
+        })
+    }
+
+    fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let atp = atp::connect();
-        let sql_input = cx
-            .new(|cx| TextInput::new(cx, "type SQL — ⌘↵ to run", "SELECT name, email FROM users"));
+        let first_tab = database::QueryTab {
+            id: 1,
+            title: "Query 1".to_owned(),
+            editor: Self::new_sql_editor("SELECT * FROM users;", window, cx),
+        };
         let dialog_name = cx.new(|cx| TextInput::new(cx, "my database", ""));
         let dialog_path = cx.new(|cx| TextInput::new(cx, "/path/to/db.sqlite", ""));
         let cell_input = cx.new(|cx| TextInput::new(cx, "", ""));
@@ -177,7 +195,9 @@ impl EnzoApp {
             atp,
             connected: false,
             db: DbState::new("db-0", &demo_name),
-            sql_input,
+            db_tabs: vec![first_tab],
+            active_tab: 0,
+            next_tab: 1,
             dialog_open: false,
             dialog_name,
             dialog_path,
@@ -195,6 +215,51 @@ impl EnzoApp {
             url_input,
             git_commit_input,
         }
+    }
+
+    // ── Query tabs (Harlequin multi-buffer) ───────────────────────────────
+    /// The active query buffer's editor.
+    fn active_editor(&self) -> &Entity<gpui_component::input::InputState> {
+        &self.db_tabs[self.active_tab.min(self.db_tabs.len() - 1)].editor
+    }
+
+    /// Open a new empty query buffer and focus it.
+    fn add_tab(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.next_tab += 1;
+        let id = self.next_tab;
+        let editor = Self::new_sql_editor("", window, cx);
+        editor.update(cx, |e, cx| e.focus(window, cx));
+        self.db_tabs.push(database::QueryTab {
+            id,
+            title: format!("Query {id}"),
+            editor,
+        });
+        self.active_tab = self.db_tabs.len() - 1;
+        cx.notify();
+    }
+
+    /// Switch to buffer `idx` and focus its editor.
+    fn switch_tab(&mut self, idx: usize, window: &mut Window, cx: &mut Context<Self>) {
+        if idx < self.db_tabs.len() {
+            self.active_tab = idx;
+            let editor = self.db_tabs[idx].editor.clone();
+            editor.update(cx, |e, cx| e.focus(window, cx));
+            cx.notify();
+        }
+    }
+
+    /// Close buffer `idx` (always keeps at least one buffer open).
+    fn close_tab(&mut self, idx: usize, window: &mut Window, cx: &mut Context<Self>) {
+        if self.db_tabs.len() <= 1 || idx >= self.db_tabs.len() {
+            return;
+        }
+        self.db_tabs.remove(idx);
+        if self.active_tab >= self.db_tabs.len() {
+            self.active_tab = self.db_tabs.len() - 1;
+        }
+        let editor = self.active_editor().clone();
+        editor.update(cx, |e, cx| e.focus(window, cx));
+        cx.notify();
     }
 
     // ── IDE entry ─────────────────────────────────────────────────────────
@@ -697,12 +762,13 @@ impl EnzoApp {
 
     // ── Database actions ──────────────────────────────────────────────────
     /// Browse `table` in the active connection (sets SQL + pages via ATP).
-    fn browse_table(&mut self, table: String, page: u64, cx: &mut Context<Self>) {
+    fn browse_table(&mut self, table: String, page: u64, window: &mut Window, cx: &mut Context<Self>) {
         let Some(conn) = self.db.active_conn_id().map(str::to_owned) else {
             return;
         };
         let q = format!("SELECT * FROM {table} LIMIT {};", database::PAGE_SIZE);
-        self.sql_input.update(cx, |i, cx| i.set_text(&q, cx));
+        let editor = self.active_editor().clone();
+        editor.update(cx, |e, cx| e.set_value(q, window, cx));
         self.db.running = true;
         let _ = self.atp.commands.send(Command::DbBrowse {
             conn,
@@ -713,12 +779,12 @@ impl EnzoApp {
         cx.notify();
     }
 
-    /// Run the SQL editor's contents against the active connection.
-    fn run_query(&mut self, cx: &mut Context<Self>) {
+    /// Run the active query buffer's SQL against the active connection.
+    fn run_query(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         let Some(conn) = self.db.active_conn_id().map(str::to_owned) else {
             return;
         };
-        let sql = self.sql_input.read(cx).text().trim().to_owned();
+        let sql = self.active_editor().read(cx).value().trim().to_owned();
         if sql.is_empty() {
             return;
         }
@@ -729,7 +795,7 @@ impl EnzoApp {
     }
 
     /// Page the currently-browsed table by `delta` (clamped), re-browsing.
-    fn page_relative(&mut self, delta: i64, cx: &mut Context<Self>) {
+    fn page_relative(&mut self, delta: i64, window: &mut Window, cx: &mut Context<Self>) {
         let Some(table) = self.db.browsing.clone() else {
             return;
         };
@@ -742,14 +808,14 @@ impl EnzoApp {
         let next = next.clamp(0, i64::try_from(last).unwrap_or(0));
         let next = u64::try_from(next).unwrap_or(0);
         if next != self.db.page {
-            self.browse_table(table, next, cx);
+            self.browse_table(table, next, window, cx);
         }
     }
 
     /// `⌘↵` handler — runs the query when the Database surface is active.
-    fn on_run_query(&mut self, _: &RunQuery, _: &mut Window, cx: &mut Context<Self>) {
+    fn on_run_query(&mut self, _: &RunQuery, window: &mut Window, cx: &mut Context<Self>) {
         if self.surface == Surface::Database {
-            self.run_query(cx);
+            self.run_query(window, cx);
         }
     }
 }
@@ -950,8 +1016,8 @@ impl EnzoApp {
                 // Focus the surface's primary input on entry.
                 match target {
                     Surface::Database => {
-                        let handle = this.sql_input.read(cx).handle();
-                        window.focus(&handle, cx);
+                        let editor = this.active_editor().clone();
+                        editor.update(cx, |e, cx| e.focus(window, cx));
                     }
                     Surface::Terminal => window.focus(&this.term_focus, cx),
                     Surface::Browser => {
@@ -1000,8 +1066,9 @@ impl EnzoApp {
                         .into_any_element(),
                 ),
                 Surface::Database => (
-                    database::tab_bar(&self.db, cx).into_any_element(),
-                    database::content(&self.db, &self.sql_input, &self.cell_input, cx)
+                    database::tab_bar(&self.db_tabs, self.active_tab, &self.db, cx)
+                        .into_any_element(),
+                    database::content(&self.db, self.active_editor(), &self.cell_input, cx)
                         .into_any_element(),
                     database::status_bar(&self.db, cx).into_any_element(),
                 ),
@@ -1212,8 +1279,10 @@ fn main() {
             cx.bind_keys([
                 gpui::KeyBinding::new("cmd-enter", RunQuery, db),
                 gpui::KeyBinding::new("ctrl-enter", RunQuery, db),
-                gpui::KeyBinding::new("enter", CommitEdit, db),
-                gpui::KeyBinding::new("escape", CancelEdit, db),
+                // Cell-edit commit/cancel are scoped to the editing cell so they
+                // don't steal Enter (newline) from the multi-line SQL editor.
+                gpui::KeyBinding::new("enter", CommitEdit, Some("DbCell")),
+                gpui::KeyBinding::new("escape", CancelEdit, Some("DbCell")),
                 gpui::KeyBinding::new("cmd-s", SaveFile, Some("Editor")),
                 gpui::KeyBinding::new("ctrl-s", SaveFile, Some("Editor")),
                 gpui::KeyBinding::new("enter", Navigate, Some("Browser")),
@@ -1225,7 +1294,7 @@ fn main() {
                     ..Default::default()
                 },
                 |window, cx| {
-                    let app = cx.new(EnzoApp::new);
+                    let app = cx.new(|cx| EnzoApp::new(window, cx));
                     // The app boots on the Terminal surface — focus it for typing.
                     let handle = app.read(cx).term_focus.clone();
                     window.focus(&handle, cx);
