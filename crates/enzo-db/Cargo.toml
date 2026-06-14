@@ -19,3 +19,6 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 arrow = { version = "54", features = ["prettyprint"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
+# DuckDB driver (bundled libduckdb). Pinned to the 1.2 line because it targets
+# arrow 54, matching the workspace arrow so typed RecordBatches unify.
+duckdb = { version = "=1.2.2", features = ["bundled"] }

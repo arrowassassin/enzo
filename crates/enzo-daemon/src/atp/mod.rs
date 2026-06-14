@@ -348,7 +348,10 @@ async fn db_connect(id: Value, p: &Value, state: &DaemonState) -> Response {
         return Response::err(id, -32602, "missing id");
     };
     let path = p["path"].as_str().unwrap_or(":memory:");
-    match AnyPool::sqlite(path) {
+    // Optional explicit driver ("sqlite" | "duckdb"); otherwise inferred from
+    // the path extension (.duckdb/.ddb → DuckDB), defaulting to SQLite.
+    let driver = p["driver"].as_str().unwrap_or("");
+    match AnyPool::open(driver, path) {
         Ok(pool) => {
             let driver = pool.driver_name();
             state.insert_db_conn(conn_id.to_owned(), pool).await;
