@@ -33,8 +33,45 @@ use text_input::TextInput;
 
 actions!(
     enzo,
-    [RunQuery, CommitEdit, CancelEdit, SaveFile, Navigate]
+    [
+        RunQuery,
+        CommitEdit,
+        CancelEdit,
+        SaveFile,
+        Navigate,
+        PaletteToggle,
+        PaletteUp,
+        PaletteDown,
+        PaletteExec,
+        PaletteClose,
+    ]
 );
+
+/// A command-palette entry (⌘K).
+#[derive(Clone, Copy)]
+enum PaletteCmd {
+    Go(Surface),
+    AddConnection,
+    GitRefresh,
+    StartDebug,
+    ToggleBreakpoint,
+    SaveFile,
+    RunQuery,
+}
+
+/// The palette's command catalogue (label, command), filtered by the query.
+const PALETTE: &[(&str, PaletteCmd)] = &[
+    ("Go: Terminal", PaletteCmd::Go(Surface::Terminal)),
+    ("Go: Editor / IDE", PaletteCmd::Go(Surface::Editor)),
+    ("Go: Browser", PaletteCmd::Go(Surface::Browser)),
+    ("Go: Database", PaletteCmd::Go(Surface::Database)),
+    ("Database: New connection…", PaletteCmd::AddConnection),
+    ("Database: Run query (⌘↵)", PaletteCmd::RunQuery),
+    ("Editor: Save file (⌘S)", PaletteCmd::SaveFile),
+    ("Debug: Start", PaletteCmd::StartDebug),
+    ("Debug: Toggle breakpoint at cursor", PaletteCmd::ToggleBreakpoint),
+    ("Git: Refresh status", PaletteCmd::GitRefresh),
+];
 
 /// Which top-level surface is displayed.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -92,6 +129,10 @@ pub struct EnzoApp {
     breakpoints: std::collections::HashMap<String, std::collections::BTreeSet<u32>>,
     /// Monotonic counter for unique DAP client ids.
     dap_seq: u32,
+    /// Command palette (⌘K) state.
+    palette_open: bool,
+    palette_input: Entity<TextInput>,
+    palette_sel: usize,
     /// Active AI-CLI approval prompt (id, title, body, actions), if any.
     agent_prompt: Option<AgentPrompt>,
     /// AI agent blocks composited in the terminal column (id → title, body).
@@ -153,6 +194,7 @@ impl EnzoApp {
         let cell_input = cx.new(|cx| TextInput::new(cx, "", ""));
         let url_input = cx.new(|cx| TextInput::new(cx, "https://example.com", ""));
         let git_commit_input = cx.new(|cx| TextInput::new(cx, "commit message…", ""));
+        let palette_input = cx.new(|cx| TextInput::new(cx, "type a command…", ""));
 
         // Spawn the first PTY session (buffered until the daemon connects).
         let term_id = "term-0".to_owned();
@@ -255,6 +297,9 @@ impl EnzoApp {
             dap: None,
             breakpoints: std::collections::HashMap::new(),
             dap_seq: 0,
+            palette_open: false,
+            palette_input,
+            palette_sel: 0,
             agent_prompt: None,
             agent_blocks: Vec::new(),
             browser: browser::BrowserState::new(),
@@ -427,6 +472,102 @@ impl EnzoApp {
                 path: path_str,
                 lines,
             });
+        }
+        cx.notify();
+    }
+
+    // ── Command palette (⌘K) ──────────────────────────────────────────────
+    /// Indices of palette commands matching the current query (subsequence
+    /// fuzzy match, case-insensitive).
+    fn palette_matches(&self, cx: &Context<Self>) -> Vec<usize> {
+        let q = self.palette_input.read(cx).text().to_lowercase();
+        PALETTE
+            .iter()
+            .enumerate()
+            .filter(|(_, (label, _))| q.is_empty() || fuzzy_match(&label.to_lowercase(), &q))
+            .map(|(i, _)| i)
+            .collect()
+    }
+
+    fn on_palette_toggle(&mut self, _: &PaletteToggle, window: &mut Window, cx: &mut Context<Self>) {
+        self.palette_open = !self.palette_open;
+        if self.palette_open {
+            self.palette_sel = 0;
+            self.palette_input.update(cx, |i, cx| i.set_text("", cx));
+            let h = self.palette_input.read(cx).handle();
+            window.focus(&h, cx);
+        }
+        cx.notify();
+    }
+
+    fn on_palette_close(&mut self, _: &PaletteClose, _: &mut Window, cx: &mut Context<Self>) {
+        if self.palette_open {
+            self.palette_open = false;
+            cx.notify();
+        }
+    }
+
+    fn on_palette_up(&mut self, _: &PaletteUp, _: &mut Window, cx: &mut Context<Self>) {
+        if self.palette_open {
+            self.palette_sel = self.palette_sel.saturating_sub(1);
+            cx.notify();
+        }
+    }
+
+    fn on_palette_down(&mut self, _: &PaletteDown, _: &mut Window, cx: &mut Context<Self>) {
+        if self.palette_open {
+            let n = self.palette_matches(cx).len();
+            if n > 0 {
+                self.palette_sel = (self.palette_sel + 1).min(n - 1);
+            }
+            cx.notify();
+        }
+    }
+
+    fn on_palette_exec(&mut self, _: &PaletteExec, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.palette_open {
+            return;
+        }
+        let matches = self.palette_matches(cx);
+        if let Some(&idx) = matches.get(self.palette_sel.min(matches.len().saturating_sub(1))) {
+            let cmd = PALETTE[idx].1;
+            self.palette_open = false;
+            self.run_palette_cmd(cmd, window, cx);
+        }
+    }
+
+    fn run_palette_cmd(&mut self, cmd: PaletteCmd, window: &mut Window, cx: &mut Context<Self>) {
+        match cmd {
+            PaletteCmd::Go(s) => {
+                self.surface = s;
+                match s {
+                    Surface::Terminal => window.focus(&self.term_focus, cx),
+                    Surface::Database => {
+                        let e = self.active_editor().clone();
+                        e.update(cx, |e, cx| e.focus(window, cx));
+                    }
+                    Surface::Browser => {
+                        let h = self.url_input.read(cx).handle();
+                        window.focus(&h, cx);
+                    }
+                    Surface::Editor => self.enter_editor(window, cx),
+                }
+            }
+            PaletteCmd::AddConnection => {
+                self.surface = Surface::Database;
+                self.open_connection_dialog(window, cx);
+            }
+            PaletteCmd::GitRefresh => self.git_refresh(cx),
+            PaletteCmd::StartDebug => {
+                self.surface = Surface::Editor;
+                self.start_debug(window, cx);
+            }
+            PaletteCmd::ToggleBreakpoint => self.toggle_breakpoint_at_cursor(cx),
+            PaletteCmd::SaveFile => self.on_save_file(&SaveFile, window, cx),
+            PaletteCmd::RunQuery => {
+                self.surface = Surface::Database;
+                self.run_query(window, cx);
+            }
         }
         cx.notify();
     }
@@ -1477,6 +1618,9 @@ impl Render for EnzoApp {
             .agent_prompt
             .as_ref()
             .map(|p| self.agent_prompt_overlay(p, cx).into_any_element());
+        let palette = self
+            .palette_open
+            .then(|| self.palette_overlay(cx).into_any_element());
         let key_context = match self.surface {
             Surface::Database => "Database",
             Surface::Terminal => "Terminal",
@@ -1496,6 +1640,11 @@ impl Render for EnzoApp {
             .on_action(cx.listener(Self::on_cancel_edit))
             .on_action(cx.listener(Self::on_save_file))
             .on_action(cx.listener(Self::on_navigate))
+            .on_action(cx.listener(Self::on_palette_toggle))
+            .on_action(cx.listener(Self::on_palette_close))
+            .on_action(cx.listener(Self::on_palette_up))
+            .on_action(cx.listener(Self::on_palette_down))
+            .on_action(cx.listener(Self::on_palette_exec))
             // Sidebar resize drag: track motion/release at the root so the
             // pointer can leave the 4px handle without dropping the drag.
             .on_mouse_move(cx.listener(|this, ev: &gpui::MouseMoveEvent, _, cx| {
@@ -1520,10 +1669,80 @@ impl Render for EnzoApp {
             .child(self.surface_column(cx))
             .children(dialog)
             .children(prompt)
+            .children(palette)
     }
 }
 
 impl EnzoApp {
+    /// Command palette (⌘K): query field + fuzzy-filtered command list.
+    fn palette_overlay(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let matches = self.palette_matches(cx);
+        let sel = self.palette_sel.min(matches.len().saturating_sub(1));
+        let mut list = div().flex().flex_col().py(px(4.0));
+        if matches.is_empty() {
+            list = list.child(
+                div()
+                    .px(px(16.0))
+                    .py(px(10.0))
+                    .child(widgets::text("no matching commands", 12.0, theme::FAINT)),
+            );
+        }
+        for (row, &idx) in matches.iter().enumerate() {
+            let (label, cmd) = PALETTE[idx];
+            let active = row == sel;
+            let mut item = div()
+                .id(SharedString::from(format!("pal-{idx}")))
+                .cursor_pointer()
+                .px(px(16.0))
+                .py(px(7.0))
+                .text_size(px(12.5))
+                .text_color(if active { theme::TEAL } else { theme::FG2 });
+            if active {
+                item = item.bg(theme::BG_BAR);
+            }
+            item = item.child(SharedString::from(label)).on_click(cx.listener(
+                move |this, _, window, cx| {
+                    this.palette_open = false;
+                    this.run_palette_cmd(cmd, window, cx);
+                },
+            ));
+            list = list.child(item);
+        }
+        div()
+            .absolute()
+            .top_0()
+            .left_0()
+            .size_full()
+            .flex()
+            .flex_col()
+            .items_center()
+            .pt(px(90.0))
+            .bg(gpui::rgba(0x0e0c14cc))
+            .child(
+                div()
+                    .w(px(520.0))
+                    .bg(theme::BG_SURFACE)
+                    .border_3()
+                    .border_color(theme::PURPLE_BG)
+                    .rounded(px(10.0))
+                    .overflow_hidden()
+                    .child(
+                        div()
+                            .key_context("Palette")
+                            .px(px(16.0))
+                            .py(px(11.0))
+                            .bg(theme::BG_BAR)
+                            .border_b_2()
+                            .border_color(theme::BORDER)
+                            .text_size(px(13.0))
+                            .font_family(theme::FONT_MONO)
+                            .text_color(theme::FG0)
+                            .child(self.palette_input.clone()),
+                    )
+                    .child(list),
+            )
+    }
+
     /// AI-CLI approval card: title, body, and one button per action.
     fn agent_prompt_overlay(&self, p: &AgentPrompt, cx: &mut Context<Self>) -> impl IntoElement {
         // Buttons wrap so an arbitrary number of options (multiselect) fit.
@@ -2037,6 +2256,14 @@ fn main() {
                 gpui::KeyBinding::new("cmd-s", SaveFile, Some("Editor")),
                 gpui::KeyBinding::new("ctrl-s", SaveFile, Some("Editor")),
                 gpui::KeyBinding::new("enter", Navigate, Some("BrowserUrl")),
+                // Command palette: ⌘K (and ctrl-shift-p so it never steals a
+                // terminal control key like ctrl-k).
+                gpui::KeyBinding::new("cmd-k", PaletteToggle, None),
+                gpui::KeyBinding::new("ctrl-shift-p", PaletteToggle, None),
+                gpui::KeyBinding::new("up", PaletteUp, Some("Palette")),
+                gpui::KeyBinding::new("down", PaletteDown, Some("Palette")),
+                gpui::KeyBinding::new("enter", PaletteExec, Some("Palette")),
+                gpui::KeyBinding::new("escape", PaletteClose, Some("Palette")),
             ]);
             let bounds = Bounds::centered(None, size(px(1280.0), px(800.0)), cx);
             cx.open_window(
@@ -2056,6 +2283,13 @@ fn main() {
             .unwrap();
             cx.activate(true);
         });
+}
+
+/// Subsequence fuzzy match: every char of `needle` appears in `haystack` in
+/// order (both already lowercased).
+fn fuzzy_match(haystack: &str, needle: &str) -> bool {
+    let mut chars = haystack.chars();
+    needle.chars().all(|c| chars.any(|h| h == c))
 }
 
 /// Map a language id to its debug adapter `(cmd, args, adapterID)`. The adapter
