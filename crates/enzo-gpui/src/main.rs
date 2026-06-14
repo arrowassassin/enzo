@@ -1029,47 +1029,7 @@ impl EnzoApp {
     /// Translate a keystroke to PTY bytes and forward it to the session.
     fn on_term_key(&mut self, ev: &KeyDownEvent, _: &mut Window, _cx: &mut Context<Self>) {
         let ks = &ev.keystroke;
-        let m = &ks.modifiers;
-        let mut bytes: Vec<u8> = Vec::new();
-        // Control combos first (so Ctrl-C → 0x03 regardless of key_char).
-        if m.control {
-            bytes = match ks.key.as_str() {
-                "space" => vec![0],
-                "[" => vec![0x1b],
-                "\\" => vec![0x1c],
-                "]" => vec![0x1d],
-                k if k.len() == 1 && k.as_bytes()[0].is_ascii_alphabetic() => {
-                    vec![k.as_bytes()[0].to_ascii_lowercase() - b'a' + 1]
-                }
-                _ => Vec::new(),
-            };
-        }
-        if bytes.is_empty() {
-            if let Some(ch) = &ks.key_char {
-                bytes = ch.clone().into_bytes();
-                // Alt/Meta → ESC prefix (readline word motion, etc.).
-                if m.alt {
-                    let mut prefixed = vec![0x1b];
-                    prefixed.append(&mut bytes);
-                    bytes = prefixed;
-                }
-            } else {
-                bytes = match ks.key.as_str() {
-                    "enter" => vec![b'\r'],
-                    "backspace" => vec![0x7f],
-                    "tab" => vec![b'\t'],
-                    "escape" => vec![0x1b],
-                    "up" => vec![0x1b, b'[', b'A'],
-                    "down" => vec![0x1b, b'[', b'B'],
-                    "right" => vec![0x1b, b'[', b'C'],
-                    "left" => vec![0x1b, b'[', b'D'],
-                    "home" => vec![0x1b, b'[', b'H'],
-                    "end" => vec![0x1b, b'[', b'F'],
-                    "delete" => vec![0x1b, b'[', b'3', b'~'],
-                    _ => return,
-                };
-            }
-        }
+        let bytes = keystroke_to_pty_bytes(&ks.key, ks.key_char.as_deref(), &ks.modifiers);
         if bytes.is_empty() {
             return;
         }
@@ -2285,6 +2245,57 @@ fn main() {
         });
 }
 
+/// Translate a keystroke into the raw bytes to write to the PTY.
+///
+/// Order matters: control combos first, then named special keys, then the
+/// printable `key_char`. Named keys must beat `key_char` so Return is always
+/// CR (`\r`, 0x0D) — raw-mode TUIs (Ink/Claude Code, vim, readline) only treat
+/// CR as Return, and macOS frequently reports Return's `key_char` as `\n`.
+fn keystroke_to_pty_bytes(key: &str, key_char: Option<&str>, m: &gpui::Modifiers) -> Vec<u8> {
+    if m.control {
+        let b = match key {
+            "space" => vec![0],
+            "[" => vec![0x1b],
+            "\\" => vec![0x1c],
+            "]" => vec![0x1d],
+            k if k.len() == 1 && k.as_bytes()[0].is_ascii_alphabetic() => {
+                vec![k.as_bytes()[0].to_ascii_lowercase() - b'a' + 1]
+            }
+            _ => Vec::new(),
+        };
+        if !b.is_empty() {
+            return b;
+        }
+    }
+    let named = match key {
+        "enter" => vec![b'\r'],
+        "backspace" => vec![0x7f],
+        "tab" => vec![b'\t'],
+        "escape" => vec![0x1b],
+        "up" => vec![0x1b, b'[', b'A'],
+        "down" => vec![0x1b, b'[', b'B'],
+        "right" => vec![0x1b, b'[', b'C'],
+        "left" => vec![0x1b, b'[', b'D'],
+        "home" => vec![0x1b, b'[', b'H'],
+        "end" => vec![0x1b, b'[', b'F'],
+        "delete" => vec![0x1b, b'[', b'3', b'~'],
+        _ => Vec::new(),
+    };
+    if !named.is_empty() {
+        return named;
+    }
+    if let Some(ch) = key_char {
+        let mut bytes = ch.as_bytes().to_vec();
+        if m.alt {
+            let mut prefixed = vec![0x1b];
+            prefixed.append(&mut bytes);
+            return prefixed;
+        }
+        return bytes;
+    }
+    Vec::new()
+}
+
 /// Subsequence fuzzy match: every char of `needle` appears in `haystack` in
 /// order (both already lowercased).
 fn fuzzy_match(haystack: &str, needle: &str) -> bool {
@@ -2402,4 +2413,55 @@ fn default_db_path() -> Option<String> {
     let dir = std::path::Path::new(&home).join(".enzo");
     std::fs::create_dir_all(&dir).ok()?;
     Some(dir.join("demo.db").to_string_lossy().into_owned())
+}
+
+#[cfg(test)]
+mod term_key_tests {
+    use super::keystroke_to_pty_bytes;
+
+    fn mods() -> gpui::Modifiers {
+        gpui::Modifiers::default()
+    }
+
+    #[test]
+    fn enter_is_carriage_return_even_with_newline_key_char() {
+        // The macOS case that broke Ink/Claude Code: key_char reported as "\n".
+        assert_eq!(keystroke_to_pty_bytes("enter", Some("\n"), &mods()), vec![b'\r']);
+        assert_eq!(keystroke_to_pty_bytes("enter", None, &mods()), vec![b'\r']);
+    }
+
+    #[test]
+    fn tab_and_backspace_beat_key_char() {
+        assert_eq!(keystroke_to_pty_bytes("tab", Some("\t"), &mods()), vec![b'\t']);
+        assert_eq!(keystroke_to_pty_bytes("backspace", None, &mods()), vec![0x7f]);
+    }
+
+    #[test]
+    fn arrows_emit_csi() {
+        assert_eq!(keystroke_to_pty_bytes("up", None, &mods()), vec![0x1b, b'[', b'A']);
+        assert_eq!(keystroke_to_pty_bytes("left", None, &mods()), vec![0x1b, b'[', b'D']);
+    }
+
+    #[test]
+    fn printable_uses_key_char() {
+        assert_eq!(keystroke_to_pty_bytes("a", Some("a"), &mods()), vec![b'a']);
+    }
+
+    #[test]
+    fn ctrl_c_is_etx() {
+        let m = gpui::Modifiers {
+            control: true,
+            ..Default::default()
+        };
+        assert_eq!(keystroke_to_pty_bytes("c", Some("c"), &m), vec![3]);
+    }
+
+    #[test]
+    fn alt_prefixes_escape() {
+        let m = gpui::Modifiers {
+            alt: true,
+            ..Default::default()
+        };
+        assert_eq!(keystroke_to_pty_bytes("b", Some("b"), &m), vec![0x1b, b'b']);
+    }
 }
