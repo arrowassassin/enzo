@@ -92,6 +92,11 @@ pub struct EnzoApp {
     browser: browser::BrowserState,
     url_input: Entity<TextInput>,
     git_commit_input: Entity<TextInput>,
+    /// Focus handle for the live browser page (keyboard forwarding).
+    browser_focus: FocusHandle,
+    /// Last painted bounds of the browser viewport, for window→page coordinate
+    /// mapping when forwarding mouse input.
+    browser_bounds: std::rc::Rc<std::cell::Cell<Option<Bounds<gpui::Pixels>>>>,
 }
 
 /// An AI-CLI approval prompt awaiting a decision (`prompt.show`).
@@ -245,6 +250,8 @@ impl EnzoApp {
             browser: browser::BrowserState::new(),
             url_input,
             git_commit_input,
+            browser_focus: cx.focus_handle(),
+            browser_bounds: std::rc::Rc::new(std::cell::Cell::new(None)),
         }
     }
 
@@ -354,20 +361,21 @@ impl EnzoApp {
         if !self.browser.launched {
             let _ = self.atp.commands.send(Command::BrowserLaunch {
                 id: browser::PAGE_ID.into(),
-                width: 1024,
-                height: 720,
+                width: browser::PAGE_W,
+                height: browser::PAGE_H,
             });
             self.browser.launched = true;
+            self.start_screencast();
         }
         let _ = self.atp.commands.send(Command::BrowserNavigate {
             id: browser::PAGE_ID.into(),
             url,
         });
-        // Screenshot once the page has settled.
+        // One screenshot as a fallback in case screencast doesn't start.
         let cmds = self.atp.commands.clone();
         cx.spawn(async move |_this, cx| {
             cx.background_executor()
-                .timer(Duration::from_millis(1300))
+                .timer(Duration::from_millis(1500))
                 .await;
             let _ = cmds.send(Command::BrowserShot {
                 id: browser::PAGE_ID.into(),
@@ -375,6 +383,134 @@ impl EnzoApp {
         })
         .detach();
         cx.notify();
+    }
+
+    /// Start a live CDP screencast so the page streams frames continuously.
+    fn start_screencast(&self) {
+        let id = browser::PAGE_ID.to_owned();
+        let _ = self.atp.commands.send(Command::BrowserInput {
+            id: id.clone(),
+            method: "Page.enable".into(),
+            params: serde_json::json!({}),
+        });
+        let _ = self.atp.commands.send(Command::BrowserInput {
+            id,
+            method: "Page.startScreencast".into(),
+            params: serde_json::json!({
+                "format": "jpeg", "quality": 60,
+                "maxWidth": browser::PAGE_W, "maxHeight": browser::PAGE_H,
+                "everyNthFrame": 1
+            }),
+        });
+    }
+
+    /// Forward a CDP input event to the page.
+    fn browser_cdp(&self, method: &str, params: serde_json::Value) {
+        let _ = self.atp.commands.send(Command::BrowserInput {
+            id: browser::PAGE_ID.into(),
+            method: method.to_owned(),
+            params,
+        });
+    }
+
+    /// Map a window-space point to page-space `(x, y)` using the last viewport
+    /// bounds, scaled to the headless page size.
+    fn browser_page_xy(&self, p: gpui::Point<gpui::Pixels>) -> Option<(f32, f32)> {
+        let b = self.browser_bounds.get()?;
+        let w = f32::from(b.size.width);
+        let h = f32::from(b.size.height);
+        if w <= 0.0 || h <= 0.0 {
+            return None;
+        }
+        let x = ((f32::from(p.x) - f32::from(b.origin.x)) / w * browser::PAGE_W as f32)
+            .clamp(0.0, browser::PAGE_W as f32);
+        let y = ((f32::from(p.y) - f32::from(b.origin.y)) / h * browser::PAGE_H as f32)
+            .clamp(0.0, browser::PAGE_H as f32);
+        Some((x, y))
+    }
+
+    fn on_browser_mouse_down(
+        &mut self,
+        ev: &gpui::MouseDownEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        window.focus(&self.browser_focus, cx);
+        if let Some((x, y)) = self.browser_page_xy(ev.position) {
+            self.browser_cdp(
+                "Input.dispatchMouseEvent",
+                serde_json::json!({
+                    "type": "mousePressed", "x": x, "y": y,
+                    "button": "left", "buttons": 1, "clickCount": 1
+                }),
+            );
+        }
+    }
+
+    fn on_browser_mouse_up(
+        &mut self,
+        ev: &gpui::MouseUpEvent,
+        _: &mut Window,
+        _: &mut Context<Self>,
+    ) {
+        if let Some((x, y)) = self.browser_page_xy(ev.position) {
+            self.browser_cdp(
+                "Input.dispatchMouseEvent",
+                serde_json::json!({
+                    "type": "mouseReleased", "x": x, "y": y,
+                    "button": "left", "buttons": 0, "clickCount": 1
+                }),
+            );
+        }
+    }
+
+    fn on_browser_scroll(
+        &mut self,
+        ev: &gpui::ScrollWheelEvent,
+        _: &mut Window,
+        _: &mut Context<Self>,
+    ) {
+        let Some((x, y)) = self.browser_page_xy(ev.position) else {
+            return;
+        };
+        let (dx, dy) = match ev.delta {
+            gpui::ScrollDelta::Pixels(p) => (f32::from(p.x), f32::from(p.y)),
+            gpui::ScrollDelta::Lines(p) => (p.x * 40.0, p.y * 40.0),
+        };
+        self.browser_cdp(
+            "Input.dispatchMouseEvent",
+            serde_json::json!({
+                "type": "mouseWheel", "x": x, "y": y,
+                "deltaX": -dx, "deltaY": -dy
+            }),
+        );
+    }
+
+    fn on_browser_key(&mut self, ev: &KeyDownEvent, _: &mut Window, _: &mut Context<Self>) {
+        let ks = &ev.keystroke;
+        // Printable text → keyDown with text; named keys → a rawKeyDown.
+        if let Some(text) = &ks.key_char {
+            self.browser_cdp(
+                "Input.dispatchKeyEvent",
+                serde_json::json!({ "type": "keyDown", "text": text }),
+            );
+        } else {
+            let key = match ks.key.as_str() {
+                "enter" => "Enter",
+                "backspace" => "Backspace",
+                "tab" => "Tab",
+                "escape" => "Escape",
+                "up" => "ArrowUp",
+                "down" => "ArrowDown",
+                "left" => "ArrowLeft",
+                "right" => "ArrowRight",
+                _ => return,
+            };
+            self.browser_cdp(
+                "Input.dispatchKeyEvent",
+                serde_json::json!({ "type": "rawKeyDown", "key": key }),
+            );
+        }
     }
 
     fn refresh_browser(&mut self, cx: &mut Context<Self>) {
@@ -782,6 +918,70 @@ impl EnzoApp {
         col
     }
 
+    /// Live browser page: streams CDP screencast frames and forwards mouse,
+    /// scroll and keyboard input to the headless page. A transparent `canvas`
+    /// records the viewport bounds each frame for window→page coordinate mapping.
+    fn browser_view(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let bounds_cell = self.browser_bounds.clone();
+        let body: AnyElement = if let Some(err) = &self.browser.error {
+            div()
+                .flex()
+                .flex_col()
+                .size_full()
+                .items_center()
+                .justify_center()
+                .gap(px(8.0))
+                .child(widgets::text(&format!("✗ {err}"), 13.0, theme::RED_LT))
+                .child(widgets::text(
+                    "the daemon's headless browser needs a Chrome/Chromium install",
+                    11.0,
+                    theme::FAINT,
+                ))
+                .into_any_element()
+        } else if let Some(shot) = &self.browser.shot {
+            div()
+                .relative()
+                .size_full()
+                .child(gpui::img(gpui::ImageSource::Image(shot.clone())).size_full())
+                .child(
+                    gpui::canvas(move |b, _, _| bounds_cell.set(Some(b)), |_, _, _, _| {})
+                        .absolute()
+                        .size_full(),
+                )
+                .into_any_element()
+        } else {
+            div()
+                .flex()
+                .size_full()
+                .items_center()
+                .justify_center()
+                .child(widgets::text(
+                    if self.browser.loading {
+                        "◍ loading…"
+                    } else {
+                        "◍ enter a URL to start the headless browser"
+                    },
+                    14.0,
+                    theme::FAINT,
+                ))
+                .into_any_element()
+        };
+        div()
+            .id("browser-page")
+            .track_focus(&self.browser_focus)
+            .key_context("BrowserPage")
+            .size_full()
+            .overflow_hidden()
+            .on_mouse_down(
+                gpui::MouseButton::Left,
+                cx.listener(Self::on_browser_mouse_down),
+            )
+            .on_mouse_up(gpui::MouseButton::Left, cx.listener(Self::on_browser_mouse_up))
+            .on_scroll_wheel(cx.listener(Self::on_browser_scroll))
+            .on_key_down(cx.listener(Self::on_browser_key))
+            .child(body)
+    }
+
     // ── Connection dialog ─────────────────────────────────────────────────
     fn open_connection_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.dialog_open = true;
@@ -887,6 +1087,20 @@ impl EnzoApp {
                     )));
                     self.browser.loading = false;
                     self.browser.error = None;
+                }
+                Incoming::BrowserFrame { jpeg, session_id } => {
+                    self.browser.shot = Some(std::sync::Arc::new(gpui::Image::from_bytes(
+                        gpui::ImageFormat::Jpeg,
+                        jpeg,
+                    )));
+                    self.browser.loading = false;
+                    self.browser.error = None;
+                    // Ack so Chrome keeps streaming frames.
+                    let _ = self.atp.commands.send(Command::BrowserInput {
+                        id: browser::PAGE_ID.into(),
+                        method: "Page.screencastFrameAck".into(),
+                        params: serde_json::json!({ "sessionId": session_id }),
+                    });
                 }
                 Incoming::BrowserError { message } => {
                     self.browser.loading = false;
@@ -1383,7 +1597,7 @@ impl EnzoApp {
                 ),
                 Surface::Browser => (
                     browser::tab_bar(&self.browser, &self.url_input, cx).into_any_element(),
-                    browser::content(&self.browser).into_any_element(),
+                    self.browser_view(cx).into_any_element(),
                     browser::status_bar(&self.browser).into_any_element(),
                 ),
             };
@@ -1589,7 +1803,7 @@ fn main() {
                 gpui::KeyBinding::new("escape", CancelEdit, Some("DbCell")),
                 gpui::KeyBinding::new("cmd-s", SaveFile, Some("Editor")),
                 gpui::KeyBinding::new("ctrl-s", SaveFile, Some("Editor")),
-                gpui::KeyBinding::new("enter", Navigate, Some("Browser")),
+                gpui::KeyBinding::new("enter", Navigate, Some("BrowserUrl")),
             ]);
             let bounds = Bounds::centered(None, size(px(1280.0), px(800.0)), cx);
             cx.open_window(

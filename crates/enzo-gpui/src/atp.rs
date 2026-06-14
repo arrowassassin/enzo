@@ -138,6 +138,13 @@ pub enum Command {
     BrowserShot {
         id: String,
     },
+    /// Generic CDP passthrough (mouse/keyboard input, screencast control, …).
+    /// `method`/`params` are forwarded verbatim to the page's CDP session.
+    BrowserInput {
+        id: String,
+        method: String,
+        params: serde_json::Value,
+    },
     GitStatus {
         root: String,
     },
@@ -212,6 +219,11 @@ pub enum Incoming {
     },
     BrowserShot {
         png: Vec<u8>,
+    },
+    /// A live screencast frame (JPEG) plus the CDP `session_id` to ack.
+    BrowserFrame {
+        jpeg: Vec<u8>,
+        session_id: i64,
     },
     /// A browser launch/navigate/screenshot failed (e.g. Chrome not installed).
     BrowserError {
@@ -595,6 +607,15 @@ async fn handle_command(client: &Client, tx: &Sender<Incoming>, cmd: Command) {
                 });
             }
         }
+        Command::BrowserInput { id, method, params } => {
+            // Fire-and-forget CDP call; errors (e.g. closed page) are non-fatal.
+            let _ = client
+                .request(
+                    "browser.input",
+                    json!({ "id": id, "method": method, "params": params }),
+                )
+                .await;
+        }
         Command::BrowserShot { id } => match client
             .request("browser.screenshot", json!({ "id": id }))
             .await
@@ -884,6 +905,19 @@ fn handle_notification(method: &str, v: &Value, tx: &Sender<Incoming>) {
         "block.clear" => {
             if let Some(id) = p["id"].as_str() {
                 let _ = tx.send(Incoming::BlockClear { id: id.to_owned() });
+            }
+        }
+        "browser.event" => {
+            // Live screencast frames arrive as CDP Page.screencastFrame events.
+            if p["method"].as_str() == Some("Page.screencastFrame") {
+                let ep = &p["params"];
+                if let Some(b64) = ep["data"].as_str()
+                    && let Ok(jpeg) =
+                        base64::Engine::decode(&base64::engine::general_purpose::STANDARD, b64)
+                {
+                    let session_id = ep["sessionId"].as_i64().unwrap_or(0);
+                    let _ = tx.send(Incoming::BrowserFrame { jpeg, session_id });
+                }
             }
         }
         "lsp.notification" => {

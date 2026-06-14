@@ -5,17 +5,20 @@
 use std::sync::Arc;
 
 use gpui::{
-    Context, Entity, Image, ImageSource, IntoElement, ParentElement, SharedString, Styled, div,
-    img, prelude::*, px,
+    Context, Entity, Image, IntoElement, ParentElement, SharedString, Styled, div, prelude::*, px,
 };
 
 use crate::EnzoApp;
 use crate::text_input::TextInput;
 use crate::theme;
-use crate::widgets::{icon, text};
+use crate::widgets::icon;
 
 /// Fixed daemon-side page id for the single browser tab.
 pub const PAGE_ID: &str = "browser-0";
+
+/// Headless viewport size; mouse coordinates map into this page-space.
+pub const PAGE_W: u32 = 1280;
+pub const PAGE_H: u32 = 800;
 
 /// Browser surface state.
 pub struct BrowserState {
@@ -66,6 +69,7 @@ pub fn tab_bar(
         )
         .child(
             div()
+                .key_context("BrowserUrl")
                 .flex_1()
                 .px(px(9.0))
                 .py(px(4.0))
@@ -89,91 +93,6 @@ pub fn tab_bar(
                 .text_color(theme::PURPLE)
                 .child("⊹ PICK → AI"),
         )
-}
-
-/// Page area: the rendered screenshot, an error, or a placeholder.
-pub fn content(b: &BrowserState) -> impl IntoElement {
-    let body = if let Some(err) = &b.error {
-        div()
-            .flex()
-            .flex_col()
-            .size_full()
-            .items_center()
-            .justify_center()
-            .gap(px(8.0))
-            .child(text(&format!("✗ {err}"), 13.0, theme::RED_LT))
-            .child(text(
-                "the daemon's headless browser needs a Chrome/Chromium install",
-                11.0,
-                theme::FAINT,
-            ))
-            .into_any_element()
-    } else if let Some(shot) = &b.shot {
-        img(ImageSource::Image(shot.clone()))
-            .size_full()
-            .into_any_element()
-    } else {
-        div()
-            .flex()
-            .size_full()
-            .items_center()
-            .justify_center()
-            .child(text(
-                if b.loading {
-                    "◍ loading…"
-                } else {
-                    "◍ enter a URL to start the headless browser"
-                },
-                14.0,
-                theme::FAINT,
-            ))
-            .into_any_element()
-    };
-    div()
-        .flex()
-        .flex_col()
-        .size_full()
-        .child(div().flex_1().overflow_hidden().child(body))
-        .child(devtools_panel())
-}
-
-/// DevTools (Network) panel — wired surface is future work; shows CDP status.
-fn devtools_panel() -> impl IntoElement {
-    let tab = |label: &str, active: bool| {
-        div()
-            .text_size(px(8.0))
-            .font_family(theme::FONT_PIXEL)
-            .text_color(if active { theme::TEAL } else { theme::FG1 })
-            .child(SharedString::from(label.to_owned()))
-    };
-    div()
-        .h(px(120.0))
-        .flex_none()
-        .flex()
-        .flex_col()
-        .bg(theme::BG_SIDE)
-        .border_t_2()
-        .border_color(theme::BORDER)
-        .child(
-            div()
-                .flex()
-                .items_center()
-                .gap(px(14.0))
-                .px(px(12.0))
-                .py(px(6.0))
-                .border_b_1()
-                .border_color(theme::BORDER)
-                .child(tab("NETWORK", true))
-                .child(tab("ELEMENTS", false))
-                .child(tab("CONSOLE", false))
-                .child(tab("SOURCES", false))
-                .child(div().ml_auto().child(tab("CDP ●", false))),
-        )
-        .child(div().flex_1().px(px(12.0)).py(px(8.0)).child(text(
-            "DevTools (Network/Elements/Console) — coming next",
-            11.0,
-            theme::FAINT,
-        )))
 }
 
 /// Status bar.
