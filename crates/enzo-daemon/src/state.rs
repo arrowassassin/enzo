@@ -8,6 +8,7 @@ use tokio::sync::{Mutex, broadcast, oneshot};
 use enzo_browser::Page;
 use enzo_db::pool::AnyPool;
 use enzo_db::tabs::TabManager;
+use enzo_editor::dap::DapClient;
 use enzo_editor::lsp::LspClient;
 use enzo_theme::ThemeRegistry;
 
@@ -23,6 +24,7 @@ struct Inner {
     /// Per-connection query-tab managers (multi-tab SQL editor + history).
     db_tabs: HashMap<String, TabManager>,
     lsp_clients: HashMap<String, Arc<LspClient>>,
+    dap_clients: HashMap<String, Arc<DapClient>>,
     browser_pages: HashMap<String, Arc<Page>>,
     /// Launched headless-browser child processes, kept alive until close.
     browser_procs: HashMap<String, std::process::Child>,
@@ -50,6 +52,7 @@ impl DaemonState {
             db_conns: HashMap::new(),
             db_tabs: HashMap::new(),
             lsp_clients: HashMap::new(),
+            dap_clients: HashMap::new(),
             browser_pages: HashMap::new(),
             browser_procs: HashMap::new(),
             prompt_channels: HashMap::new(),
@@ -129,6 +132,21 @@ impl DaemonState {
     /// Return a shared handle to the LSP client registered under `id`, if any.
     pub async fn get_lsp_client(&self, id: &str) -> Option<Arc<LspClient>> {
         self.0.lock().await.lsp_clients.get(id).cloned()
+    }
+
+    /// Register a DAP (debug adapter) client under `id`.
+    pub async fn insert_dap_client(&self, id: String, client: DapClient) {
+        self.0.lock().await.dap_clients.insert(id, Arc::new(client));
+    }
+
+    /// Return a shared handle to the DAP client registered under `id`, if any.
+    pub async fn get_dap_client(&self, id: &str) -> Option<Arc<DapClient>> {
+        self.0.lock().await.dap_clients.get(id).cloned()
+    }
+
+    /// Remove and return the DAP client registered under `id`, if any.
+    pub async fn remove_dap_client(&self, id: &str) -> Option<Arc<DapClient>> {
+        self.0.lock().await.dap_clients.remove(id)
     }
 
     /// Remove and return the LSP client registered under `id`, if any.
