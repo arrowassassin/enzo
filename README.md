@@ -11,15 +11,11 @@ aesthetic, modern engine. Open source, $0 to build and ship.
 ## Layout
 
 ```
-
-
 design/                  complete design document, security model, mockups, diagrams
 docs/SPIKE-compositor.md  the compositor/latency spike that gates the v0.1 architecture
 crates/
   enzo-vault/            envelope-encrypted credential vault (Argon2id + XChaCha20-Poly1305)
   enzo-redact/           dependency-free secret redaction for logs, blocks, and agent context
-
-
 ```
 
 ## Develop
