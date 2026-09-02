@@ -89,3 +89,7 @@ The first pass ranked a safety runtime for coding agents first because it fit a 
 ## Research limitations
 
 All ten sweeps shared one web-search budget of 200 calls, which ran out midway: the enterprise sweep got 12 searches, and the infra, sentiment and investor sweeps had none, so those three worked from GitHub-hosted digests and mirrors only. The sandbox proxy blocked direct fetches of Reddit, X, Hacker News, TechCrunch and nearly all press and VC sites, so sentiment comes through digests and search snippets. Funding figures and dates should be spot-checked before they go into a pitch. The verticals least researched are immigration and courts, government procurement, HR, hospitality, agriculture business and emerging-market SMB software; treat them as unknown, not empty.
+
+## Addendum: deep dives reorder the top three
+
+Three adversarial deep dives (see `deep-dives/00-comparison.md`) were run after this synthesis. The provenance registry does not survive as a venture: free incumbents, no regulatory pull for proving humanity, and a contested primitive. It remains viable only as an EU Article 50 and studio compliance SaaS. Physical-AI certification holds as a capital-efficient compliance business with the lab as a later option. The eldercare authority agent rises to first as the only candidate with a $1B comparable doing the same job, a priced willingness-to-pay ladder, and a tailwind that cannot slip.
