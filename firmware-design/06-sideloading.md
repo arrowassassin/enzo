@@ -48,6 +48,8 @@ Layout on the phone:
 - Below: the library list from the device (title, author, size, progress) with rename, delete, move to collection, download back to the phone.
 - A settings tab that mirrors the device settings (read and write via a JSON API).
 - A status strip: battery, free space, firmware version, "Check for update".
+- A **Window** tab: the device screen mirrored live at 1:2 with the seven keys as buttons and a keyboard, so any text entry on the device can be typed on the phone (see 03 and 07).
+- An **Analytics** tab: the reading statistics with interactive charts, exports (CSV, JSON, StoryGraph and Goodreads CSV) and a printable year poster.
 
 Upload protocol:
 - Primary: `PUT /api/files/<path>` with raw body, `Content-Length`, and optional `Content-Range` for resume. The device streams the body straight into the SD file in 32 KB blocks, never buffering the file in RAM. The page splits large files into 1 MB ranged PUTs so a dropped connection resumes at the last acknowledged range.

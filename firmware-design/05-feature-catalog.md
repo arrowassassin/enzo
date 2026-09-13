@@ -32,6 +32,14 @@ Feasibility notes reference the hardware sheet (02) and the format matrix (04). 
 | Auto page turn (pages per minute) | T1 | *(proven)* |
 | Tilt and shake page turn via the IMU, with sensitivity setting | T2 | *(proven on stock)* |
 | Reading in all four orientations, with button remap following the orientation | T1 | *(proven)* |
+| **The book is the home screen**: wake lands on the page; Home is a one-press layer over it | T0 | Signature (07) |
+| **Compass** quick menu with choices at the physical key positions; two-press rule for every common action | T0 | Signature (07) |
+| **The Spine**: fore-edge progress strip on the reading page, doubles as the skim scrubber | T1 | Signature (07) |
+| **Smart word cursor**: long-Confirm lands on the rarest word on the page first (frequency list in flash) | T2 | Two presses to a definition most of the time |
+| **Jump** launcher on long-Back listing everything, filterable from the phone | T1 | Signature (07); apps register here |
+| **Peek strip**: hold Back briefly for chapter, time left, clock and battery without leaving the page | T1 | |
+| **Page pre-render**: next page always laid out into a shadow plane during idle so a turn only kicks the waveform | T0 | Speed budget in 07 §7 |
+| Chapter openings typeset like a book: numeral, title, rule, drop cap (toggle) | T1 | |
 | Series and collections, "next in series" at the end of a book | T2 | Metadata from OPF `belongs-to-collection` or Calibre |
 | End-of-book screen: time taken, mark finished, rate, next in series | T2 | |
 
@@ -83,6 +91,7 @@ Feasibility notes reference the hardware sheet (02) and the format matrix (04). 
 |---|---|---|
 | Wi-Fi station with saved networks (up to 8), captive-portal-free onboarding via a SoftAP set-up page | T0 | |
 | **Drop page**: device hosts a web page at a `.local` name and a QR code; drag-and-drop or "Choose files" upload straight to SD | T0 | *(proven)* The iPhone/Android-first path |
+| **Phone window**: the Drop page mirrors the device screen (1-bit PNG pushed over WebSocket), draws the seven keys as remote buttons, and provides a keyboard; every text field on the device offers "Type on your phone" | T1 | Signature (07); solves button typing |
 | Streaming multipart and PUT uploads with progress on both ends, resumable | T1 | |
 | WebDAV so the device mounts in iOS Files, macOS Finder, Windows Explorer, Android file managers | T1 | *(proven)* |
 | OPDS catalog browser (Calibre-Web, Kavita, Komga and any user catalog), saved servers, search, download | T1 | *(proven)* |
@@ -100,6 +109,9 @@ Feasibility notes reference the hardware sheet (02) and the format matrix (04). 
 | Feature | Tier | Notes |
 |---|---|---|
 | Session log on SD (book, start, end, pages); per-page time capped at 120 s, ignored under 5 s | T1 | KOReader's method |
+| **Analytics section** (07 screens 60a to 60e): Overview KPIs (time, pages, pages per hour, streak, books finished, time left in current book) with an ink-line bar chart per hour/day/month; Rhythm (time-of-day and weekday histograms, favourite hour and day, typical session, session list); Calendar heat map with streaks; Books table sortable by any column; Goals with quiet awards | T1 | All charts 1-bit, labelled directly |
+| Per-book analytics block on Book info: that book's ink line, pace, and "Finish by" forecast from the last seven sessions | T1 | |
+| Phone Analytics tab in the Drop page: interactive charts, CSV/JSON export, StoryGraph and Goodreads CSV, printable year poster | T1 | Rich version lives on the phone |
 | Per-book: time, pages, average page time, time-to-finish book and chapter, started/finished dates | T1 | |
 | Global: today, week, month, all time; pages per hour; time-of-day histogram; calendar heat map; year in review | T2 | |
 | Streaks with a daily threshold and longest streak; yearly goal | T2 | |
