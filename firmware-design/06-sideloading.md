@@ -54,7 +54,7 @@ Upload protocol:
 - A WebSocket at `/ws` is used for live events only (progress echo to the e-ink screen, "3 books added"), not for file bytes. That keeps the file path stateless and resumable.
 - Upload throughput target: at least 500 KB/s on a 2 MB EPUB, measured in the developer menu.
 
-After upload the device runs **ingest**: identify the format, extract metadata and cover, create the library index entry, and for EPUB pre-parse the spine into the chapter cache in the background. The page shows "Ready" when ingest finishes. Unsupported formats get a clear message: "PDF is not supported on-device. Convert it in the Converter tab" with a one-tap link.
+After upload the device runs **ingest**: identify the format, extract metadata and cover, create the library index entry, and for EPUB pre-parse the spine into the chapter cache in the background. The page shows "Ready" when ingest finishes. Unsupported formats get a clear message: "PDF is not supported on-device. Convert it in the Converter tab" with a one-tap link. DRM-protected files (encrypted EPUB/KEPUB, `.acsm` tickets) are detected at ingest and reported as "This book is DRM-protected. Remove the DRM on your computer with Calibre, then send it again"; the firmware never attempts to decrypt.
 
 What the reader shows during transfer: a full-screen "Drop page" with the two QR codes, the URL in large text, and a live list of files arriving with a progress bar per file. Partial refresh every 1 second at most while a transfer runs, then a full refresh at the end.
 

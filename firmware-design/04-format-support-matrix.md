@@ -15,6 +15,7 @@ Legend: **Native** = parsed on the device · **Convert** = via the converter to 
 | MOBI (KF7, PalmDOC) | Native | T2 | In-house PalmDOC decompressor + HTML strip; DRM-free only | Calibre-quality via converter |
 | AZW3 / KF8 | Both | T2 | HUFF/CDIC decompression + KF8 skeleton/fragments; heavier, ships after KF7 | Recommended path |
 | AZW / KFX with DRM | Not supported | — | No DRM, ever | — |
+| EPUB / KEPUB with Adobe ADEPT or Kobo DRM, `.acsm` tickets | Not supported, **detected** | T0 | Ingest checks the ZIP for `META-INF/encryption.xml` or `META-INF/rights.xml` (and recognises `.acsm` by extension) and reports "This book is DRM-protected. Remove the DRM on your computer with Calibre, then send it again" instead of a parse error. Kobo's DRM-free titles and KEPUBs read normally. | Converter refuses DRM files with the same message |
 | CBZ | Native | T1 | rawzip listing; JPEG/PNG decoded at ingest into pre-scaled 2-bit pages; panel zoom (2 × 2 quadrants); right-to-left reading order option | Converter pre-crops, denoises and dithers at higher quality |
 | CBR / CB7 / CBT | Convert | T1 | RAR needs libunrar (C++) | Converter unpacks and emits FIXD |
 | Image folders (JPG, PNG, BMP, QOI) | Native | T1 | Same as CBZ | — |
