@@ -98,9 +98,9 @@ Order is the design order. Each entry lists content and key behaviour. States re
 
 **01 Boot** — Wordmark, version, a stepped bar for "Indexing library". Full refresh only, shown for at most 2 s.
 
-**02 First-run welcome** — Language choice, then "Set the time", then "Connect Wi-Fi (optional)", then "Add books" pointing at 30 Drop page. Each is a single screen with one focused primary action.
+**02 First-run welcome** — Language choice, then "Set the time", then "Connect Wi-Fi (optional)", then "Add books" offering two paths: 30 Drop page and 35 Bookshop. Each is a single screen with one focused primary action.
 
-**10 Home** — The most-used non-reading screen. Top: the current book as a wide card (cover left 96 × 144, title, author, `43% · 38 min left in chapter`, focused by default so a single Confirm resumes reading). Below: a 2-column grid of the five other recent books as small covers. Bottom: a row of four icon buttons: Library, Drop (transfer), Apps, Settings. Key hints: `Library · — · Continue · Drop`. Long-Confirm on a book: actions (Open, Book info, Mark finished, Remove).
+**10 Home** — The most-used non-reading screen. Top: the current book as a wide card (cover left 96 × 144, title, author, `43% · 38 min left in chapter`, focused by default so a single Confirm resumes reading). Below: a 2-column grid of the five other recent books as small covers. Bottom: a row of five icon buttons: Library, Bookshop, Drop (transfer), Apps, Settings. Key hints: `Library · — · Continue · Drop`. Long-Confirm on a book: actions (Open, Book info, Mark finished, Remove).
 
 **11 Library** — Tabs across the top (Recent · All · Authors · Series · Collections · Folders), switched with Left/Right when the tab bar is focused. Body: cover grid (3 × 2) or list (8 rows), toggled from the menu. Page indicator `3 / 12` at the right of the tab bar. Up/Down move focus, then page. Long-Confirm on a book opens the actions sheet. Sort and view options live in a small menu on Back-long. Include a "Search" entry that opens the keyboard.
 
@@ -139,6 +139,16 @@ Order is the design order. Each entry lists content and key behaviour. States re
 **33 Calibre connect** — A single status screen: "Waiting for Calibre… listening on 192.168.1.20:9090" with a stepped activity indicator; connected state shows the transfer list.
 
 **34 Sync** — Position sync status per book, last sync time, "Sync now", server settings.
+
+**35 Bookshop home** — Six shelves, each a row of three covers plus a "More" cell: Start here, Popular this week, New editions, Modern & Creative Commons, Collections, By subject. Search entry at the top, language filter in the status strip. Up/Down move between shelves, Left/Right within a shelf. A one-line note on first visit: "Free, open books. No account, no DRM."
+
+**36 Book page (Bookshop)** — Cover left, title 32 px serif, author, year, language, "about 6 h" reading estimate, source and licence line, blurb paginated. Primary action **Get** (turns into a stepped progress bar, then **Read**); secondary: Save for later, More by this author, Same collection. Design the states: not downloaded, downloading, in library, error ("Gutenberg is limiting requests, retrying in 30 s").
+
+**37 Bookshop search** — Keyboard at the bottom, live results above from the offline catalog (title and author prefix), sorted by popularity, each row with a source glyph. Works with Wi-Fi off; show the "Connect to get this book" state.
+
+**38 Bookshop browse** — Subjects, Authors A to Z, Collections (with one-line descriptions), Languages. A collection page is a list with covers and a short intro.
+
+**39 Downloads & Saved** — Download queue with per-item progress and errors; Save-for-later list with a **Get all** action.
 
 **40 Sleep screens** — Design five: Cover (full-bleed dithered cover with a bottom band: title and `43% · 38 min left`), Cover + streak, Custom image, Quote of the day (serif quote, attribution, date), and Quick resume (the last page at 50% dots with a moon glyph and "Press Power to wake"). Also the "Charging" variant with a large battery percent, and the "Battery empty" screen.
 
@@ -181,6 +191,7 @@ Order is the design order. Each entry lists content and key behaviour. States re
 5. **Add a book from an iPhone**: 10 → Drop → 30; phone: scan, Safari, choose file, done → 30 shows "Ready" → Confirm opens the new book.
 6. **Finish a book**: last page → Right → 2A → Next in series → 20.
 7. **Sudoku from Home**: 10 → Apps → 70 → Games → 80 → Sudoku, 4 presses; the game remembers its state across sleep.
+8. **Get a free book with no computer**: 10 → Bookshop → 35 → Popular → 36 → Get → Read. Five presses to a new book. Also storyboard the offline variant: search with Wi-Fi off, save three books, connect later, Get all from 39.
 
 ## 8. Copy and tone
 

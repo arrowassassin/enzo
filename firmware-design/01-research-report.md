@@ -30,6 +30,10 @@ pulp-os (esp-hal 1.0 + Embassy, no_std) parses EPUB on the device with a streami
 
 BooxDrop's device-hosted web page is the most-loved flow in the market. On iOS there is no Web Share Target, no Web Bluetooth, and Files cannot mount WebDAV without a third-party app, but Safari resolves `.local`, is exempt from the local-network prompt, and a Shortcut can POST a file from the share sheet. On Android an installed PWA can be a share target and `.local` resolves from Android 13. The C3 can do ~20 Mbit/s TCP and ~1 MB/s SD writes, so a streamed PUT with ranges should reach 500 KB/s or better; CrossPoint's 4 KB buffers show how easy it is to get 20× less. USB mass storage is impossible on the C3 (no OTG). BLE from an iPhone is 30 to 80 KB/s and needs a native app. See 06.
 
+## 6b. Free catalogs: three survive, and browsing should not depend on live feeds (medium to high)
+
+Of a dozen free ebook sources, only Project Gutenberg (75k+, OPDS without login, XML feeds retiring in 2027), Standard Ebooks (~1.5k, best quality, OPDS gated to patrons but granted to open-source projects, direct downloads free) and the Palace Bookshelf (~19k curated open-access titles, OPDS 2.0 URL unverified) are usable. Feedbooks and Internet Archive BookServer are dead, ManyBooks and the hosted Gutendex sit behind Cloudflare challenges, and Gutenberg rate-limits bots. The Bookshop design (09) therefore browses a project-hosted shelf index and an offline catalog on SD, and only contacts source hosts to download files. Details in Appendix B5.
+
 ## 7. E-ink UX rules are consistent across every source (high)
 
 Treat the screen as print: no animation, no scrolling, page-based lists, partial refresh for turns with a periodic full refresh, focus by inversion, thick strokes, 1-bit first with dithered images, minimal modals, a single-line footer, screen-tuned serif book fonts, and a crafted sleep screen. Button-only devices need a small, universal key model with long-press for secondary actions and remappable keys. See 07.

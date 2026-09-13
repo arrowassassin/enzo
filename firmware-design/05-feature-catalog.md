@@ -85,7 +85,8 @@ Feasibility notes reference the hardware sheet (02) and the format matrix (04). 
 | **Drop page**: device hosts a web page at a `.local` name and a QR code; drag-and-drop or "Choose files" upload straight to SD | T0 | *(proven)* The iPhone/Android-first path |
 | Streaming multipart and PUT uploads with progress on both ends, resumable | T1 | |
 | WebDAV so the device mounts in iOS Files, macOS Finder, Windows Explorer, Android file managers | T1 | *(proven)* |
-| OPDS catalog browser (Calibre-Web, Kavita, Komga, Standard Ebooks, Gutenberg), saved servers, search, download | T1 | *(proven)* |
+| OPDS catalog browser (Calibre-Web, Kavita, Komga and any user catalog), saved servers, search, download | T1 | *(proven)* |
+| **Bookshop**: built-in free library with shelves from Project Gutenberg, Standard Ebooks and the Palace Bookshelf, offline searchable catalog on SD, Save for later, Get all (design in 09) | T1 | Project-hosted shelf index; downloads from the source hosts |
 | Calibre wireless device connection | T1 | *(proven)* |
 | Progress sync: KOReader sync protocol (self-hostable), plus our own JSON sync via WebDAV | T1 | *(proven)* |
 | Send-to-device from iOS Shortcuts and Android Share (HTTP endpoint, see 06) | T1 | |

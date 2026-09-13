@@ -16,7 +16,8 @@ Constraints this design works within (from 02 and the survey in Appendix B):
 |---|---|---|---|
 | 1 | **Drop page**: device-hosted web app over Wi-Fi | Everyone, every OS, no install | T0 |
 | 2 | **iOS Shortcut "Send to Reader"** and **Android PWA share target** | Share-sheet, one tap | T1 |
-| 3 | **OPDS client**: device pulls from Calibre-Web, Kavita, Komga, Standard Ebooks, Gutenberg | Self-hosters, public domain readers | T1 |
+| 3 | **Bookshop**: built-in free library (Gutenberg, Standard Ebooks, Palace Bookshelf), see 09 | Anyone, no computer needed | T1 |
+| 3b | **OPDS client**: device pulls from Calibre-Web, Kavita, Komga or any user catalog | Self-hosters | T1 |
 | 4 | **Calibre wireless device** | Desktop Calibre users | T1 |
 | 5 | **WebDAV** on the same server | Finder, Explorer, Android file managers, third-party iOS file apps | T1 |
 | 6 | **SD card** | Bulk loads, recovery | T0 (always works) |
@@ -66,7 +67,7 @@ What the reader shows during transfer: a full-screen "Drop page" with the two QR
 
 ## 5. Pull sources: OPDS and Calibre
 
-**OPDS.** Saved servers (up to 8) with name, URL, optional basic auth. Browse the feed, search, page, and download straight to SD. Presets for Standard Ebooks and Project Gutenberg. HTTPS is required for public catalogs, so the firmware carries a TLS client and a trimmed CA bundle (the OPDS and OTA use cases justify the RAM).
+**OPDS.** Saved servers (up to 8) with name, URL, optional basic auth. Browse the feed, search, page, and download straight to SD. The free public sources are not presets here; they live in the Bookshop (09), which uses a project-hosted shelf index instead of live feeds. HTTPS is required for public catalogs, so the firmware carries a TLS client and a trimmed CA bundle (the Bookshop, OPDS and OTA use cases justify the RAM).
 
 **Calibre wireless.** Implement the smart-device protocol: listen on TCP 9090, answer the UDP discovery broadcasts on 54982, 48123, 39001, 44044, 59678, exchange JSON messages, optional password. Calibre then pushes books, updates metadata, and pulls reading position. Calibre's format preference for the device: EPUB, then our `.qbk`.
 
