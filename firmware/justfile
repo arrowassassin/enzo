@@ -1,0 +1,31 @@
+# Quire developer commands. `just` from firmware/.
+set shell := ["bash", "-cu"]
+
+default: test
+
+# host: format, lint, test every portable crate and tool
+test:
+    cargo fmt --all --check
+    cargo clippy --workspace --all-targets -- -D warnings
+    cargo test --workspace
+
+# render every screen and sample page to PNG for review
+snapshots:
+    cargo run -p quire-sim -- --snapshots target/snapshots
+
+# build the ESP32-C3 firmware
+device:
+    cd device && cargo build --release
+
+# flash a connected X3 (power it on before attaching the pogo cable)
+flash:
+    cd device && cargo run --release
+
+# produce dist/quire-x3.bin (OTA / SD update) and dist/quire-x3-factory.bin (full flash)
+images:
+    mkdir -p dist
+    cd device && cargo build --release
+    cd device && espflash save-image --chip esp32c3 --partition-table partitions.csv --target-app-partition ota_0 \
+        target/riscv32imc-unknown-none-elf/release/quire-x3 ../dist/quire-x3.bin
+    cd device && espflash save-image --chip esp32c3 --merge --partition-table partitions.csv --target-app-partition ota_0 \
+        --flash-size 16mb target/riscv32imc-unknown-none-elf/release/quire-x3 ../dist/quire-x3-factory.bin

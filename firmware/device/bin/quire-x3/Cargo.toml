@@ -1,0 +1,25 @@
+[package]
+name = "quire-x3"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Quire e-reader firmware for the Xteink X3 (ESP32-C3)"
+
+[[bin]]
+name = "quire-x3"
+test = false
+bench = false
+
+[dependencies]
+esp-hal.workspace = true
+esp-rtos.workspace = true
+esp-radio.workspace = true
+esp-alloc.workspace = true
+esp-println.workspace = true
+esp-backtrace.workspace = true
+esp-bootloader-esp-idf.workspace = true
+embassy-executor.workspace = true
+embassy-time.workspace = true
+static_cell.workspace = true
+log.workspace = true

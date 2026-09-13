@@ -1,0 +1,33 @@
+# Quire — host-testable workspace: every portable crate (no_std + alloc) plus the
+# desktop tools and simulator. The device firmware lives in ./device as its own
+# workspace so `cargo test` here never tries to build ESP32 code for the host.
+[workspace]
+resolver = "2"
+members = ["crates/*", "tools/*"]
+exclude = ["device"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.95"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/arrowassassin/enzo"
+authors = ["Quire contributors"]
+
+[workspace.dependencies]
+heapless = { version = "0.9", default-features = false }
+hypher = { version = "0.1", default-features = false, features = ["english", "german", "french", "spanish", "italian", "dutch", "portuguese", "russian"] }
+unicode-linebreak = "0.1"
+unicode-segmentation = "1.13"
+miniz_oxide = { version = "0.9", default-features = false, features = ["with-alloc"] }
+rawzip = { version = "0.5", default-features = false, features = ["alloc"] }
+xmlparser = { version = "0.13", default-features = false }
+pulldown-cmark = { version = "0.13", default-features = false }
+postcard = { version = "1.1", default-features = false, features = ["alloc"] }
+serde = { version = "1.0", default-features = false, features = ["derive", "alloc"] }
+qrcodegen = { version = "1.8", default-features = false }
+ab_glyph = { version = "0.2", default-features = false, features = ["libm"] }
+ttf-parser = { version = "0.25", default-features = false, features = ["opentype-layout", "glyph-names"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+anyhow = "1.0"
+clap = { version = "4.5", features = ["derive"] }

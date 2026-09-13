@@ -68,3 +68,7 @@ Not usable and documented as such: the NFC tag (passive, not connected), audio (
 3. Heap remaining in Transfer mode under ESP-IDF with one TLS session open, measured on the device with the developer menu.
 4. 4-grey LUTs for both controllers, transcribed from papyrix, validated on a UC8279d unit.
 5. Palace Bookshelf OPDS 2.0 URL from a real network; Standard Ebooks feed access request.
+
+## F. Addendum after the first build (implementation start)
+
+The runtime decision in §A was reversed at implementation time, for a reason §A did not weigh: **buildability**. The std path needs the ESP-IDF toolchain and its downloads, which the build sandbox and a plain `cargo` CI cannot fetch, and it cannot be compiled or tested here at all. The no_std path compiles on stable Rust with nothing but `rustup target add riscv32imc-unknown-none-elf`, and the first Wi-Fi-capable binary built and produced a flashable image within the hour. The consistent crate set is esp-hal 1.1.2, esp-rtos 0.3.0, esp-radio 0.18.0, esp-alloc 0.10, esp-storage 0.9, esp-bootloader-esp-idf 0.5 (esp-radio has not yet been released against esp-hal 1.2). The mitigations for §A's maturity concerns are: one TLS session at a time, Wi-Fi fully torn down outside Transfer mode, every network operation with a deadline, and the portable crates untouched by the choice so a later move to ESP-IDF changes only the device workspace.
