@@ -6,16 +6,16 @@ A from-scratch Rust firmware for the Xteink X3, designed around one fact: **380 
 
 | Decision | Choice | Why |
 |---|---|---|
-| Runtime | **no_std**: esp-hal 1.2 + esp-rtos 0.4 + Embassy 0.10 + esp-alloc | Smallest RAM floor, the two existing Rust readers on this hardware (pulp-os, TernOS) both chose it, single toolchain (`cargo`, `espflash`), no ESP-IDF/cmake/python build. The std path (esp-idf-svc) is the documented fallback if Wi-Fi coexistence or TLS proves unworkable. |
-| Radio | esp-radio, **Wi-Fi only by default**; BLE compiled behind a feature flag | Wi-Fi + BLE coexistence on the C3 costs ~200 KB heap; Wi-Fi alone ~100 to 128 KB. BLE has no role in book transfer (see 06). |
+| Runtime | **std Rust on ESP-IDF** (esp-idf-hal + esp-idf-svc) for the firmware binary; every logic crate is `no_std + alloc` | Reviewed in 10 §A. ESP-IDF's Wi-Fi, HTTP server with WebSocket, mDNS, esp-tls with certificate bundle, OTA with rollback, deep sleep and power management are mature and proven to fit this SoC with this exact feature set (CrossPoint runs it all under Arduino, which adds overhead on top of ESP-IDF). The no_std path (esp-hal + esp-rtos + Embassy + esp-radio) is kept as the documented alternative to re-measure when esp-radio reaches 1.0; the portable crates make the switch a rewrite of `kernel`, `net` and `board-x3` only. |
+| Radio | ESP-IDF Wi-Fi in Transfer mode; **BLE (NimBLE) only in Read mode** for a page-turner remote or keyboard, never together with Wi-Fi | Coexistence costs ~200 KB heap; each alone fits. BLE has no role in book transfer (see 06). |
 | Modes are exclusive | The device is in exactly one of **Read**, **Transfer**, or **Sleep** | Radio memory is only allocated in Transfer. Heavy parsing (ingest) streams and runs in Transfer with a bounded budget. Reading never competes with the radio. |
 | Book pipeline | **Ingest once → compact chapter token stream on SD → lay out pages on demand → page index cached per typography profile** | The pattern that made CrossPoint, pulp-os and EPub-InkPlate work on this class. Parsing cost is paid once; page turns are a render of a small token slice. |
 | Heavy formats | Off-device converter (WASM in the browser and a CLI) produces `.qbk`; device streams it | PDF, DjVu, DOCX and friends have no realistic no_std parser and would not fit in RAM anyway. |
 | Display | Own UC8253/UC8279 driver (epdsi as reference and fallback), 1-bit framebuffer in RAM, 4-grey path for images and anti-aliased text via a second plane | Runtime controller detection is mandatory; no crate ships the 4-grey LUTs for these controllers, so they are transcribed from papyrix docs. |
 | Fonts | TTF rasterised **at build time** into 1-bit and 2-bit bitmap strikes at the 8 reader sizes and 5 UI sizes; on-device `ab_glyph` rasteriser only for user-supplied fonts, cached to SD | fontdue at runtime fully parses the font into the heap. Build-time strikes cost flash (which we have 16 MB of), not RAM. |
 | UI | embedded-graphics + a small in-house immediate-mode screen system; embedded-text for wrapped UI text; embedded-menu for settings lists | No general toolkit fits a 1-bit, page-based, key-driven UI. |
-| Storage | embedded-sdmmc (FAT32) plus exfat-slim behind a volume trait; settings in flash via sequential-storage + postcard | Cards over 32 GB ship exFAT. |
-| OTA and recovery | ESP-IDF-compatible partition table (CrossPoint's layout), esp-bootloader-esp-idf for A/B switching, update from SD and from GitHub releases, a small recovery app in a third slot | USB-locked units can only be updated this way. |
+| Storage | ESP-IDF FatFs over SPI SD (FAT32; exFAT if the IDF build enables it, otherwise exfat-slim behind the same volume trait); settings in encrypted NVS via postcard | Cards over 32 GB ship exFAT. Atomic writes via temp-and-rename; every index rebuildable. |
+| OTA and recovery | ESP-IDF partition table: two 4 MB app slots, a 256 KB recovery app, ~7 MB data; esp_ota with **signed images (ed25519, minisign format), health marking within 60 s or automatic rollback, and anti-rollback**; update from SD, from GitHub releases, and from the browser (ESP Web Tools) | USB-locked units can only be updated over SD or Wi-Fi. |
 | Testing | Every document, layout and UI crate is `no_std` + `alloc` and **compiles and tests on the host**; a desktop simulator renders the real framebuffer in a window with keyboard input | UI and format work should not need the device in hand. The simulator also produces the designer's reference PNGs. |
 
 ## 2. Memory budget
@@ -27,8 +27,8 @@ Numbers are targets to enforce with `esp-alloc` stats in the developer menu, not
 | Static (`.data`/`.bss`): drivers, UI state, task arena, Wi-Fi statics | 40 KB | 60 KB | esp-radio adds statics even before its heap |
 | Stacks: main + 4 Embassy tasks + interrupt | 40 KB | 48 KB | |
 | Framebuffer, 1-bit, 792 × 528 | 52 KB | 52 KB | In the reclaimed DRAM2 region |
-| Shadow plane (pre-rendered next page; also the second plane for 4-grey) | 52 KB | 0 | Read mode only. Lets a page turn skip layout entirely; freed when entering Transfer |
-| Radio heap (esp-radio + smoltcp buffers + TLS) | 0 | 128 KB (+32 KB per TLS connection) | Released completely on leaving Transfer |
+| Shadow plane (pre-rendered next page; **or** the second plane for 4-grey, never both) | 52 KB | 0 | Read mode only. A grey page has no pre-rendered successor; the next turn lays out on demand (~100 ms extra) |
+| Radio heap (Wi-Fi driver + lwIP + one TLS session) | 0 (BLE remote, if paired: ~70 KB) | 128 KB + 40 KB TLS | Wi-Fi fully deinitialised on leaving Transfer; one TLS session at a time |
 | Document working set (chapter tokens, page layout, glyph cache, image decode band) | 100 KB | 40 KB | Page layout for a 26 px page is ~6 KB; a chapter token stream is streamed in 8 KB windows |
 | Slack | ≥ 40 KB | ≥ 20 KB | Fragmentation headroom |
 
@@ -74,7 +74,7 @@ Every crate under `crates/` except `board-x3`, `epd`, `net` and `kernel` is pure
 
 ## 4. Runtime structure
 
-Embassy tasks, all on the single core:
+FreeRTOS tasks (via esp-idf-svc), all on the single core:
 
 1. **ui** — owns the framebuffer and the screen stack. Loop: wait for an event (key, timer, transfer progress, ingest done) → update screen state → draw into the framebuffer → hand the frame to `epd`. Draw is synchronous and must finish under 60 ms for text pages (glyph blits only).
 2. **epd** — owns the SPI to the panel. Implements the 3-phase refresh from pulp-os: write the new plane, kick the DU or GC waveform, keep polling keys during the ~400 ms BUSY, then sync the old plane. Chooses DU vs GC by the page counter and by "content had an image or dialog".
@@ -83,7 +83,7 @@ Embassy tasks, all on the single core:
 5. **net** — exists only in Transfer mode: Wi-Fi station/AP, HTTP server, WebDAV, mDNS, captive DNS, OPDS/Calibre/sync clients, OTA. Dropped entirely (task ends, heap region freed) when Transfer ends.
 6. **power** — idle timer, panel power-down, light sleep between events, deep sleep after the timeout, SD rail control, fuel-gauge polling, IMU tilt events.
 
-Key input uses the two ADC ladders sampled at 100 Hz with debouncing and long-press/hold detection in `board-x3`; the Power key is a GPIO interrupt and the deep-sleep wake source.
+Key input uses the two ADC ladders sampled at 100 Hz with debouncing and long-press/hold detection in `board-x3`; the Power key is a GPIO interrupt and the deep-sleep wake source. Because two keys in one ladder group cannot be read together, chords are only defined across groups or with Power. In light sleep a 25 ms timer wake polls the ladders (under 1 mA average); GPIO-level wake is used only where a unit's ladder idle level permits it, as recorded by the calibration screen. A timer wake from deep sleep runs **night jobs** (news, shelves, sync, catalog refresh) at a user-chosen hour.
 
 ## 5. The book pipeline
 
@@ -106,7 +106,7 @@ Key input uses the two ADC ladders sampled at 100 Hz with debouncing and long-pr
 - **Layout** is incremental: laying out chapter N page by page and recording page starts. Opening a book at 43% with a new font size lays out only the chapter containing the position (a few hundred ms), and the page index for the rest of the book fills in during idle time. Progress and time-left estimates use character counts, not page counts, so they are stable across profile changes.
 - **Hyphenation** via hypher (English, German, French, Spanish, Italian, Dutch, Portuguese, Russian patterns compiled in; the user can drop more on SD). Line breaking via unicode-linebreak, justification with a Knuth-Plass-lite three-line lookahead.
 - **Fonts**: bitmap strikes are generated by `fontpack` from Literata, Noto Sans, JetBrains Mono, and Atkinson Hyperlegible (all open licences) at the 8 reader and 5 UI sizes in regular, bold, italic, bold-italic. Glyph coverage: Latin, Latin Extended, Greek, Cyrillic, general punctuation, currency, arrows. Additional packs (CJK, Arabic shaping via harfrust) are SD-loadable and demand-paged through a 16 KB glyph cache.
-- **Images**: at ingest, JPEG via zune-jpeg with pre-check of dimensions (huge images are decoded in bands through an MCU-restart streaming path or, when above 1600 px, skipped with a placeholder and a note that the converter can fix it), PNG via minipng (non-interlaced) with zune-png fallback, BMP via tinybmp. Output is a 1-bit or 2-bit pre-dithered PBM at final size. Covers get a 152 × 228 thumbnail and a full-screen 528 × 792 sleep version.
+- **Images**: at ingest, baseline JPEG through an in-house MCU-row streaming decoder with 1/2, 1/4 and 1/8 DCT scaling (picojpeg/TJpgDec style, ported to Rust; peak RAM under 16 KB regardless of image size), so covers of any size scale straight to 528 px. Progressive JPEGs are not decoded on the device; they get a placeholder and a message that the converter fixes them. PNG via minipng (non-interlaced, row streaming) with a size cap, BMP via tinybmp. Output is a 1-bit or 2-bit pre-dithered PBM at final size. Covers get a 152 × 228 thumbnail and a full-screen 528 × 792 sleep version, both in 2-bit grey.
 
 ### Reading analytics data
 
@@ -117,7 +117,7 @@ Key input uses the two ADC ladders sampled at 100 Hz with debouncing and long-pr
 
 ### Phone window (screen mirror and remote)
 
-In Transfer mode the ui task publishes the framebuffer as a 1-bit PNG (about 6 to 12 KB after deflate, produced from the existing plane with a tiny encoder) over the `/ws` channel after each refresh, at most twice per second. The page renders it at 1:2 and sends key events and typed text back on the same socket; typed text lands in whatever text field is focused on the device. This is also the designer's and tester's tool: every screen can be captured at 1:1 from a real unit.
+In Transfer mode the ui task publishes the framebuffer over the `/ws` channel after each refresh, at most twice per second, as a 1-bit run-length encoded frame (typically 4 to 10 KB; a text page compresses well) that the page decodes in a few lines of JavaScript. No deflate on the device. The page renders it at 1:2 and sends key events and typed text back on the same socket; typed text lands in whatever text field is focused on the device. This is also the designer's and tester's tool: every screen can be captured at 1:1 from a real unit.
 
 ## 6. The `.qbk` format (converter output)
 
@@ -146,9 +146,19 @@ The converter core is one Rust crate reused by the CLI and the WASM web app. For
 - **Transfer**: Wi-Fi power-save on; session times out after 10 min idle.
 - The BQ27220 gives state of charge and current; the current sign is the USB-present signal on the X3.
 
+## 8b. Failure containment
+
+- **Crash handling**: panics and watchdog resets write a crash record (reason, backtrace, free heap, screen id) to the coredump partition and mirror it to `/.quire/logs/`; the Drop page offers "Report a problem" which bundles the last three.
+- **Boot-loop guard**: a crash counter in RTC memory; three consecutive crashes within 2 minutes boot into **safe mode** (reader only, no apps, no Wi-Fi, default typography). The recovery slot stays reachable with Back + Up at reset.
+- **Updates**: signed images only; the new slot must mark itself healthy within 60 s of boot or the bootloader rolls back; anti-rollback version counter.
+- **Storage**: temp-and-rename for every cache and index write; append-only session log with per-record checksums; all indexes rebuildable from source files; the volume serial is checked on mount and a changed card triggers a rescan; "Safe to remove" in the Power menu flushes and unmounts.
+- **Resume state** (book, position, screen) lives in RTC fast memory so a wake from deep sleep draws the page before the SD card is even powered.
+- **Network**: one TLS session at a time; every network operation has a deadline; a Cloudflare challenge or a redirect to plain HTTP is a hard failure with a plain message.
+- **Secrets**: NVS encryption on; the Drop page PIN, when set, gates every write; the hotspot is WPA2 with a generated password.
+
 ## 9. Build, flash, CI
 
-- `cargo build --release --target riscv32imc-unknown-none-elf` with `espflash flash --monitor`. `just` recipes for `flash`, `sim`, `test`, `fontpack`, `web`, `release` (produces `quire-x3.bin` and an `update.bin` layout the recovery app and the stock SD path accept).
+- `cargo build --release --target riscv32imc-esp-espidf` (ESP-IDF toolchain via `espup`) with `espflash flash --monitor`; a browser installer built on ESP Web Tools for users without a toolchain. `just` recipes for `flash`, `sim`, `test`, `fontpack`, `web`, `release` (produces `quire-x3.bin` and an `update.bin` layout the recovery app and the stock SD path accept).
 - CI: host tests for all portable crates, a rendering snapshot test suite (PBM per screen and per sample page), a heap-budget test in the simulator, a firmware size check, and a release job attaching binaries and the web converter.
 - Corpus: a set of open-licence sample books (Standard Ebooks EPUBs, Gutenberg TXT, a CBZ from the public domain, FB2 and MOBI samples) used by the parser tests.
 
@@ -157,8 +167,9 @@ The converter core is one Rust crate reused by the CLI and the WASM web app. For
 | Risk | Retire by |
 |---|---|
 | Panel driver: 4-grey LUTs and UC8279 init scripts are transcribed, not vendor-published | Milestone 0 spike on real hardware; keep the driver behind a trait so epdsi can be swapped in |
-| esp-radio heap need leaves too little for ingest | Measure at milestone 2; fallback is to ingest only when the radio is idle, or to move all ingest to the converter |
-| TLS heap (mbedtls ~32 KB per connection) | One connection at a time, OPDS and OTA only; embedded-tls (no cert verification) as a user-selectable low-RAM option |
-| exfat-slim is weeks old | Ship FAT32 first; exFAT behind a feature flag with a "format to FAT32 in the Drop page" helper |
+| Wi-Fi heap leaves too little for ingest | Measure at milestone 2 on ESP-IDF; fallback is to ingest only when the radio is idle, or to move all ingest to the converter |
+| TLS heap (~40 KB per session) | One session at a time, queued; certificate bundle trimmed to the roots the Bookshop, OTA and sync need |
+| exFAT support | FatFs exFAT if the IDF build provides it; else exfat-slim behind a flag with a "format to FAT32 from the Drop page" helper |
 | Button ladder values differ per unit | Developer menu shows raw ADC; a calibration screen stores thresholds in flash |
-| Bricking a USB-locked unit | Recovery slot + SD update path are milestone 0 deliverables, tested before any user flashes |
+| Bricking a USB-locked unit | Recovery slot, signed OTA with rollback, and the SD update path are milestone 0 deliverables, tested before any user flashes |
+| Progressive JPEG covers | Placeholder plus converter message; the shelf index for the Bookshop ships baseline covers |

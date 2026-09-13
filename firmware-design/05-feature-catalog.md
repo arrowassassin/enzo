@@ -31,13 +31,14 @@ Feasibility notes reference the hardware sheet (02) and the format matrix (04). 
 | Translate a sentence (online API, user-supplied key) | T3 | |
 | Auto page turn (pages per minute) | T1 | *(proven)* |
 | Tilt and shake page turn via the IMU, with sensitivity setting | T2 | *(proven on stock)* |
+| **Tap to turn**: tap the back of the device (IMU hardware tap detection); double-tap for previous | T2 | ⚠ INT1 wiring for wake; polling while awake |
+| Auto-rotate with hysteresis and a lock toggle; face-down puts the device to sleep | T2 | IMU |
 | Reading in all four orientations, with button remap following the orientation | T1 | *(proven)* |
 | **The book is the home screen**: wake lands on the page; Home is a one-press layer over it | T0 | Signature (07) |
 | **Compass** quick menu with choices at the physical key positions; two-press rule for every common action | T0 | Signature (07) |
 | **The Spine**: fore-edge progress strip on the reading page, doubles as the skim scrubber | T1 | Signature (07) |
 | **Smart word cursor**: long-Confirm lands on the rarest word on the page first (frequency list in flash) | T2 | Two presses to a definition most of the time |
 | **Jump** launcher on long-Back listing everything, filterable from the phone | T1 | Signature (07); apps register here |
-| **Peek strip**: hold Back briefly for chapter, time left, clock and battery without leaving the page | T1 | |
 | **Page pre-render**: next page always laid out into a shadow plane during idle so a turn only kicks the waveform | T0 | Speed budget in 07 §7 |
 | Chapter openings typeset like a book: numeral, title, rule, drop cap (toggle) | T1 | |
 | Series and collections, "next in series" at the end of a book | T2 | Metadata from OPF `belongs-to-collection` or Calibre |
@@ -98,10 +99,14 @@ Feasibility notes reference the hardware sheet (02) and the format matrix (04). 
 | OPDS catalog browser (Calibre-Web, Kavita, Komga and any user catalog), saved servers, search, download | T1 | *(proven)* |
 | **Bookshop**: built-in free library with shelves from Project Gutenberg, Standard Ebooks and the Palace Bookshelf, offline searchable catalog on SD, Save for later, Get all (design in 09) | T1 | Project-hosted shelf index; downloads from the source hosts |
 | Calibre wireless device connection | T1 | *(proven)* |
-| Progress sync: KOReader sync protocol (self-hostable), plus our own JSON sync via WebDAV | T1 | *(proven)* |
+| Progress sync: KOReader sync protocol (self-hostable; the document hash KOReader expects is computed at ingest so unmodified KOReader devices interoperate), plus our own JSON sync via WebDAV | T1 | *(proven)* |
 | Send-to-device from iOS Shortcuts and Android Share (HTTP endpoint, see 06) | T1 | |
 | Companion converter as a web app (runs in the browser, WASM) and a CLI: converts unsupported formats to `.qbk`, subsets fonts, prepares comics | T1 | Same Rust crates compiled to WASM |
 | BLE: only for onboarding (send Wi-Fi credentials from the phone) and for a "nearby" beacon; not for book transfer | T2 | Too slow for files |
+| **BLE remote and keyboard** (Read mode only): pair a page-turner clicker or a BLE keyboard for notes and search | T2 | Wi-Fi is off while reading, so BLE fits the budget |
+| **Beam**: send a book to a nearby Quire over ESP-NOW, no network needed | T2 | Also the transport for two-device play |
+| **Web installer**: flash from Chrome or Edge with ESP Web Tools, no toolchain; serial transfer over the pogo cable as a no-Wi-Fi fallback (Web Serial) | T0 / T2 | Not available on USB-locked units |
+| **Night jobs**: wake at a chosen hour to fetch news and shelves, sync progress and stats, refresh the offline catalog, then sleep | T2 | Deep-sleep timer wake |
 | OTA updates: from GitHub releases over Wi-Fi, from `update.bin` on SD, and a recovery partition triggered by a button combo | T0 | Mandatory because of USB-locked units |
 | Time from NTP into the DS3231 RTC | T0 | |
 
@@ -155,6 +160,11 @@ Feasibility notes reference the hardware sheet (02) and the format matrix (04). 
 | Runtime detection of UC8253 vs UC8279 panel and of X3 vs X4 board; one binary | T0 | |
 | Power: light sleep between page turns, deep sleep after a timeout (1 to 60 min), wake on Power key, SD rail off in sleep, panel powered down when idle | T0 | |
 | Battery gauge from the BQ27220 (percent, charging state, estimated days left) | T0 | |
+| Battery page: days left from measured consumption, cycle count, health, temperature | T1 | BQ27220 registers |
+| Temperature-selected waveform sets (cold, normal, warm) for clean page turns outdoors | T1 | DS3231 or controller temperature; ⚠ verify |
+| Signed OTA with health check and automatic rollback; boot-loop guard into safe mode; crash reports bundled on the Drop page | T0 | Design in 03 §8b |
+| Resume state in RTC memory: wake draws the page before the SD card powers up | T0 | |
+| Built-in compact English dictionary in flash so lookup works out of the box; larger StarDict sets on SD | T1 | Partition rebalance in 03 |
 | Settings screens for everything above; settings also editable in the web UI | T0/T1 | |
 | Themes: a single "ink" theme with size variants; optional inverted (dark) mode | T2 | |
 | Localised UI (English first; strings in one table, contributions welcome) | T1 | |

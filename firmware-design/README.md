@@ -16,6 +16,7 @@ This folder is the research and design package for a from-scratch, open-source e
 | [06-sideloading.md](06-sideloading.md) | Wireless transfer design: Drop page, iOS Shortcut, Android PWA, OPDS, Calibre, WebDAV, onboarding, security, acceptance tests |
 | [07-ux-design-brief.md](07-ux-design-brief.md) | **The Claude Design hand-off, second edition**: thesis, six signature elements (book-as-home, edge labels and compass, the Spine, time not percent, phone as window and keyboard, Jump), two-press rule, speed budget, Analytics screens (also published as a page: <https://claude.ai/code/artifact/6d230cda-6d70-465f-8f0c-0bc566831401>). Section 0 is the paste-in instruction block; the rest is the key model, visual language, type scale, component library, screen inventory, flows, copy |
 | [09-bookshop.md](09-bookshop.md) | Built-in free library: source evaluation, shelf index and offline catalog architecture, device UX, etiquette |
+| [10-design-review.md](10-design-review.md) | Second-pass review: the Rust and runtime decision, unused hardware now used, twelve design errors fixed, remaining verify list |
 | [08-roadmap.md](08-roadmap.md) | Milestones 0 to 5 and the immediate next steps |
 | [A-research-findings.md](A-research-findings.md) | Appendix A: the verified deep-research findings with sources, confidence, refuted claims |
 | B1 to B5 | Appendix B: the five targeted survey reports (hardware, Rust crates, sideloading, features and UX, free catalogs), verbatim with links |
@@ -23,7 +24,7 @@ This folder is the research and design package for a from-scratch, open-source e
 ## The eleven decisions in one screen
 
 1. ESP32-C3, no PSRAM, ~380 KB RAM: **Read, Transfer and Sleep are exclusive modes**; the radio only exists in Transfer.
-2. no_std Rust: esp-hal + esp-rtos + Embassy + esp-alloc; esp-idf-svc is the documented fallback.
+2. Rust everywhere: the firmware binary is std Rust on ESP-IDF (mature Wi-Fi, TLS, OTA, sleep), every logic crate is no_std so it runs in the simulator and the WASM converter; the no_std runtime stays a documented alternative (review in 10).
 3. Books are **ingested once** into a compact token stream on the SD card; pages are laid out on demand and indexed per typography profile.
 4. EPUB, TXT, Markdown, HTML, FB2, CBZ, MOBI on-device; **everything else through a converter** (browser WASM and CLI) into `.qbk`, which the device streams.
 5. Fonts are baked to bitmap strikes at build time; user TTFs are rasterised on-device once and cached.

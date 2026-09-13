@@ -100,6 +100,9 @@ Versions seen: 5.0.3 and V6.3.15 (July 2026). Reads EPUB, TXT, JPG, BMP and `.bi
 4. Pull GPIO13 low with hold before deep sleep, or the SD card drains the battery.
 5. GPIO20 is I²C SDA on the X3, not USB-detect. Use the fuel gauge's current sign to detect USB power.
 6. Cable attach order: power on first, then connect the pogo cable.
+7. Keys are two ADC ladders: two keys in the same group cannot be read at once, so chords only work across groups or with Power. Light-sleep wake from the keys needs timer polling unless a unit's ladder idle level allows a GPIO threshold wake.
+8. The IMU (QMI8658) has hardware tap detection and an interrupt output; whether INT1 reaches a wake-capable GPIO is **⚠ verify**.
+9. Deep-sleep timer wake is always available on the ESP32-C3, so scheduled jobs do not need the DS3231 alarm pin.
 
 ## Source keys
 

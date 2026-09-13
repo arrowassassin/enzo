@@ -60,7 +60,7 @@ You are designing the user interface of Quire, an open-source e-reader firmware 
 | Up / Down (right edge) | Focus up/down; hold repeats | Previous / next page (remappable to chapter) |
 | Power (top) | Short: sleep (configurable: refresh); long: Power menu | Same |
 
-Long-press is 500 ms. Hold-repeat starts at 500 ms and runs at 5 per second. Double-press is not used.
+Long-press is 500 ms. Hold-repeat starts at 500 ms and runs at 5 per second. Double-press is not used. Chords exist only across the two key groups or with Power (Power + Down: screenshot; Back + Up at reset: recovery), because the keys are ADC ladders and two keys in one group cannot be read together.
 
 **The two-press rule.** From the reading page: next chapter (hold Right or Down), Contents (Confirm → Left), Go to (Confirm → Right), Type (Confirm → Up), More (Confirm → Down), dictionary (long Confirm, then Confirm on the smart-cursor word), bookmark (Confirm → Down → Confirm, and long-Confirm on the compass toggles it in one), Library (Back → Confirm), sleep (Power). Any new feature must be placed so this stays true.
 
@@ -106,9 +106,8 @@ Deliver each with focused and disabled variants on the components board.
 13. **Empty state**: a 32 px serif line, an 18 px hint, and the rail showing the action that fixes it.
 14. **Keyboard**: 3-row QWERTY plus numbers, 48 × 56 px keys, inversion focus, text field with a 2 px caret. Above it, always: a "Type on your phone" strip with a small QR. Also a compact T9 variant for search.
 15. **Spine**: as specified in section 3, with the skim label variant.
-16. **Peek strip**: pressing Back on the reading page and releasing within 200 ms shows the Home layer; holding Back for 200 to 500 ms instead shows a 48 px strip at the top with chapter, time left in chapter, clock and battery, which disappears on release without a second refresh (drawn and cleared in one DU cycle each). Design the strip.
-17. **Specimen**: a live paragraph rendered in the currently selected type settings, used on the Type screen and the first-run "This is your reader" page.
-18. **Phone window**: not on the device, but design it in the same system for the Drop page: a 1:2 rendering of the device screen with seven on-screen keys around it and a keyboard beneath.
+16. **Specimen**: a live paragraph rendered in the currently selected type settings, used on the Type screen and the first-run "This is your reader" page.
+17. **Phone window**: not on the device, but design it in the same system for the Drop page: a 1:2 rendering of the device screen with seven on-screen keys around it and a keyboard beneath.
 
 ## 6. Screen inventory
 
@@ -180,7 +179,7 @@ Design order. Required states for each: default, focused, empty, error where app
 
 **43 Phone window (in the Drop page, for reference)** — The device screen mirrored at 1:2 with seven keys drawn around it in the physical positions, a text field and keyboard beneath, and "Sent to reader" feedback. Design in the same 1-bit system so it feels like one product.
 
-**50 Settings** — Groups as a list: Reading, Display, Keys, Sleep and power, Wi-Fi and sync, Library, Bookshop, Language and time, Apps and games, About, Developer. Design Keys (a line drawing of the device with each key labelled and remappable, side-key swap, orientation follow), Sleep and power (timeouts, a row that opens 44 Sleep screen picker, key-lock options, panel-off, battery with a `19 days` LEFT numeral), About (version, storage bars as hatched rules, Check for update, licences).
+**50 Settings** — Groups as a list: Reading, Display, Keys, Sleep and power, Wi-Fi and sync, Library, Bookshop, Language and time, Apps and games, About, Developer. Design Keys (a line drawing of the device with each key labelled and remappable, side-key swap, orientation follow, tilt/shake/tap-to-turn toggles, and a Remote row for pairing a BLE page-turner or keyboard), Sleep and power (timeouts, a row that opens 44 Sleep screen picker, key-lock options, night jobs hour, panel-off, and a Battery page with `19 days` LEFT, cycle count and health), About (version, storage bars as hatched rules, Check for update, licences).
 
 **51 OTA update** — Available version with paginated notes, Install, working card, Restart dialog, SD-update and recovery variants.
 
@@ -223,7 +222,7 @@ The design promises instantness; the firmware must deliver it, and the artboards
 | Wake from light sleep to the page | 1 refresh, under 500 ms | The page is still in the controller's RAM; only a DU refresh runs |
 | Wake from deep sleep to the page | under 2 s | Quick-resume image is the page itself; the layout engine restores position from the page index |
 | Page turn | one DU, ~380 ms, zero layout wait | Page N+1 is always pre-rendered into a shadow plane during idle; a turn only kicks the waveform. Presses during a refresh are queued, never lost |
-| Compass, Home layer, Peek | one DU | Overlays are composed onto the cached page plane, no relayout |
+| Compass, Home layer | one DU | Overlays are composed onto the cached page plane, no relayout |
 | Skim | 5 pages per second | Pre-rendered pages from the index; only the Spine label changes per frame |
 | Font size change | under 1 s to the new page | Relayout only the current chapter, index the rest in the background |
 | Word lookup | 2 presses, under 1 s | Frequency list in flash; dictionary index on SD |

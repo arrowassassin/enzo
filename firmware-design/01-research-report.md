@@ -43,5 +43,5 @@ Treat the screen as print: no animation, no scrolling, page-based lists, partial
 1. Exact X3 key ladder voltages and the physical layout (the developer menu in milestone 0 resolves this).
 2. Heap remaining under esp-radio with a TLS connection open (milestone 2 measurement).
 3. 4-grey LUTs for UC8253/UC8279 in a Rust driver (milestone 0 spike; papyrix documents them).
-4. Deep-sleep GPIO wake on the C3 through esp-hal (the module docs list GPIO as light-sleep only; verify RTC-IO wake on GPIO3).
+4. ~~Deep-sleep GPIO wake through esp-hal~~ resolved by the runtime decision in 10: ESP-IDF's GPIO deep-sleep wake is documented and used on this board.
 5. Stock firmware bootloader details beyond "otadata + dual OTA, honoured".
