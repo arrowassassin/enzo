@@ -74,3 +74,137 @@ Follow-up prompts that work well after each batch:
 - "Show batch 2 screen 20 at 22 px and 34 px side by side with the Spine; I want to judge the text block."
 - "Redo the compass with the labels 30% larger; they must be readable at arm's length."
 - "Give me the refresh map for everything so far as one page."
+
+## Add-on prompts for the newer elements
+
+Paste each as its own message after the start prompt, or after the batch it belongs to.
+
+### Analytics section (60a to 60e)
+
+```
+Design the Analytics section from brief section 6, screens 60a to 60e, plus the
+charts board. These are 1-bit e-ink charts with no colour, no legend, no grid
+lines heavier than a 1 px hairline, and every mark labelled directly.
+
+Chart vocabulary (design these on the charts board first, at 1:1):
+- Ink line: a bar chart, one solid black bar per unit (hour, day, or month),
+  4 px minimum bar width, 2 px gaps, baseline as a 2 px rule, the tallest bar
+  carrying its value in JetBrains Mono 18 px above it, the axis labelled at the
+  first, middle and last position only.
+- Histogram: same as the ink line but 24 columns (hours) or 7 (weekdays), the
+  favourite column inverted with its label beneath in small caps.
+- Heat map: a 7-column calendar, cells 56 × 56 px with 4 px gaps, fill levels
+  0 / 25 / 50 / 100 % of the daily goal drawn as empty / sparse dots / dense
+  dots / solid; today gets a 3 px outline; consecutive streak days are joined by
+  a 2 px rule through their centres; weekday initials in small caps above.
+- Goal Spine: the yearly goal as a vertical hairline strip like the reading
+  Spine, filling solid as books finish, with the count as a poster numeral.
+- Poster numeral: Literata 44 px numeral with an 18 px small-cap label under
+  it; tiles in a 2-column grid separated by 2 px rules, never boxed.
+
+Screens:
+60a Overview — tab line Today · Week · Month · Year · All (Left/Right), six
+  poster numerals in a 2 × 3 grid (`1 h 42` READ, `86` PAGES, `31` PAGES/HOUR,
+  `12` STREAK DAYS, `2` BOOKS FINISHED, `4 h 10` LEFT IN CURRENT BOOK), then the
+  period's ink line. Rail: `Back · — · Books · Goals`; side labels Rhythm /
+  Calendar.
+60b Rhythm — 24-column time-of-day histogram, 7-column weekday chart, three
+  poster numerals (`9 pm` FAVOURITE HOUR, `Sun` FAVOURITE DAY, `27 min` TYPICAL
+  SESSION), then a session list for the selected day in mono (start, length,
+  book), paginated.
+60c Calendar — the heat map for one month, poster numerals `12` CURRENT
+  STREAK · `41` LONGEST · `19 / 30` DAYS THIS MONTH; Left/Right change month.
+60d Books — a table: title, time, pages, pages/hour, started, finished; the
+  focused column head is inverted; long-Confirm on a head sorts by it; a row
+  opens Book info. Show the table at 8 rows per page.
+60e Goals — daily goal stepper (minutes or pages), yearly goal stepper (books),
+  the Goal Spine, and an awards list rendered as small-cap lines with a date
+  (first book, 7-day streak, 100 hours, night owl). No badges, no popups.
+
+States: default, focused, empty ("No reading yet today"), and dark mode for
+60a. Use real numbers that agree with each other across screens.
+```
+
+### Bookshop (35 to 39)
+
+```
+Design the Bookshop, brief screens 35 to 39 and 09-bookshop.md section 4. It is
+a small, opinionated bookshop, not a search engine: shelves first, search second.
+
+35 Bookshop home — six shelves, each a row of three covers (152 × 228, 2 px
+  frames) plus a fourth "More" cell drawn as a hatched frame with the word
+  More; shelves: Start here · Popular this week · New editions · Modern &
+  Creative Commons · Collections · By subject. Two shelves fit per page;
+  Up/Down move between shelves and page. A Search row at the top with the
+  phone hint ("Type on your phone" + a 64 px QR). Language filter in the
+  running head. First-visit line under the title: "Free, open books. No
+  account, no DRM."
+36 Book page — cover left, title 32 px Literata, author, year · language ·
+  source line ("Standard Ebooks · public domain"), poster numeral `6 h` TO
+  READ, the blurb paginated at 22 px. Rail: `Back · Save · Get · More`. States:
+  not downloaded, downloading (Get becomes a stepped bar with KB/s in mono), in
+  library (Get reads Read), error ("Gutenberg is limiting requests, retrying
+  in 30 s"), and Wi-Fi off ("Connect to get this book" with a Wi-Fi action).
+37 Search — results as you type, from the offline catalog, sorted by
+  popularity; each row: title, author, year, a small source glyph (G / SE /
+  P); the keyboard beneath with the phone strip above it; works with Wi-Fi
+  off.
+38 Browse — Subjects, Authors A to Z (letter rail on the right using Up/Down),
+  Collections with one-line intros, Languages.
+39 Downloads and Saved — queue rows with a stepped bar and a mono status; the
+  Saved list with a `Get all` action in the rail.
+
+Use real public-domain titles and authors throughout.
+```
+
+### Sleep screen picker and key lock (44, 45)
+
+```
+Design 44 Sleep screen picker and 45 Keys locked from brief section 6.
+
+44 — a 3 × 2 grid of live thumbnails at 1:4 (132 × 198) rendered from the
+  current book: Cover, Poster, Quote, Custom, Quick resume, Blank; 6 px frame
+  on focus, a small "In use" check under the active one. Beneath the grid, the
+  options for the focused variant as toggle or choice rows (Cover: title band
+  on/off; Poster: Finish by or Streak; Quote: built-in or quotes.txt; Custom:
+  folder, rotation fixed / each sleep / daily; Quick resume: moon glyph
+  on/off). Rail: `Back · — · Use · Preview`. Also design the Preview state
+  (the full-size sleep screen with a 3 s countdown in the corner).
+45 — the reading page with a lock glyph at the right of the running head;
+  the one-refresh strip at the top: "Keys locked · hold Power to unlock", 48
+  px tall, inverted; and the same lock glyph placed on the Cover sleep screen's
+  band.
+```
+
+### Phone window and "Type on your phone" (43 and the keyboard strip)
+
+```
+Design 43 Phone window as it appears inside the Drop page on a phone (390 ×
+844 frame), in the same 1-bit visual system so it feels like one product:
+the device screen mirrored at 1:2 (264 × 396) inside a 2 px frame, the seven
+keys drawn around it in their physical positions as tappable 44 px targets
+(four under the bottom edge, two on the right edge, Power above), a text field
+beneath with a "Send" button, and the phone's own keyboard area. Show: idle,
+a search being typed (the mirrored device shows the same text in its field),
+and "Sent to reader" feedback. Also design the device-side "Type on your
+phone" strip that sits above every on-device keyboard: 56 px tall, a 48 px
+QR at the left, the words "Type on your phone" and the URL in mono.
+```
+
+### Settings additions from the review (Keys, Battery, Night jobs)
+
+```
+Design three settings pages from brief section 6, screen 50:
+- Keys: a line drawing of the device (2 px strokes) with each of the seven
+  keys labelled by its current function and a Remap action; rows for side-key
+  swap, orientation follow, tilt-to-turn, shake-to-turn, tap-to-turn (with a
+  sensitivity stepper), and a Remote row that opens a pairing page for a BLE
+  page-turner or keyboard (scanning state as a Working card, paired state as
+  a row with the device name and a Forget action).
+- Battery: poster numerals `19 days` LEFT · `62 %` CHARGE · `41` CYCLES ·
+  `Good` HEALTH, then a 30-day ink line of daily consumption, then the
+  charging state line ("Charging · 0.42 A") and a note on estimate basis.
+- Night jobs: a master toggle, an hour stepper (`6:00`), toggles for News,
+  Bookshop shelves, Sync, Catalog refresh, and a "Last run" line with the
+  result ("Today 06:02 · 3 articles, shelves updated").
+```
