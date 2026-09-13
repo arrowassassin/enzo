@@ -68,6 +68,16 @@ What the reader shows during transfer: a full-screen "Drop page" with the two QR
 
 **Android PWA.** Installing the Drop page adds it to the share sheet. Sharing an EPUB from Chrome, Drive, or a file manager opens the page with the file already queued.
 
+## 4b. "Type on your phone": the flow
+
+1. Any text field on the device (Library or Bookshop search, Wi-Fi password, a note, the Jump filter) shows the on-device keyboard with a 56 px strip above it: a QR code, "Type on your phone", and the device address.
+2. Choosing the strip (or just scanning it) starts Wi-Fi in the background: the device joins a saved network (2 to 4 s; the strip reads "Connecting…" then "Listening"). With no saved network in range it raises its hotspot, and the QR encodes both the Wi-Fi join and the page URL so the phone joins automatically.
+3. The phone opens the Drop page's typing view: the device screen mirrored at 1:2, a text field, the phone's own keyboard, and the seven device keys as remote buttons. If the Drop page is already open on the phone, it switches to this view by itself when the device starts listening.
+4. Keystrokes travel over the WebSocket into the focused field; the device redraws at most twice a second. Search results update as text arrives.
+5. Send on the phone or Confirm on the device submits. The strip disappears. Wi-Fi drops after 10 minutes idle, or immediately when the reader returns to the page.
+
+Alternative with no phone: a BLE keyboard or page-turner paired in Settings → Keys, which works while reading with Wi-Fi off.
+
 ## 5. Pull sources: OPDS and Calibre
 
 **OPDS.** Saved servers (up to 8) with name, URL, optional basic auth. Browse the feed, search, page, and download straight to SD. The free public sources are not presets here; they live in the Bookshop (09), which uses a project-hosted shelf index instead of live feeds. HTTPS is required for public catalogs, so the firmware carries a TLS client and a trimmed CA bundle (the Bookshop, OPDS and OTA use cases justify the RAM).
