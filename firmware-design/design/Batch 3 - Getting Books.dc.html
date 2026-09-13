@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
+<link href="https://fonts.googleapis.com/css2?family=Literata:ital,opsz,wght@0,7..72,400..700;1,7..72,400..700&amp;family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&amp;family=JetBrains+Mono:wght@400;500;700&amp;display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#EDEBE6;font-family:'Atkinson Hyperlegible',sans-serif;color:#000}
+a{color:#000}a:hover{color:#444}
+p{margin:0}
+</style>
+</helmet>
+<section id="batch3" style="padding:64px;display:flex;flex-direction:column;gap:40px;align-items:flex-start">
+
+<div style="background:#fff;outline:1px solid #C9C5BC;padding:32px 40px;max-width:1060px">
+<div style="font-family:Literata,serif;font-size:30px">Quire — Batch 3 · Getting books</div>
+<div style="font:12px/1.7 'JetBrains Mono',monospace;color:#666;margin-top:8px">30 drop ×5 · 31 wi-fi ×3 · 32 OPDS · 33 calibre · 34 sync · 35–39 bookshop · 43 phone window ×3 (390 × 844) + the device-side phone strip.</div>
+<div style="font:12px/1.7 'JetBrains Mono',monospace;margin-top:14px;border-top:1px solid #000;padding-top:10px">audit — 36's four actions (Back · Save · Get · More) fit the rail exactly in key order. 37 search keeps the T9 keyboard (component 14) with the phone strip above it. 39's Get all sits on Confirm. The phone window draws all seven keys as 44 px targets in their physical positions; it is a web page, so its type may fall below device minimums.</div>
+</div>
+
+<!-- g1: drop variants -->
+<div id="b3g1" style="display:flex;gap:40px">
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">30-drop-default · GC · live list of arriving files</div>
+<div data-screen-label="30-drop-default" style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden;padding:32px 32px 0">
+<div style="font-family:Literata,serif;font-size:32px;padding-bottom:10px;border-bottom:4px solid #000">Drop books here</div>
+<div style="display:flex;gap:24px;align-items:center;margin-top:24px">
+<canvas data-qr="1" data-mods="25" data-px="6" data-seed="31" style="width:198px;height:198px;image-rendering:pixelated"></canvas>
+<div><div style="font-family:'JetBrains Mono',monospace;font-size:26px">quire.local</div><div style="font-size:18px;margin-top:10px;line-height:1.4">Scan with your phone, then drag books onto the page. EPUB, TXT, MD, FB2, CBZ.</div></div>
+</div>
+<div style="font-size:18px;letter-spacing:.08em;text-transform:uppercase;margin:28px 0 4px">Arriving</div>
+<div style="padding:12px 0;border-bottom:1px solid #000"><div style="display:flex;justify-content:space-between"><span style="font-size:22px">wives-and-daughters.epub</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">61%</span></div><div style="height:12px;border:2px solid #000;margin-top:8px;padding:2px"><div style="height:4px;width:61%;background:repeating-linear-gradient(90deg,#000 0 8px,#fff 8px 10px)"></div></div></div>
+<div style="padding:12px 0;border-bottom:1px solid #000;display:flex;justify-content:space-between;align-items:center"><span style="font-size:22px">cranford.epub</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">queued</span></div>
+<div style="padding:12px 0;border-bottom:1px solid #000;display:flex;justify-content:space-between;align-items:center"><span style="font-size:22px">north-and-south.epub</span><span style="display:flex;align-items:center;gap:8px;font-family:'JetBrains Mono',monospace;font-size:18px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="4,13 10,19 20,6"></polyline></svg>added</span></div>
+<div style="position:absolute;left:32px;right:32px;bottom:64px;font-family:'JetBrains Mono',monospace;font-size:18px">Wi-Fi: HomeNet · 3 books added</div>
+<div style="position:absolute;left:0;right:0;bottom:0;height:40px;border-top:4px solid #000;background:#fff;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><div style="width:2px;height:2px;background:#000"></div></div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Back</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Open last</div>
+<div style="display:flex;align-items:center;justify-content:center">Wi-Fi</div>
+</div>
+</div></div>
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">30-drop-hotspot · GC · no network — the reader makes one</div>
+<div data-screen-label="30-drop-hotspot" style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden;padding:32px 32px 0">
+<div style="font-family:Literata,serif;font-size:32px;padding-bottom:10px;border-bottom:4px solid #000">Drop books here</div>
+<div style="font-size:22px;margin-top:20px;line-height:1.4">No Wi-Fi here, so the reader is its own network.</div>
+<div style="border:2px solid #000;margin-top:20px;padding:20px 24px">
+<div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:18px;letter-spacing:.08em;text-transform:uppercase">Network</span><span style="font-family:'JetBrains Mono',monospace;font-size:22px">QUIRE-X3</span></div>
+<div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px"><span style="font-size:18px;letter-spacing:.08em;text-transform:uppercase">Password</span><span style="font-family:'JetBrains Mono',monospace;font-size:22px">read-more</span></div>
+</div>
+<div style="display:flex;gap:24px;align-items:center;margin-top:24px">
+<canvas data-qr="1" data-mods="25" data-px="6" data-seed="77" style="width:198px;height:198px;image-rendering:pixelated"></canvas>
+<div><div style="font-size:18px;line-height:1.45">1 · Scan to join the network.<br>2 · The Drop page opens itself.</div><div style="font-family:'JetBrains Mono',monospace;font-size:18px;margin-top:12px">192.168.4.1</div></div>
+</div>
+<div style="position:absolute;left:32px;right:32px;bottom:64px;font-family:'JetBrains Mono',monospace;font-size:18px">Hotspot on · nothing arrived yet</div>
+<div style="position:absolute;left:0;right:0;bottom:0;height:40px;border-top:4px solid #000;background:#fff;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><div style="width:2px;height:2px;background:#000"></div></div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Back</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Hotspot off</div>
+<div style="display:flex;align-items:center;justify-content:center">Wi-Fi</div>
+</div>
+</div></div>
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">30-drop-notconnected · GC · error state</div>
+<div data-screen-label="30-drop-notconnected" style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden;padding:32px 32px 0">
+<div style="font-family:Literata,serif;font-size:32px;padding-bottom:10px;border-bottom:4px solid #000">Drop books here</div>
+<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;margin-top:200px;padding:0 24px">
+<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><path d="M2,10 a14,14 0 0 1 20,0"></path><path d="M5.5,13.5 a9,9 0 0 1 13,0"></path><path d="M9,17 a4.5,4.5 0 0 1 6,0"></path><circle cx="12" cy="20" r="1.5" fill="#000" stroke="none"></circle><line x1="3" y1="3" x2="21" y2="21"></line></svg>
+<div style="font-family:Literata,serif;font-size:32px;margin-top:20px">Not connected</div>
+<div style="font-size:18px;margin-top:10px">Join a network, or turn on the reader's own hotspot.</div>
+</div>
+<div style="position:absolute;left:0;right:0;bottom:0;height:40px;border-top:4px solid #000;background:#fff;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><div style="width:2px;height:2px;background:#000"></div></div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Back</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Hotspot</div>
+<div style="display:flex;align-items:center;justify-content:center">Wi-Fi</div>
+</div>
+</div></div>
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">30-drop-complete · GC · everything arrived</div>
+<div data-screen-label="30-drop-complete" style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden;padding:32px 32px 0">
+<div style="font-family:Literata,serif;font-size:32px;padding-bottom:10px;border-bottom:4px solid #000">Drop books here</div>
+<div style="font-size:18px;letter-spacing:.08em;text-transform:uppercase;margin:24px 0 4px">Added</div>
+<div style="height:56px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #000"><span style="font-size:22px">Wives and Daughters</span><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="4,13 10,19 20,6"></polyline></svg></div>
+<div style="height:56px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #000"><span style="font-size:22px">Cranford</span><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="4,13 10,19 20,6"></polyline></svg></div>
+<div style="height:56px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #000"><span style="font-size:22px">North and South</span><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="4,13 10,19 20,6"></polyline></svg></div>
+<div style="font-family:'JetBrains Mono',monospace;font-size:18px;margin-top:20px">3 books · 2.4 MB · indexed</div>
+<div style="position:absolute;left:0;right:0;bottom:0;height:40px;border-top:4px solid #000;background:#fff;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Library</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Back</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Open last</div>
+<div style="display:flex;align-items:center;justify-content:center"><div style="width:2px;height:2px;background:#000"></div></div>
+</div>
+</div></div>
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">30-drop-full · GC · dialog card, GC open and close</div>
+<div data-screen-label="30-drop-full" style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden;padding:32px 32px 0">
+<div style="font-family:Literata,serif;font-size:32px;padding-bottom:10px;border-bottom:4px solid #000">Drop books here</div>
+<div style="border:2px solid #000;margin-top:180px;padding:28px">
+<div style="font-family:Literata,serif;font-size:32px">Card is full</div>
+<div style="font-size:22px;margin-top:12px;line-height:1.4">wives-and-daughters.epub needs 3.2 MB; 0.8 MB is free. Delete finished books, or use a bigger card.</div>
+</div>
+<div style="position:absolute;left:0;right:0;bottom:0;height:40px;border-top:4px solid #000;background:#fff;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><div style="width:2px;height:2px;background:#000"></div></div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Cancel</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Library</div>
+<div style="display:flex;align-items:center;justify-content:center"><div style="width:2px;height:2px;background:#000"></div></div>
+</div>
+</div></div>
+</div>
+
+<!-- g2: wifi + opds + calibre + sync -->
+<div id="b3g2" style="display:flex;gap:40px">
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">31-wifi-list · GC · saved networks, status card</div>
+<div data-screen-label="31-wifi-list" style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden;padding:32px 32px 0">
+<div style="font-family:Literata,serif;font-size:32px;padding-bottom:10px;border-bottom:4px solid #000">Wi-Fi</div>
+<div style="height:64px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #000;background:#000;color:#fff;padding:0 16px;margin-top:12px"><div style="display:flex;align-items:center;gap:14px"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M2,10 a14,14 0 0 1 20,0"></path><path d="M5.5,13.5 a9,9 0 0 1 13,0"></path><path d="M9,17 a4.5,4.5 0 0 1 6,0"></path><circle cx="12" cy="20" r="1.5" fill="#fff" stroke="none"></circle></svg><span style="font-size:26px">HomeNet</span></div><span style="font-family:'JetBrains Mono',monospace;font-size:18px">connected</span></div>
+<div style="height:64px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #000;padding:0 16px"><div style="display:flex;align-items:center;gap:14px"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><path d="M5.5,13.5 a9,9 0 0 1 13,0"></path><path d="M9,17 a4.5,4.5 0 0 1 6,0"></path><circle cx="12" cy="20" r="1.5" fill="#000" stroke="none"></circle></svg><span style="font-size:26px">Bodleian-Guest</span></div><span style="font-family:'JetBrains Mono',monospace;font-size:18px">saved</span></div>
+<div style="height:64px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #000;padding:0 16px"><div style="display:flex;align-items:center;gap:14px"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><path d="M9,17 a4.5,4.5 0 0 1 6,0"></path><circle cx="12" cy="20" r="1.5" fill="#000" stroke="none"></circle></svg><span style="font-size:26px">Pemberley 5G</span></div><span style="font-family:'JetBrains Mono',monospace;font-size:18px">saved</span></div>
+<div style="height:64px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;border-bottom:1px solid #000"><span style="font-size:26px">Add network</span><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="9,4 17,12 9,20"></polyline></svg></div>
+<div style="border:2px solid #000;margin-top:28px;padding:18px 20px;font-family:'JetBrains Mono',monospace;font-size:18px;line-height:1.6">quire.local<br>192.168.1.24 · WebDAV on<br>Wi-Fi sleeps with the reader</div>
+<div style="position:absolute;left:0;right:0;bottom:0;height:40px;border-top:4px solid #000;background:#fff;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><div style="width:2px;height:2px;background:#000"></div></div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Back</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Join</div>
+<div style="display:flex;align-items:center;justify-content:center">Forget</div>
+</div>
+</div></div>
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">31-wifi-scan · DU per found network · working card</div>
+<div data-screen-label="31-wifi-scan" style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden;padding:32px 32px 0">
+<div style="font-family:Literata,serif;font-size:32px;padding-bottom:10px;border-bottom:4px solid #000">Add network</div>
+<div style="border:2px solid #000;margin-top:20px;padding:22px 24px">
+<div style="font-family:Literata,serif;font-size:32px">Scanning…</div>
+<div style="height:12px;border:2px solid #000;margin-top:14px;padding:2px"><div style="height:4px;width:45%;background:repeating-linear-gradient(90deg,#000 0 8px,#fff 8px 10px)"></div></div>
+<div style="font-family:'JetBrains Mono',monospace;font-size:18px;margin-top:10px">channel 6 of 13</div>
+</div>
+<div style="font-size:18px;letter-spacing:.08em;text-transform:uppercase;margin:24px 0 4px">Found</div>
+<div style="height:56px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #000;padding:0 8px"><span style="font-size:26px">HomeNet</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">▂▄▆█</span></div>
+<div style="height:56px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #000;background:#000;color:#fff;padding:0 8px"><span style="font-size:26px">Longbourn</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">▂▄▆_</span></div>
+<div style="height:56px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #000;padding:0 8px"><span style="font-size:26px">CAFE-NERO-FREE</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">▂▄__</span></div>
+<div style="position:absolute;left:0;right:0;bottom:0;height:40px;border-top:4px solid #000;background:#fff;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><div style="width:2px;height:2px;background:#000"></div></div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Back</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Choose</div>
+<div style="display:flex;align-items:center;justify-content:center">Rescan</div>
+</div>
+</div></div>
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">31-wifi-password · GC · phone first, keys as fallback</div>
+<div data-screen-label="31-wifi-password" style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden;padding:32px 24px 0">
+<div style="font-family:Literata,serif;font-size:32px;padding-bottom:10px;border-bottom:4px solid #000;margin:0 8px">Longbourn</div>
+<div style="height:56px;border:2px solid #000;display:flex;align-items:center;gap:14px;padding:4px 12px;margin-top:20px"><canvas data-qr="1" data-mods="21" data-px="2" data-seed="11" style="width:48px;height:48px;image-rendering:pixelated"></canvas><span style="font-size:18px">Type on your phone</span><span style="font-family:'JetBrains Mono',monospace;font-size:14px;margin-left:auto">quire.local/type</span></div>
+<div style="height:56px;border:2px solid #000;border-top:none;display:flex;align-items:center;padding:0 16px"><span style="font-family:'JetBrains Mono',monospace;font-size:26px">••••••</span><span style="display:inline-block;width:2px;height:30px;background:#000;margin-left:4px"></span></div>
+<div style="margin-top:16px">
+<sc-for list="{{ kbRows }}" as="row" hint-placeholder-count="4">
+<div style="display:flex">
+<sc-for list="{{ row.keys }}" as="k" hint-placeholder-count="10">
+<div style="width:48px;height:56px;border:1px solid #000;margin:-1px 0 0 -1px;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:22px;background:{{ k.bg }};color:{{ k.fg }}">{{ k.c }}</div>
+</sc-for>
+</div>
+</sc-for>
+<div style="display:flex">
+<div style="width:96px;height:56px;border:1px solid #000;margin:-1px 0 0 -1px;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:18px">?123</div>
+<div style="width:240px;height:56px;border:1px solid #000;margin:-1px 0 0 -1px;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:18px">Space</div>
+<div style="width:96px;height:56px;border:1px solid #000;margin:-1px 0 0 -1px;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:18px">Del</div>
+<div style="width:48px;height:56px;border:1px solid #000;margin:-1px 0 0 -1px;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:18px;background:#000;color:#fff">✓</div>
+</div>
+</div>
+<div style="font-size:18px;margin-top:16px;padding:0 8px">Left/Right/Up/Down move · Confirm types · long-Confirm joins</div>
+<div style="position:absolute;left:0;right:0;bottom:0;height:40px;border-top:4px solid #000;background:#fff;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="15,4 7,12 15,20"></polyline></svg></div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Cancel</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Type</div>
+<div style="display:flex;align-items:center;justify-content:center"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="9,4 17,12 9,20"></polyline></svg></div>
+</div>
+</div></div>
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">32-opds · GC · user catalogs</div>
+<div data-screen-label="32-opds" style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden;padding:32px 32px 0">
+<div style="font-family:Literata,serif;font-size:32px;padding-bottom:10px;border-bottom:4px solid #000">Catalogs</div>
+<div style="font-size:18px;letter-spacing:.08em;text-transform:uppercase;margin:20px 0 4px">Saved</div>
+<div style="height:64px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #000;background:#000;color:#fff;padding:0 16px"><div><div style="font-size:26px">Home Calibre-Web</div><div style="font-family:'JetBrains Mono',monospace;font-size:14px">192.168.1.8:8083</div></div><span style="font-family:'JetBrains Mono',monospace;font-size:18px">1,214</span></div>
+<div style="height:64px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #000;padding:0 16px"><div><div style="font-size:26px">Standard Ebooks</div><div style="font-family:'JetBrains Mono',monospace;font-size:14px">new releases feed</div></div><span style="font-family:'JetBrains Mono',monospace;font-size:18px">feed</span></div>
+<div style="height:64px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #000;padding:0 16px"><span style="font-size:26px">Add catalog</span><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="9,4 17,12 9,20"></polyline></svg></div>
+<div style="border:2px solid #000;margin-top:28px;padding:22px 24px">
+<div style="font-family:Literata,serif;font-size:32px">Downloading</div>
+<div style="font-size:22px;margin-top:6px">Wives and Daughters</div>
+<div style="height:12px;border:2px solid #000;margin-top:12px;padding:2px"><div style="height:4px;width:34%;background:repeating-linear-gradient(90deg,#000 0 8px,#fff 8px 10px)"></div></div>
+<div style="font-family:'JetBrains Mono',monospace;font-size:18px;margin-top:10px">0.9 MB of 2.6 MB · 84 KB/s</div>
+</div>
+<div style="position:absolute;left:0;right:0;bottom:0;height:40px;border-top:4px solid #000;background:#fff;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><div style="width:2px;height:2px;background:#000"></div></div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Back</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Browse</div>
+<div style="display:flex;align-items:center;justify-content:center">Search</div>
+</div>
+</div></div>
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">33-calibre · GC · wireless device connection</div>
+<div data-screen-label="33-calibre" style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden;padding:32px 32px 0">
+<div style="font-family:Literata,serif;font-size:32px;padding-bottom:10px;border-bottom:4px solid #000">Calibre</div>
+<div style="border:2px solid #000;margin-top:24px;padding:22px 24px">
+<div style="font-family:Literata,serif;font-size:32px">Waiting for Calibre…</div>
+<div style="font-family:'JetBrains Mono',monospace;font-size:18px;margin-top:10px">listening on 192.168.1.24:9090</div>
+<div style="height:12px;border:2px solid #000;margin-top:14px;padding:2px"><div style="height:4px;width:20%;background:repeating-linear-gradient(90deg,#000 0 8px,#fff 8px 10px)"></div></div>
+</div>
+<div style="font-size:18px;margin-top:16px;line-height:1.5">In Calibre: Connect/share → Start wireless device connection. The reader appears as "Quire X3".</div>
+<div style="font-size:18px;letter-spacing:.08em;text-transform:uppercase;margin:28px 0 4px">Last session</div>
+<div style="height:56px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #000"><span style="font-size:22px">Middlemarch</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">sent ✓</span></div>
+<div style="height:56px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #000"><span style="font-size:22px">The Warden</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">sent ✓</span></div>
+<div style="position:absolute;left:0;right:0;bottom:0;height:40px;border-top:4px solid #000;background:#fff;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><div style="width:2px;height:2px;background:#000"></div></div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Back</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Stop</div>
+<div style="display:flex;align-items:center;justify-content:center"><div style="width:2px;height:2px;background:#000"></div></div>
+</div>
+</div></div>
+</div>
+
+<!-- g3: sync + bookshop home/book -->
+<div id="b3g3" style="display:flex;gap:40px">
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">34-sync · GC · KOReader-compatible positions</div>
+<div data-screen-label="34-sync" style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden;padding:32px 32px 0">
+<div style="font-family:Literata,serif;font-size:32px;padding-bottom:10px;border-bottom:4px solid #000">Sync</div>
+<div style="font-family:'JetBrains Mono',monospace;font-size:18px;margin-top:16px">Last sync · today 21:12 · sync.example.org</div>
+<div style="font-size:18px;letter-spacing:.08em;text-transform:uppercase;margin:24px 0 4px">Positions</div>
+<div style="height:64px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #000"><div><div style="font-size:22px">Middlemarch</div><div style="font-family:'JetBrains Mono',monospace;font-size:14px">here p 322 · server p 322</div></div><span style="font-family:'JetBrains Mono',monospace;font-size:18px">in sync</span></div>
+<div style="height:64px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #000;background:#000;color:#fff;padding:0 8px"><div><div style="font-size:22px">The Count of Monte Cristo</div><div style="font-family:'JetBrains Mono',monospace;font-size:14px">here p 410 · phone p 428</div></div><span style="font-family:'JetBrains Mono',monospace;font-size:18px">newer there</span></div>
+<div style="height:64px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #000"><div><div style="font-size:22px">Meditations</div><div style="font-family:'JetBrains Mono',monospace;font-size:14px">not on server</div></div><span style="font-family:'JetBrains Mono',monospace;font-size:18px">local only</span></div>
+<div style="font-size:18px;margin-top:20px">Confirm takes the newer position. Nothing moves without you.</div>
+<div style="position:absolute;left:0;right:0;bottom:0;height:40px;border-top:4px solid #000;background:#fff;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><div style="width:2px;height:2px;background:#000"></div></div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Back</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Sync now</div>
+<div style="display:flex;align-items:center;justify-content:center">Server</div>
+</div>
+</div></div>
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">35-bookshop-home · GC · two shelves per page, Up/Down move</div>
+<div data-screen-label="35-bookshop-home" style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden;padding:32px 24px 0">
+<div style="display:flex;justify-content:space-between;align-items:baseline;border-bottom:4px solid #000;padding-bottom:10px;margin:0 8px"><span style="font-family:Literata,serif;font-size:32px">Bookshop</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">EN ›</span></div>
+<div style="font-size:18px;margin:8px 8px 0">Free, open books. No account, no DRM.</div>
+<div style="height:52px;border:2px solid #000;display:flex;align-items:center;justify-content:space-between;padding:0 14px;margin:14px 8px 0"><span style="font-family:'JetBrains Mono',monospace;font-size:20px">Search…</span><div style="display:flex;align-items:center;gap:8px;font-size:16px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect><rect x="14" y="14" width="3" height="3" fill="#000" stroke="none"></rect><rect x="18" y="18" width="3" height="3" fill="#000" stroke="none"></rect></svg>phone</div></div>
+<div style="display:flex;justify-content:space-between;align-items:baseline;margin:20px 8px 8px"><span style="font-size:18px;letter-spacing:.08em;text-transform:uppercase">Start here</span><span style="font-family:'JetBrains Mono',monospace;font-size:14px">picked by readers</span></div>
+<div style="display:flex;gap:10px;padding:0 8px">
+<div style="width:112px;height:168px;border:6px solid #000;background:repeating-linear-gradient(180deg,#000 0 1px,#fff 1px 6px);position:relative"><div style="position:absolute;left:8px;right:8px;top:26px;background:#fff;border:1px solid #000;padding:8px 4px;text-align:center;font-family:Literata,serif;font-size:15px;line-height:1.2;overflow-wrap:break-word;max-height:110px;overflow:hidden">Pride and Prejudice</div></div>
+<div style="width:112px;height:168px;border:2px solid #000;background:repeating-linear-gradient(180deg,#000 0 1px,#fff 1px 6px);position:relative"><div style="position:absolute;left:8px;right:8px;top:26px;background:#fff;border:1px solid #000;padding:8px 4px;text-align:center;font-family:Literata,serif;font-size:15px;line-height:1.2;overflow-wrap:break-word;max-height:110px;overflow:hidden">Sherlock Holmes</div></div>
+<div style="width:112px;height:168px;border:2px solid #000;background:repeating-linear-gradient(180deg,#000 0 1px,#fff 1px 6px);position:relative"><div style="position:absolute;left:8px;right:8px;top:26px;background:#fff;border:1px solid #000;padding:8px 4px;text-align:center;font-family:Literata,serif;font-size:15px;line-height:1.2;overflow-wrap:break-word;max-height:110px;overflow:hidden">Walden</div></div>
+<div style="width:112px;height:168px;border:2px solid #000;background:repeating-linear-gradient(45deg,#000 0 1px,#fff 1px 7px);display:flex;align-items:center;justify-content:center"><span style="background:#fff;border:1px solid #000;padding:4px 10px;font-family:'JetBrains Mono',monospace;font-size:18px">More</span></div>
+</div>
+<div style="display:flex;justify-content:space-between;align-items:baseline;margin:22px 8px 8px"><span style="font-size:18px;letter-spacing:.08em;text-transform:uppercase">Popular this week</span><span style="font-family:'JetBrains Mono',monospace;font-size:14px">Gutenberg top 100</span></div>
+<div style="display:flex;gap:10px;padding:0 8px">
+<div style="width:112px;height:168px;border:2px solid #000;background:repeating-linear-gradient(180deg,#000 0 1px,#fff 1px 6px);position:relative"><div style="position:absolute;left:8px;right:8px;top:26px;background:#fff;border:1px solid #000;padding:8px 4px;text-align:center;font-family:Literata,serif;font-size:15px;line-height:1.2;overflow-wrap:break-word;max-height:110px;overflow:hidden">Frankenstein</div></div>
+<div style="width:112px;height:168px;border:2px solid #000;background:repeating-linear-gradient(180deg,#000 0 1px,#fff 1px 6px);position:relative"><div style="position:absolute;left:8px;right:8px;top:26px;background:#fff;border:1px solid #000;padding:8px 4px;text-align:center;font-family:Literata,serif;font-size:15px;line-height:1.2;overflow-wrap:break-word;max-height:110px;overflow:hidden">Moby-Dick</div></div>
+<div style="width:112px;height:168px;border:2px solid #000;background:repeating-linear-gradient(180deg,#000 0 1px,#fff 1px 6px);position:relative"><div style="position:absolute;left:8px;right:8px;top:26px;background:#fff;border:1px solid #000;padding:8px 4px;text-align:center;font-family:Literata,serif;font-size:15px;line-height:1.2;overflow-wrap:break-word;max-height:110px;overflow:hidden">Dracula</div></div>
+<div style="width:112px;height:168px;border:2px solid #000;background:repeating-linear-gradient(45deg,#000 0 1px,#fff 1px 7px);display:flex;align-items:center;justify-content:center"><span style="background:#fff;border:1px solid #000;padding:4px 10px;font-family:'JetBrains Mono',monospace;font-size:18px">More</span></div>
+</div>
+<div style="font-family:'JetBrains Mono',monospace;font-size:14px;margin:14px 8px 0">shelf 1–2 of 6 · New editions · Modern &amp; CC · Collections · Subjects</div>
+<div style="position:absolute;right:2px;top:300px;writing-mode:vertical-rl;font-family:'JetBrains Mono',monospace;font-size:18px;background:#fff;padding:4px 0;border:1px solid #000">Shelf</div>
+<div style="position:absolute;right:2px;top:400px;writing-mode:vertical-rl;font-family:'JetBrains Mono',monospace;font-size:18px;background:#fff;padding:4px 0;border:1px solid #000">Shelf</div>
+<div style="position:absolute;left:0;right:0;bottom:0;height:40px;border-top:4px solid #000;background:#fff;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="15,4 7,12 15,20"></polyline></svg></div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Back</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Open</div>
+<div style="display:flex;align-items:center;justify-content:center"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="9,4 17,12 9,20"></polyline></svg></div>
+</div>
+</div></div>
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">36-book-default · GC · not downloaded</div>
+<div data-screen-label="36-book-default" style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden;padding:32px 32px 0">
+<div style="display:flex;gap:24px">
+<div style="width:152px;height:228px;border:2px solid #000;background:repeating-linear-gradient(180deg,#000 0 1px,#fff 1px 6px);position:relative;flex:none"><div style="position:absolute;left:12px;right:12px;top:40px;background:#fff;border:1px solid #000;padding:12px 6px;text-align:center;max-height:160px;overflow:hidden"><div style="font-family:Literata,serif;font-size:20px;line-height:1.15;overflow-wrap:break-word">Frankenstein</div><div style="font-size:16px;margin-top:8px">Mary Shelley</div></div></div>
+<div style="min-width:0">
+<div style="font-family:Literata,serif;font-size:32px;line-height:1.1">Frankenstein</div>
+<div style="font-size:22px;margin-top:6px">Mary Shelley</div>
+<div style="font-family:'JetBrains Mono',monospace;font-size:18px;margin-top:10px">1818 · English</div>
+<div style="margin-top:22px"><div style="font-family:Literata,serif;font-size:44px;line-height:1">6 h</div><div style="font-size:18px;letter-spacing:.08em;text-transform:uppercase;margin-top:2px">To read</div></div>
+</div>
+</div>
+<div style="font-family:'JetBrains Mono',monospace;font-size:18px;margin-top:18px;border-top:1px solid #000;padding-top:12px">Standard Ebooks · public domain · 0.9 MB</div>
+<div lang="en" style="font-family:Literata,serif;font-size:22px;line-height:1.45;margin-top:16px;text-align:justify;hyphens:auto">Victor Frankenstein, a young scientist obsessed with the secret of life, assembles and animates a creature — then abandons it. The creature, articulate and alone, sets out to be understood, and the two destroy each other across Europe and the Arctic.</div>
+<div style="font-family:'JetBrains Mono',monospace;font-size:14px;margin-top:10px">blurb 1 / 2 · Up/Down</div>
+<div style="font-size:18px;margin-top:18px;border-top:1px solid #000;padding-top:12px">More: Save for later · More by this author · Same collection</div>
+<div style="position:absolute;left:0;right:0;bottom:0;height:40px;border-top:4px solid #000;background:#fff;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><div style="width:2px;height:2px;background:#000"></div></div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Back</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000;background:#000;color:#fff">Get</div>
+<div style="display:flex;align-items:center;justify-content:center">More</div>
+</div>
+</div></div>
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">36-book-downloading · DU per tick</div>
+<div data-screen-label="36-book-downloading" style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden;padding:32px 32px 0">
+<div style="display:flex;gap:24px">
+<div style="width:152px;height:228px;border:2px solid #000;background:repeating-linear-gradient(180deg,#000 0 1px,#fff 1px 6px);position:relative;flex:none"><div style="position:absolute;left:12px;right:12px;top:40px;background:#fff;border:1px solid #000;padding:12px 6px;text-align:center;max-height:160px;overflow:hidden"><div style="font-family:Literata,serif;font-size:20px;line-height:1.15;overflow-wrap:break-word">Frankenstein</div><div style="font-size:16px;margin-top:8px">Mary Shelley</div></div></div>
+<div>
+<div style="font-family:Literata,serif;font-size:32px;line-height:1.1">Frankenstein</div>
+<div style="font-size:22px;margin-top:6px">Mary Shelley</div>
+<div style="font-family:'JetBrains Mono',monospace;font-size:18px;margin-top:10px">1818 · English</div>
+</div>
+</div>
+<div style="border:2px solid #000;margin-top:24px;padding:22px 24px">
+<div style="font-family:Literata,serif;font-size:32px">Getting…</div>
+<div style="height:12px;border:2px solid #000;margin-top:14px;padding:2px"><div style="height:4px;width:38%;background:repeating-linear-gradient(90deg,#000 0 8px,#fff 8px 10px)"></div></div>
+<div style="font-family:'JetBrains Mono',monospace;font-size:18px;margin-top:10px">0.4 MB of 0.9 MB · 84 KB/s · standardebooks.org</div>
+</div>
+<div style="font-size:18px;margin-top:16px">Keep browsing — the download continues.</div>
+<div style="position:absolute;left:0;right:0;bottom:0;height:40px;border-top:4px solid #000;background:#fff;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><div style="width:2px;height:2px;background:#000"></div></div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Back</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Cancel</div>
+<div style="display:flex;align-items:center;justify-content:center">More</div>
+</div>
+</div></div>
+</div>
+
+<!-- g4: book states + search + browse -->
+<div id="b3g4" style="display:flex;gap:40px">
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">36-book-inlibrary · GC · Get reads Read</div>
+<div data-screen-label="36-book-inlibrary" style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden;padding:32px 32px 0">
+<div style="display:flex;gap:24px">
+<div style="width:152px;height:228px;border:2px solid #000;background:repeating-linear-gradient(180deg,#000 0 1px,#fff 1px 6px);position:relative;flex:none"><div style="position:absolute;left:12px;right:12px;top:40px;background:#fff;border:1px solid #000;padding:12px 6px;text-align:center;max-height:160px;overflow:hidden"><div style="font-family:Literata,serif;font-size:20px;line-height:1.15;overflow-wrap:break-word">Frankenstein</div><div style="font-size:16px;margin-top:8px">Mary Shelley</div></div></div>
+<div>
+<div style="font-family:Literata,serif;font-size:32px;line-height:1.1">Frankenstein</div>
+<div style="font-size:22px;margin-top:6px">Mary Shelley</div>
+<div style="display:flex;align-items:center;gap:8px;font-family:'JetBrains Mono',monospace;font-size:18px;margin-top:10px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="4,13 10,19 20,6"></polyline></svg>in your library</div>
+<div style="margin-top:22px"><div style="font-family:Literata,serif;font-size:44px;line-height:1">6 h</div><div style="font-size:18px;letter-spacing:.08em;text-transform:uppercase;margin-top:2px">To read</div></div>
+</div>
+</div>
+<div style="font-family:'JetBrains Mono',monospace;font-size:18px;margin-top:18px;border-top:1px solid #000;padding-top:12px">Standard Ebooks · public domain · 0.9 MB</div>
+<div lang="en" style="font-family:Literata,serif;font-size:22px;line-height:1.45;margin-top:16px;text-align:justify;hyphens:auto">Victor Frankenstein, a young scientist obsessed with the secret of life, assembles and animates a creature — then abandons it.</div>
+<div style="position:absolute;left:0;right:0;bottom:0;height:40px;border-top:4px solid #000;background:#fff;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><div style="width:2px;height:2px;background:#000"></div></div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Back</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000;background:#000;color:#fff">Read</div>
+<div style="display:flex;align-items:center;justify-content:center">More</div>
+</div>
+</div></div>
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">36-book-error · DU · says what happened and what happens next</div>
+<div data-screen-label="36-book-error" style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden;padding:32px 32px 0">
+<div style="display:flex;gap:24px">
+<div style="width:152px;height:228px;border:2px solid #000;background:repeating-linear-gradient(180deg,#000 0 1px,#fff 1px 6px);position:relative;flex:none"><div style="position:absolute;left:12px;right:12px;top:40px;background:#fff;border:1px solid #000;padding:12px 6px;text-align:center;max-height:160px;overflow:hidden"><div style="font-family:Literata,serif;font-size:20px;line-height:1.15;overflow-wrap:break-word">Moby-Dick</div><div style="font-size:16px;margin-top:8px">Herman Melville</div></div></div>
+<div>
+<div style="font-family:Literata,serif;font-size:32px;line-height:1.1">Moby-Dick</div>
+<div style="font-size:22px;margin-top:6px">Herman Melville</div>
+<div style="font-family:'JetBrains Mono',monospace;font-size:18px;margin-top:10px">1851 · English · Gutenberg</div>
+</div>
+</div>
+<div style="border:2px solid #000;margin-top:24px;padding:22px 24px">
+<div style="display:flex;align-items:center;gap:12px"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><path d="M12,3 L22,20 H2 z"></path><line x1="12" y1="9" x2="12" y2="14"></line><rect x="11" y="16" width="2" height="2" fill="#000" stroke="none"></rect></svg><span style="font-family:Literata,serif;font-size:32px">Held at the door</span></div>
+<div style="font-size:22px;margin-top:10px;line-height:1.4">Gutenberg is limiting requests. Retrying in 30 s — third try of five.</div>
+<div style="font-family:'JetBrains Mono',monospace;font-size:18px;margin-top:12px">next try 21:48:30</div>
+</div>
+<div style="position:absolute;left:0;right:0;bottom:0;height:40px;border-top:4px solid #000;background:#fff;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><div style="width:2px;height:2px;background:#000"></div></div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Back</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Retry now</div>
+<div style="display:flex;align-items:center;justify-content:center">Queue</div>
+</div>
+</div></div>
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">36-book-wifioff · GC · browse offline, connect to get</div>
+<div data-screen-label="36-book-wifioff" style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden;padding:32px 32px 0">
+<div style="display:flex;gap:24px">
+<div style="width:152px;height:228px;border:2px solid #000;background:repeating-linear-gradient(180deg,#000 0 1px,#fff 1px 6px);position:relative;flex:none"><div style="position:absolute;left:12px;right:12px;top:40px;background:#fff;border:1px solid #000;padding:12px 6px;text-align:center;max-height:160px;overflow:hidden"><div style="font-family:Literata,serif;font-size:20px;line-height:1.15;overflow-wrap:break-word">Frankenstein</div><div style="font-size:16px;margin-top:8px">Mary Shelley</div></div></div>
+<div>
+<div style="font-family:Literata,serif;font-size:32px;line-height:1.1">Frankenstein</div>
+<div style="font-size:22px;margin-top:6px">Mary Shelley</div>
+<div style="display:flex;align-items:center;gap:8px;font-family:'JetBrains Mono',monospace;font-size:18px;margin-top:10px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><path d="M2,10 a14,14 0 0 1 20,0"></path><path d="M5.5,13.5 a9,9 0 0 1 13,0"></path><path d="M9,17 a4.5,4.5 0 0 1 6,0"></path><circle cx="12" cy="20" r="1.5" fill="#000" stroke="none"></circle><line x1="3" y1="3" x2="21" y2="21"></line></svg>Wi-Fi off</div>
+<div style="margin-top:22px"><div style="font-family:Literata,serif;font-size:44px;line-height:1">6 h</div><div style="font-size:18px;letter-spacing:.08em;text-transform:uppercase;margin-top:2px">To read</div></div>
+</div>
+</div>
+<div style="border:2px solid #000;margin-top:24px;padding:22px 24px">
+<div style="font-family:Literata,serif;font-size:32px">Connect to get this book</div>
+<div style="font-size:22px;margin-top:10px;line-height:1.4">The catalog works offline; downloads need Wi-Fi. Saved for later meanwhile.</div>
+</div>
+<div style="position:absolute;left:0;right:0;bottom:0;height:40px;border-top:4px solid #000;background:#fff;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><div style="width:2px;height:2px;background:#000"></div></div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Back</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Wi-Fi</div>
+<div style="display:flex;align-items:center;justify-content:center">Saved ✓</div>
+</div>
+</div></div>
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">37-search · DU per keystroke · offline index, T9 + phone strip</div>
+<div data-screen-label="37-search" style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden;padding:32px 24px 0">
+<div style="height:56px;border-bottom:2px solid #000;display:flex;align-items:center;justify-content:space-between;margin:0 8px"><div style="display:flex;align-items:center;gap:4px"><span style="font-family:'JetBrains Mono',monospace;font-size:26px">aust</span><span style="display:inline-block;width:2px;height:30px;background:#000"></span></div><span style="font-family:'JetBrains Mono',monospace;font-size:14px">works offline</span></div>
+<sc-for list="{{ searchRows }}" as="r" hint-placeholder-count="6">
+<div style="height:56px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #000;padding:0 8px;background:{{ r.bg }};color:{{ r.fg }}">
+<span style="width:34px;height:26px;border:1px solid currentColor;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:14px;flex:none">{{ r.src }}</span>
+<span style="font-size:24px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.t }}</span>
+<span style="font-family:'JetBrains Mono',monospace;font-size:16px">{{ r.v }}</span>
+</div>
+</sc-for>
+<div style="height:56px;border:2px solid #000;display:flex;align-items:center;gap:14px;padding:4px 12px;margin-top:16px"><canvas data-qr="1" data-mods="21" data-px="2" data-seed="11" style="width:48px;height:48px;image-rendering:pixelated"></canvas><span style="font-size:18px">Type on your phone</span><span style="font-family:'JetBrains Mono',monospace;font-size:14px;margin-left:auto">quire.local/type</span></div>
+<div style="display:flex;margin-top:12px">
+<sc-for list="{{ t9 }}" as="k" hint-placeholder-count="8">
+<div style="width:60px;height:52px;border:1px solid #000;margin-left:-1px;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:16px;background:{{ k.bg }};color:{{ k.fg }}">{{ k.c }}</div>
+</sc-for>
+</div>
+<div style="font-family:'JetBrains Mono',monospace;font-size:14px;margin-top:10px;padding:0 8px">G Gutenberg · SE Standard Ebooks · P Palace</div>
+<div style="position:absolute;left:0;right:0;bottom:0;height:40px;border-top:4px solid #000;background:#fff;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="15,4 7,12 15,20"></polyline></svg></div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Back</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Open</div>
+<div style="display:flex;align-items:center;justify-content:center"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="9,4 17,12 9,20"></polyline></svg></div>
+</div>
+</div></div>
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">38-browse · GC · letter rail on the right, Up/Down</div>
+<div data-screen-label="38-browse" style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden;padding:32px 32px 0">
+<div style="font-family:Literata,serif;font-size:32px;padding-bottom:10px;border-bottom:4px solid #000">Browse</div>
+<div style="width:430px">
+<div style="height:56px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #000"><span style="font-size:26px">Subjects</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">312 ›</span></div>
+<div style="height:56px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #000;background:#000;color:#fff;padding:0 8px"><span style="font-size:26px">Authors A–Z</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">18,204 ›</span></div>
+<div style="height:56px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #000"><span style="font-size:26px">Collections</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">24 ›</span></div>
+<div style="height:56px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #000"><span style="font-size:26px">Languages</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">61 ›</span></div>
+</div>
+<div style="font-size:18px;letter-spacing:.08em;text-transform:uppercase;margin:24px 0 6px">Collections</div>
+<div style="width:430px">
+<div style="padding:12px 0;border-bottom:1px solid #000"><div style="font-size:24px">Harvard Classics · Fiction</div><div style="font-size:18px;margin-top:2px">Dr Eliot's five-foot shelf of novels.</div></div>
+<div style="padding:12px 0;border-bottom:1px solid #000"><div style="font-size:24px">Modern Library 100</div><div style="font-size:18px;margin-top:2px">The century's most argued-over list.</div></div>
+<div style="padding:12px 0;border-bottom:1px solid #000"><div style="font-size:24px">Short novels under 200 pages</div><div style="font-size:18px;margin-top:2px">One sitting, maybe two.</div></div>
+</div>
+<div style="position:absolute;right:6px;top:120px;display:flex;flex-direction:column;gap:2px;font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.55;text-align:center;color:#000">
+<span>A</span><span>B</span><span>C</span><span>D</span><span>E</span><span>F</span><span style="background:#000;color:#fff;padding:0 2px">G</span><span>H</span><span>I</span><span>J</span><span>K</span><span>L</span><span>M</span><span>N</span><span>O</span><span>P</span><span>Q</span><span>R</span><span>S</span><span>T</span><span>U</span><span>V</span><span>W</span><span>X</span><span>Y</span><span>Z</span>
+</div>
+<div style="position:absolute;left:0;right:0;bottom:0;height:40px;border-top:4px solid #000;background:#fff;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="15,4 7,12 15,20"></polyline></svg></div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Back</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Open</div>
+<div style="display:flex;align-items:center;justify-content:center"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="9,4 17,12 9,20"></polyline></svg></div>
+</div>
+</div></div>
+</div>
+
+<!-- g5: downloads + phone strip -->
+<div id="b3g5" style="display:flex;gap:40px;align-items:flex-start">
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">39-downloads · GC · queue + saved, Get all on Confirm</div>
+<div data-screen-label="39-downloads" style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden;padding:32px 32px 0">
+<div style="font-family:Literata,serif;font-size:32px;padding-bottom:10px;border-bottom:4px solid #000">Downloads</div>
+<div style="font-size:18px;letter-spacing:.08em;text-transform:uppercase;margin:18px 0 4px">Queue</div>
+<div style="padding:12px 0;border-bottom:1px solid #000"><div style="display:flex;justify-content:space-between"><span style="font-size:22px">Frankenstein</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">38%</span></div><div style="height:12px;border:2px solid #000;margin-top:8px;padding:2px"><div style="height:4px;width:38%;background:repeating-linear-gradient(90deg,#000 0 8px,#fff 8px 10px)"></div></div></div>
+<div style="padding:14px 0;border-bottom:1px solid #000;display:flex;justify-content:space-between;align-items:center"><span style="font-size:22px">Moby-Dick</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">retry 21:48:30</span></div>
+<div style="padding:14px 0;border-bottom:1px solid #000;display:flex;justify-content:space-between;align-items:center"><span style="font-size:22px">Dracula</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">queued</span></div>
+<div style="font-size:18px;letter-spacing:.08em;text-transform:uppercase;margin:26px 0 4px">Saved for later</div>
+<div style="height:56px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #000"><span style="font-size:22px">Middlemarch</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">SE · 1.1 MB</span></div>
+<div style="height:56px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #000"><span style="font-size:22px">The Warden</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">G · 0.4 MB</span></div>
+<div style="height:56px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #000"><span style="font-size:22px">Villette</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">SE · 0.8 MB</span></div>
+<div style="position:absolute;left:0;right:0;bottom:0;height:40px;border-top:4px solid #000;background:#fff;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><div style="width:2px;height:2px;background:#000"></div></div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Back</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Get all</div>
+<div style="display:flex;align-items:center;justify-content:center">Remove</div>
+</div>
+</div></div>
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">14b-phone-strip · the device-side strip above every keyboard · 56 px, 48 px QR</div>
+<div style="width:528px;background:#fff;outline:1px solid #C9C5BC;padding:24px">
+<div style="height:56px;border:2px solid #000;display:flex;align-items:center;gap:14px;padding:4px 12px"><canvas data-qr="1" data-mods="21" data-px="2" data-seed="11" style="width:48px;height:48px;image-rendering:pixelated"></canvas><span style="font-size:18px">Type on your phone</span><span style="font-family:'JetBrains Mono',monospace;font-size:14px;margin-left:auto">quire.local/type</span></div>
+</div></div>
+</div>
+
+<!-- g6: phone window 390x844 x3 -->
+<div id="b3g6" style="display:flex;gap:40px">
+<div style="width:390px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">43-phone-idle · 390 × 844 · web page, same system</div>
+<div data-screen-label="43-phone-idle" style="position:relative;width:390px;height:844px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden;padding:20px 20px 0">
+<div style="display:flex;justify-content:space-between;align-items:baseline;border-bottom:2px solid #000;padding-bottom:8px"><span style="font-family:Literata,serif;font-size:24px">Quire</span><span style="font-family:'JetBrains Mono',monospace;font-size:13px">quire.local · Drop · Books · Stats</span></div>
+<div style="display:flex;justify-content:center;margin-top:18px">
+<div style="position:relative;padding:20px 28px 0 0">
+<div style="position:absolute;top:0;left:56px;width:52px;height:12px;border:2px solid #000"></div>
+<div style="position:absolute;right:0;top:130px;width:14px;height:44px;border:2px solid #000"></div>
+<div style="position:absolute;right:0;top:184px;width:14px;height:44px;border:2px solid #000"></div>
+<div style="width:264px;height:396px;border:2px solid #000;position:relative;overflow:hidden">
+<div style="position:absolute;top:10px;left:14px;right:20px;display:flex;justify-content:space-between;font-size:9px;letter-spacing:.08em;text-transform:uppercase"><span>Middlemarch</span><span>Ch 20</span></div>
+<div lang="en" style="position:absolute;top:30px;left:14px;right:24px;bottom:10px;overflow:hidden;font-family:Literata,serif;font-size:13px;line-height:1.45;text-align:justify;hyphens:auto">{{ mmA }} {{ mmB }}</div>
+<div style="position:absolute;right:4px;top:30px;width:6px;height:344px"><div style="width:6px;height:80px;background:repeating-linear-gradient(180deg,#000 0 1px,#0000 1px 3px)"></div><div style="width:3px;height:264px;background:repeating-linear-gradient(180deg,#000 0 1px,#0000 1px 3px)"></div><div style="position:absolute;top:79px;left:0;width:6px;height:2px;background:#000"></div></div>
+</div>
+<div style="display:flex;gap:12px;margin-top:12px">
+<div style="width:56px;height:44px;border:2px solid #000;display:flex;align-items:center;justify-content:center;font:14px 'JetBrains Mono',monospace">‹</div>
+<div style="width:56px;height:44px;border:2px solid #000;display:flex;align-items:center;justify-content:center;font:14px 'JetBrains Mono',monospace">back</div>
+<div style="width:56px;height:44px;border:2px solid #000;display:flex;align-items:center;justify-content:center;font:14px 'JetBrains Mono',monospace">ok</div>
+<div style="width:56px;height:44px;border:2px solid #000;display:flex;align-items:center;justify-content:center;font:14px 'JetBrains Mono',monospace">›</div>
+</div>
+</div>
+</div>
+<div style="font:12px 'JetBrains Mono',monospace;color:#666;margin-top:8px;text-align:center">live mirror · 1-bit run-length over WebSocket</div>
+<div style="height:48px;border:2px solid #000;margin-top:12px;display:flex;align-items:center;justify-content:space-between;padding:0 12px"><span style="font-family:'JetBrains Mono',monospace;font-size:16px;color:#666">Type to the reader…</span><span style="border:2px solid #000;padding:6px 14px;font-size:16px">Send</span></div>
+<div style="position:absolute;left:0;right:0;bottom:0;height:180px;border-top:1px solid #000;background:repeating-linear-gradient(180deg,#fff 0 5px,#EDEBE6 5px 6px);display:flex;align-items:center;justify-content:center;font:13px 'JetBrains Mono',monospace;color:#666">phone keyboard area</div>
+</div></div>
+<div style="width:390px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">43-phone-typing · the device field echoes each keystroke</div>
+<div data-screen-label="43-phone-typing" style="position:relative;width:390px;height:844px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden;padding:20px 20px 0">
+<div style="display:flex;justify-content:space-between;align-items:baseline;border-bottom:2px solid #000;padding-bottom:8px"><span style="font-family:Literata,serif;font-size:24px">Quire</span><span style="font-family:'JetBrains Mono',monospace;font-size:13px">quire.local · Drop · Books · Stats</span></div>
+<div style="display:flex;justify-content:center;margin-top:18px">
+<div style="position:relative;padding:20px 28px 0 0">
+<div style="position:absolute;top:0;left:56px;width:52px;height:12px;border:2px solid #000"></div>
+<div style="position:absolute;right:0;top:130px;width:14px;height:44px;border:2px solid #000"></div>
+<div style="position:absolute;right:0;top:184px;width:14px;height:44px;border:2px solid #000"></div>
+<div style="width:264px;height:396px;border:2px solid #000;position:relative;overflow:hidden">
+<div style="position:absolute;top:10px;left:14px;right:14px;font-size:9px;letter-spacing:.08em;text-transform:uppercase">Bookshop · Search</div>
+<div style="position:absolute;top:30px;left:14px;right:14px;height:28px;border:1px solid #000;display:flex;align-items:center;padding:0 8px"><span style="font-family:'JetBrains Mono',monospace;font-size:13px">gaskell</span><span style="display:inline-block;width:1px;height:16px;background:#000;margin-left:2px"></span></div>
+<div style="position:absolute;top:70px;left:14px;right:14px;font-family:'Atkinson Hyperlegible',sans-serif">
+<div style="height:28px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #000;font-size:12px"><span>Wives and Daughters</span><span style="font-family:'JetBrains Mono',monospace;font-size:10px">1866</span></div>
+<div style="height:28px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #000;font-size:12px;background:#000;color:#fff"><span>North and South</span><span style="font-family:'JetBrains Mono',monospace;font-size:10px">1855</span></div>
+<div style="height:28px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #000;font-size:12px"><span>Cranford</span><span style="font-family:'JetBrains Mono',monospace;font-size:10px">1853</span></div>
+</div>
+</div>
+<div style="display:flex;gap:12px;margin-top:12px">
+<div style="width:56px;height:44px;border:2px solid #000;display:flex;align-items:center;justify-content:center;font:14px 'JetBrains Mono',monospace">‹</div>
+<div style="width:56px;height:44px;border:2px solid #000;display:flex;align-items:center;justify-content:center;font:14px 'JetBrains Mono',monospace">back</div>
+<div style="width:56px;height:44px;border:2px solid #000;background:#000;color:#fff;display:flex;align-items:center;justify-content:center;font:14px 'JetBrains Mono',monospace">ok</div>
+<div style="width:56px;height:44px;border:2px solid #000;display:flex;align-items:center;justify-content:center;font:14px 'JetBrains Mono',monospace">›</div>
+</div>
+</div>
+</div>
+<div style="height:48px;border:2px solid #000;margin-top:20px;display:flex;align-items:center;justify-content:space-between;padding:0 12px"><span style="font-family:'JetBrains Mono',monospace;font-size:16px">gaskell<span style="display:inline-block;width:2px;height:20px;background:#000;margin-left:2px;vertical-align:-4px"></span></span><span style="border:2px solid #000;padding:6px 14px;font-size:16px;background:#000;color:#fff">Send</span></div>
+<div style="position:absolute;left:0;right:0;bottom:0;height:180px;border-top:1px solid #000;background:repeating-linear-gradient(180deg,#fff 0 5px,#EDEBE6 5px 6px);display:flex;align-items:center;justify-content:center;font:13px 'JetBrains Mono',monospace;color:#666">phone keyboard area</div>
+</div></div>
+<div style="width:390px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">43-phone-sent · feedback, then the mirror updates</div>
+<div data-screen-label="43-phone-sent" style="position:relative;width:390px;height:844px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden;padding:20px 20px 0">
+<div style="display:flex;justify-content:space-between;align-items:baseline;border-bottom:2px solid #000;padding-bottom:8px"><span style="font-family:Literata,serif;font-size:24px">Quire</span><span style="font-family:'JetBrains Mono',monospace;font-size:13px">quire.local · Drop · Books · Stats</span></div>
+<div style="display:flex;justify-content:center;margin-top:18px">
+<div style="position:relative;padding:20px 28px 0 0">
+<div style="position:absolute;top:0;left:56px;width:52px;height:12px;border:2px solid #000"></div>
+<div style="position:absolute;right:0;top:130px;width:14px;height:44px;border:2px solid #000"></div>
+<div style="position:absolute;right:0;top:184px;width:14px;height:44px;border:2px solid #000"></div>
+<div style="width:264px;height:396px;border:2px solid #000;position:relative;overflow:hidden">
+<div style="position:absolute;top:10px;left:14px;right:14px;font-size:9px;letter-spacing:.08em;text-transform:uppercase">Bookshop · Search</div>
+<div style="position:absolute;top:30px;left:14px;right:14px;height:28px;border:1px solid #000;display:flex;align-items:center;padding:0 8px"><span style="font-family:'JetBrains Mono',monospace;font-size:13px">gaskell</span></div>
+<div style="position:absolute;top:70px;left:14px;right:14px">
+<div style="height:28px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #000;font-size:12px"><span>Wives and Daughters</span><span style="font-family:'JetBrains Mono',monospace;font-size:10px">1866</span></div>
+<div style="height:28px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #000;font-size:12px;background:#000;color:#fff"><span>North and South</span><span style="font-family:'JetBrains Mono',monospace;font-size:10px">1855</span></div>
+</div>
+</div>
+<div style="display:flex;gap:12px;margin-top:12px">
+<div style="width:56px;height:44px;border:2px solid #000;display:flex;align-items:center;justify-content:center;font:14px 'JetBrains Mono',monospace">‹</div>
+<div style="width:56px;height:44px;border:2px solid #000;display:flex;align-items:center;justify-content:center;font:14px 'JetBrains Mono',monospace">back</div>
+<div style="width:56px;height:44px;border:2px solid #000;display:flex;align-items:center;justify-content:center;font:14px 'JetBrains Mono',monospace">ok</div>
+<div style="width:56px;height:44px;border:2px solid #000;display:flex;align-items:center;justify-content:center;font:14px 'JetBrains Mono',monospace">›</div>
+</div>
+</div>
+</div>
+<div style="height:48px;border:2px solid #000;margin-top:20px;display:flex;align-items:center;gap:10px;padding:0 12px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="3"><polyline points="4,13 10,19 20,6"></polyline></svg><span style="font-family:'JetBrains Mono',monospace;font-size:16px">Sent to reader</span></div>
+<div style="position:absolute;left:0;right:0;bottom:0;height:180px;border-top:1px solid #000;background:repeating-linear-gradient(180deg,#fff 0 5px,#EDEBE6 5px 6px);display:flex;align-items:center;justify-content:center;font:13px 'JetBrains Mono',monospace;color:#666">phone keyboard area</div>
+</div></div>
+</div>
+
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  componentDidMount() {
+    document.querySelectorAll('canvas[data-qr]').forEach((c) => {
+      const m = +(c.dataset.mods || 25), s = +(c.dataset.px || 6), q = 4, W = (m + 2 * q) * s;
+      c.width = W; c.height = W;
+      const x = c.getContext('2d');
+      x.fillStyle = '#fff'; x.fillRect(0, 0, W, W); x.fillStyle = '#000';
+      let seed = +(c.dataset.seed || 7);
+      const rnd = () => { seed = (seed * 1103515245 + 12345) >>> 0; return seed / 4294967296; };
+      const F = (r, co) => (r < 7 && co < 7) || (r < 7 && co >= m - 7) || (r >= m - 7 && co < 7);
+      for (let r = 0; r < m; r++) for (let co = 0; co < m; co++) {
+        let b;
+        if (F(r, co)) {
+          const rr = r >= m - 7 ? r - (m - 7) : r, cc = co >= m - 7 ? co - (m - 7) : co;
+          b = (rr === 0 || rr === 6 || cc === 0 || cc === 6) || (rr >= 2 && rr <= 4 && cc >= 2 && cc <= 4);
+        } else if (r === 6 || co === 6) { b = (r + co) % 2 === 0; }
+        else { b = rnd() < 0.44; }
+        if (b) x.fillRect((co + q) * s, (r + q) * s, s, s);
+      }
+    });
+  }
+  renderVals() {
+    const mk = (str, f) => str.split('').map(c => ({ c, bg: c === f ? '#000' : '#fff', fg: c === f ? '#fff' : '#000' }));
+    return {
+      mmA: "Two hours later, Dorothea was seated in an inner room or boudoir of a handsome apartment in the Via Sistina.",
+      mmB: "I am sorry to add that she was sobbing bitterly, with such abandonment to this relief of an oppressed heart as a woman habitually controlled by pride will sometimes allow herself.",
+      kbRows: [{ keys: mk('1234567890') }, { keys: mk('QWERTYUIOP') }, { keys: mk('ASDFGHJKL', 'S') }, { keys: mk('ZXCVBNM') }],
+      t9: ['abc', 'def', 'ghi', 'jkl', 'mno', 'pqrs', 'tuv', 'wxyz'].map((c, i) => ({ c, bg: i === 0 ? '#000' : '#fff', fg: i === 0 ? '#fff' : '#000' })),
+      searchRows: [
+        { src: "G", t: "Pride and Prejudice — Austen", v: "1813" },
+        { src: "SE", t: "Emma — Austen", v: "1815", bg: "#000", fg: "#fff" },
+        { src: "SE", t: "Persuasion — Austen", v: "1817" },
+        { src: "G", t: "Mansfield Park — Austen", v: "1814" },
+        { src: "SE", t: "Northanger Abbey — Austen", v: "1817" },
+        { src: "SE", t: "Sense and Sensibility — Austen", v: "1811" }
+      ].map(r => Object.assign({ bg: "#fff", fg: "#000" }, r))
+    };
+  }
+}
+</script>
+</body>
+</html>

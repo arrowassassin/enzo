@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
+<link href="https://fonts.googleapis.com/css2?family=Literata:ital,opsz,wght@0,7..72,400..700;1,7..72,400..700&amp;family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&amp;family=JetBrains+Mono:wght@400;500;700&amp;display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#EDEBE6;font-family:'Atkinson Hyperlegible',sans-serif;color:#000}
+a{color:#000}a:hover{color:#444}
+p{margin:0}
+</style>
+</helmet>
+<section id="batch5" style="padding:64px;display:flex;flex-direction:column;gap:40px;align-items:flex-start">
+
+<div style="background:#fff;outline:1px solid #C9C5BC;padding:32px 40px;max-width:1060px">
+<div style="font-family:Literata,serif;font-size:30px">Quire — Batch 5 · Apps, games, first run, edge cases</div>
+<div style="font:12px/1.7 'JetBrains Mono',monospace;color:#666;margin-top:8px">01 boot · 02 first run ×4 · 70 apps · 71 flashcards ×3 · 72 news · 73 clock · 74 weather · 75 images · 76 interactive fiction · 80 games (list + sudoku + 2048 + minesweeper + chess + wordle + paused) · 90 developer · 99 recovery · refresh map.</div>
+<div style="font:12px/1.7 'JetBrains Mono',monospace;margin-top:14px;border-top:1px solid #000;padding-top:10px">audit — 71's rating rail Again · Hard · Good · Easy claims all four cells, so Back exits via the paused-card pattern (hold Back still Jumps): flagged as the one deliberate grammar exception, matching the brief. 76's verbs ride the rail; nouns come from the compass. Chess dark squares are the 6 px hatch; Wordle "present" is hatch, "absent" is dot screen, "correct" is inversion.</div>
+</div>
+
+<!-- g1 -->
+<div id="b5g1" style="display:flex;gap:40px">
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">01-boot · GC only · under 2 s</div>
+<div data-screen-label="01-boot" style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center">
+<div style="font-family:Literata,serif;font-size:72px">Quire</div>
+<div style="font-family:'JetBrains Mono',monospace;font-size:18px;margin-top:10px">0.4.0</div>
+<div style="width:280px;height:12px;border:2px solid #000;margin-top:48px;padding:2px"><div style="height:4px;width:58%;background:repeating-linear-gradient(90deg,#000 0 8px,#fff 8px 10px)"></div></div>
+<div style="font-family:'JetBrains Mono',monospace;font-size:18px;margin-top:12px">Indexing 212 books</div>
+</div></div>
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">02-firstrun-language · GC · page 1 of 4</div>
+<div data-screen-label="02-firstrun-language" style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden;padding:32px 32px 0">
+<div style="display:flex;justify-content:space-between;align-items:baseline;border-bottom:4px solid #000;padding-bottom:10px"><span style="font-family:Literata,serif;font-size:32px">Language</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">1 / 4</span></div>
+<sc-for list="{{ langs }}" as="r" hint-placeholder-count="8">
+<div style="height:56px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #000;padding:0 8px;background:{{ r.bg }};color:{{ r.fg }}"><span style="font-size:26px">{{ r.t }}</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">{{ r.v }}</span></div>
+</sc-for>
+<div style="position:absolute;left:0;right:0;bottom:0;height:40px;border-top:4px solid #000;background:#fff;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><div style="width:2px;height:2px;background:#000"></div></div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><div style="width:2px;height:2px;background:#000"></div></div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Next</div>
+<div style="display:flex;align-items:center;justify-content:center"><div style="width:2px;height:2px;background:#000"></div></div>
+</div>
+</div></div>
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">02-firstrun-time · GC · page 2 · NTP later, hands now</div>
+<div data-screen-label="02-firstrun-time" style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden;padding:32px 32px 0">
+<div style="display:flex;justify-content:space-between;align-items:baseline;border-bottom:4px solid #000;padding-bottom:10px"><span style="font-family:Literata,serif;font-size:32px">Time</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">2 / 4</span></div>
+<div style="display:flex;align-items:center;justify-content:center;gap:28px;margin-top:120px">
+<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="15,4 7,12 15,20"></polyline></svg>
+<span style="font-family:Literata,serif;font-size:96px;background:#000;color:#fff;padding:0 16px">21</span>
+<span style="font-family:Literata,serif;font-size:96px">:</span>
+<span style="font-family:Literata,serif;font-size:96px">47</span>
+<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="9,4 17,12 9,20"></polyline></svg>
+</div>
+<div style="font-size:18px;text-align:center;margin-top:48px">Sets itself from the network once Wi-Fi joins.</div>
+<div style="font-family:'JetBrains Mono',monospace;font-size:18px;text-align:center;margin-top:12px">Saturday 13 September 2026</div>
+<div style="position:absolute;left:0;right:0;bottom:0;height:40px;border-top:4px solid #000;background:#fff;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="15,4 7,12 15,20"></polyline></svg></div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Skip</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Next</div>
+<div style="display:flex;align-items:center;justify-content:center"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="9,4 17,12 9,20"></polyline></svg></div>
+</div>
+</div></div>
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">02-firstrun-reader · GC · page 3 · the six signatures in plain words</div>
+<div data-screen-label="02-firstrun-reader" style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden;padding:32px 32px 0">
+<div style="display:flex;justify-content:space-between;align-items:baseline;border-bottom:4px solid #000;padding-bottom:10px"><span style="font-family:Literata,serif;font-size:32px;white-space:nowrap">Your reader</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">3 / 4</span></div>
+<div lang="en" style="border-bottom:2px solid #000;padding:18px 0;font-family:Literata,serif;font-size:26px;line-height:1.45;text-align:justify;hyphens:auto">It is a truth universally acknowledged, that a single man in possession of a good fortune, must be in want of a wife.</div>
+<div style="font-size:19px;line-height:1.75;margin-top:18px">
+<p>— Waking shows your page. Home is one press over it.</p>
+<p>— Key labels sit where the keys are, on every screen.</p>
+<p>— The strip on the right is the book's fore-edge. Hold Right to skim it.</p>
+<p>— Progress is time: "38 min left", never 62%.</p>
+<p>— Typing? Point your phone at a QR; it becomes the keyboard.</p>
+<p>— Hold Back anywhere: one list of everything.</p>
+</div>
+<div style="position:absolute;right:10px;top:150px;width:12px;height:560px"><div style="position:absolute;top:0;left:0;width:12px;height:180px;background:repeating-linear-gradient(180deg,#000 0 1px,#0000 1px 4px)"></div><div style="position:absolute;top:180px;left:0;width:6px;height:380px;background:repeating-linear-gradient(180deg,#000 0 1px,#0000 1px 4px)"></div><div style="position:absolute;top:179px;left:0;width:12px;height:2px;background:#000"></div></div>
+<div style="position:absolute;left:0;right:0;bottom:0;height:40px;border-top:4px solid #000;background:#fff;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="15,4 7,12 15,20"></polyline></svg></div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><div style="width:2px;height:2px;background:#000"></div></div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Next</div>
+<div style="display:flex;align-items:center;justify-content:center"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="9,4 17,12 9,20"></polyline></svg></div>
+</div>
+</div></div>
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">02-firstrun-books · GC · page 4 · a sample book already waits</div>
+<div data-screen-label="02-firstrun-books" style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden;padding:32px 32px 0">
+<div style="display:flex;justify-content:space-between;align-items:baseline;border-bottom:4px solid #000;padding-bottom:10px"><span style="font-family:Literata,serif;font-size:32px">Add books</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">4 / 4</span></div>
+<div style="font-size:18px;letter-spacing:.08em;text-transform:uppercase;margin:22px 0 4px">From the Bookshop · free</div>
+<div style="height:72px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #000;background:#000;color:#fff;margin:0 -32px;padding:0 32px"><div><div style="font-size:26px">Start here picks</div><div style="font-size:18px">Three good first books, one press each.</div></div><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><polyline points="9,4 17,12 9,20"></polyline></svg></div>
+<div style="font-size:18px;letter-spacing:.08em;text-transform:uppercase;margin:26px 0 10px">From your phone</div>
+<div style="display:flex;gap:24px;align-items:center">
+<canvas data-qr="1" data-mods="25" data-px="6" data-seed="31" style="width:198px;height:198px;image-rendering:pixelated"></canvas>
+<div><div style="font-family:'JetBrains Mono',monospace;font-size:22px">quire.local</div><div style="font-size:18px;margin-top:8px;line-height:1.45">Scan, then drag books onto the page.</div></div>
+</div>
+<div style="border-top:2px solid #000;margin-top:28px;padding-top:14px;font-size:18px;line-height:1.5">Or just start reading — <span style="font-family:Literata,serif;font-style:italic">Pride and Prejudice</span> is already on the shelf.</div>
+<div style="position:absolute;left:0;right:0;bottom:0;height:40px;border-top:4px solid #000;background:#fff;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="15,4 7,12 15,20"></polyline></svg></div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Bookshop</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Read</div>
+<div style="display:flex;align-items:center;justify-content:center">Drop</div>
+</div>
+</div></div>
+</div>
+
+<!-- g2 -->
+<div id="b5g2" style="display:flex;gap:40px">
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">70-apps · GC · a typographic list, never an icon grid</div>
+<div data-screen-label="70-apps" style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden;padding:32px 32px 0">
+<div style="display:flex;justify-content:space-between;align-items:baseline;border-bottom:4px solid #000;padding-bottom:10px"><span style="font-family:Literata,serif;font-size:32px">Apps</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">1 / 2</span></div>
+<sc-for list="{{ apps }}" as="r" hint-placeholder-count="9">
+<div style="height:68px;display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid #000;padding:0 8px;background:{{ r.bg }};color:{{ r.fg }}"><div style="min-width:0"><div style="font-size:24px;line-height:1.2">{{ r.t }}</div><div style="font-size:16px;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.d }}</div></div><span style="font-family:'JetBrains Mono',monospace;font-size:16px;flex:none">{{ r.v }}</span></div>
+</sc-for>
+<div style="font-family:'JetBrains Mono',monospace;font-size:14px;margin-top:10px;padding:0 8px">Games on page 2 · Right</div>
+<div style="position:absolute;left:0;right:0;bottom:0;height:40px;border-top:4px solid #000;background:#fff;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="15,4 7,12 15,20"></polyline></svg></div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Back</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Open</div>
+<div style="display:flex;align-items:center;justify-content:center"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="9,4 17,12 9,20"></polyline></svg></div>
+</div>
+</div></div>
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">71-flashcards-front · GC · serif, centred, large</div>
+<div data-screen-label="71-flashcards-front" style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden">
+<div style="position:absolute;top:24px;left:32px;right:32px;display:flex;justify-content:space-between;font-size:18px;letter-spacing:.08em;text-transform:uppercase"><span>Saved words</span><span style="font-family:'JetBrains Mono',monospace;text-transform:none;letter-spacing:0">7 / 24</span></div>
+<div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:0 48px">
+<div style="font-family:Literata,serif;font-size:56px">wadded</div>
+<div style="font-size:18px;margin-top:20px;letter-spacing:.08em;text-transform:uppercase">Confirm — show the back</div>
+</div>
+<div style="position:absolute;left:0;right:0;bottom:0;height:40px;border-top:4px solid #000;background:#fff;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><div style="width:2px;height:2px;background:#000"></div></div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Back</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Flip</div>
+<div style="display:flex;align-items:center;justify-content:center"><div style="width:2px;height:2px;background:#000"></div></div>
+</div>
+</div></div>
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">71-flashcards-back · DU · rating claims the whole rail (audit)</div>
+<div data-screen-label="71-flashcards-back" style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden">
+<div style="position:absolute;top:24px;left:32px;right:32px;display:flex;justify-content:space-between;font-size:18px;letter-spacing:.08em;text-transform:uppercase"><span>Saved words</span><span style="font-family:'JetBrains Mono',monospace;text-transform:none;letter-spacing:0">7 / 24</span></div>
+<div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:0 56px">
+<div style="font-family:Literata,serif;font-size:44px">wadded</div>
+<div style="height:2px;background:#000;width:64px;margin:24px auto"></div>
+<div lang="en" style="font-family:Literata,serif;font-size:26px;line-height:1.45">Lined or padded with wadding; pressed into a mass.</div>
+<div style="font-family:'JetBrains Mono',monospace;font-size:16px;margin-top:20px">Middlemarch · Ch 20</div>
+</div>
+<div style="position:absolute;left:0;right:0;bottom:0;height:40px;border-top:4px solid #000;background:#fff;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Again</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Hard</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000;background:#000;color:#fff">Good</div>
+<div style="display:flex;align-items:center;justify-content:center">Easy</div>
+</div>
+</div></div>
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">71-flashcards-summary · GC · poster numerals</div>
+<div data-screen-label="71-flashcards-summary" style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden;padding:40px 32px 0">
+<div style="font-size:18px;letter-spacing:.08em;text-transform:uppercase">Session done</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;border-top:2px solid #000;border-bottom:2px solid #000;margin-top:18px">
+<div style="padding:22px 8px 16px;border-right:2px solid #000;border-bottom:2px solid #000"><div style="font-family:Literata,serif;font-size:44px;line-height:1">24</div><div style="font-size:18px;letter-spacing:.08em;text-transform:uppercase;margin-top:4px">Reviewed</div></div>
+<div style="padding:22px 8px 16px;border-bottom:2px solid #000"><div style="font-family:Literata,serif;font-size:44px;line-height:1">21</div><div style="font-size:18px;letter-spacing:.08em;text-transform:uppercase;margin-top:4px">Good or easy</div></div>
+<div style="padding:22px 8px 16px;border-right:2px solid #000"><div style="font-family:Literata,serif;font-size:44px;line-height:1">6 min</div><div style="font-size:18px;letter-spacing:.08em;text-transform:uppercase;margin-top:4px">Spent</div></div>
+<div style="padding:22px 8px 16px"><div style="font-family:Literata,serif;font-size:44px;line-height:1">18</div><div style="font-size:18px;letter-spacing:.08em;text-transform:uppercase;margin-top:4px">Due tomorrow</div></div>
+</div>
+<div style="font-size:18px;margin-top:22px">Every looked-up word lands here by itself.</div>
+<div style="position:absolute;left:0;right:0;bottom:0;height:40px;border-top:4px solid #000;background:#fff;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><div style="width:2px;height:2px;background:#000"></div></div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Back</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Again</div>
+<div style="display:flex;align-items:center;justify-content:center"><div style="width:2px;height:2px;background:#000"></div></div>
+</div>
+</div></div>
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">72-news · GC · articles read on the reading page</div>
+<div data-screen-label="72-news" style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden;padding:32px 32px 0">
+<div style="display:flex;justify-content:space-between;align-items:baseline;border-bottom:4px solid #000;padding-bottom:10px"><span style="font-family:Literata,serif;font-size:32px">News</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">06:02</span></div>
+<div style="height:56px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #000;padding:0 8px"><span style="font-size:24px">Hacker News</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">14</span></div>
+<div style="height:56px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #000;background:#000;color:#fff;padding:0 8px"><span style="font-size:24px">NASA breaking news</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">3</span></div>
+<div style="height:56px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #000;padding:0 8px"><span style="font-size:24px">The Public Domain Review</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">2</span></div>
+<div style="font-size:18px;letter-spacing:.08em;text-transform:uppercase;margin:22px 0 4px">NASA breaking news</div>
+<div style="padding:12px 8px;border-bottom:1px solid #000"><div style="font-size:22px;line-height:1.3">Europa Clipper returns first close images of the icy moon</div><div style="font-family:'JetBrains Mono',monospace;font-size:14px;margin-top:4px">8 min read · unread</div></div>
+<div style="padding:12px 8px;border-bottom:1px solid #000"><div style="font-size:22px;line-height:1.3">Artemis III crew begins lunar surface training</div><div style="font-family:'JetBrains Mono',monospace;font-size:14px;margin-top:4px">6 min read · unread</div></div>
+<div style="font-family:'JetBrains Mono',monospace;font-size:14px;margin-top:12px;padding:0 8px">fetched by night jobs · 06:02</div>
+<div style="position:absolute;left:0;right:0;bottom:0;height:40px;border-top:4px solid #000;background:#fff;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="15,4 7,12 15,20"></polyline></svg></div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Back</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Read</div>
+<div style="display:flex;align-items:center;justify-content:center">Fetch</div>
+</div>
+</div></div>
+</div>
+
+<!-- g3 -->
+<div id="b5g3" style="display:flex;gap:40px">
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">73-clock · GC · redraws once a minute · pomodoro ring stepped</div>
+<div data-screen-label="73-clock" style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden;display:flex;flex-direction:column;align-items:center;padding-top:120px">
+<div style="font-family:Literata,serif;font-size:120px;line-height:1">21:47</div>
+<div style="font-size:18px;letter-spacing:.08em;text-transform:uppercase;margin-top:14px">Saturday 13 September</div>
+<svg width="160" height="160" viewBox="0 0 160 160" style="margin-top:48px">
+<circle cx="80" cy="80" r="70" fill="none" stroke="#000" stroke-width="2" stroke-dasharray="20 8"></circle>
+<circle cx="80" cy="80" r="70" fill="none" stroke="#000" stroke-width="8" stroke-dasharray="220 440" transform="rotate(-90 80 80)"></circle>
+</svg>
+<div style="font-family:'JetBrains Mono',monospace;font-size:18px;margin-top:14px">pomodoro · 12:30 left of 25:00</div>
+<div style="font-family:'JetBrains Mono',monospace;font-size:18px;margin-top:28px">alarm 06:30 · visual only, it has no voice</div>
+<div style="position:absolute;left:0;right:0;bottom:0;height:40px;border-top:4px solid #000;background:#fff;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Timer</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Back</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Pause</div>
+<div style="display:flex;align-items:center;justify-content:center">Alarms</div>
+</div>
+</div></div>
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">74-weather · GC · Open-Meteo, refreshed on open</div>
+<div data-screen-label="74-weather" style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden;padding:40px 32px 0">
+<div style="font-size:18px;letter-spacing:.08em;text-transform:uppercase">Cambridge · 21:47</div>
+<div style="display:flex;align-items:baseline;gap:24px;margin-top:16px"><span style="font-family:Literata,serif;font-size:128px;line-height:1">14°</span><span style="font-size:26px">Light rain,<br>easing after midnight</span></div>
+<div style="font-family:'JetBrains Mono',monospace;font-size:18px;margin-top:18px">feels 12° · wind 19 km/h SW · rain 80%</div>
+<div style="display:grid;grid-template-columns:repeat(5,1fr);border-top:2px solid #000;margin-top:32px">
+<div style="padding:18px 4px;border-right:1px solid #000;text-align:center"><div style="font-size:16px;letter-spacing:.08em;text-transform:uppercase">Sun</div><div style="font-family:Literata,serif;font-size:36px;margin-top:8px">15°</div><div style="font-family:'JetBrains Mono',monospace;font-size:16px">8°</div></div>
+<div style="padding:18px 4px;border-right:1px solid #000;text-align:center"><div style="font-size:16px;letter-spacing:.08em;text-transform:uppercase">Mon</div><div style="font-family:Literata,serif;font-size:36px;margin-top:8px">17°</div><div style="font-family:'JetBrains Mono',monospace;font-size:16px">9°</div></div>
+<div style="padding:18px 4px;border-right:1px solid #000;text-align:center"><div style="font-size:16px;letter-spacing:.08em;text-transform:uppercase">Tue</div><div style="font-family:Literata,serif;font-size:36px;margin-top:8px">18°</div><div style="font-family:'JetBrains Mono',monospace;font-size:16px">11°</div></div>
+<div style="padding:18px 4px;border-right:1px solid #000;text-align:center"><div style="font-size:16px;letter-spacing:.08em;text-transform:uppercase">Wed</div><div style="font-family:Literata,serif;font-size:36px;margin-top:8px">16°</div><div style="font-family:'JetBrains Mono',monospace;font-size:16px">10°</div></div>
+<div style="padding:18px 4px;text-align:center"><div style="font-size:16px;letter-spacing:.08em;text-transform:uppercase">Thu</div><div style="font-family:Literata,serif;font-size:36px;margin-top:8px">15°</div><div style="font-family:'JetBrains Mono',monospace;font-size:16px">9°</div></div>
+</div>
+<div style="border-top:2px solid #000;font-size:18px;padding-top:14px;margin-top:0">Thursday looks dry — a good finish-by day.</div>
+<div style="position:absolute;left:0;right:0;bottom:0;height:40px;border-top:4px solid #000;background:#fff;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><div style="width:2px;height:2px;background:#000"></div></div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Back</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Refresh</div>
+<div style="display:flex;align-items:center;justify-content:center">Place</div>
+</div>
+</div></div>
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">75-images · GC per image · Confirm toggles fit</div>
+<div data-screen-label="75-images" style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden">
+<canvas data-dither="1" data-w="528" data-h="792" style="position:absolute;inset:0;width:528px;height:792px"></canvas>
+<div style="position:absolute;left:0;right:0;bottom:0;height:40px;border-top:4px solid #000;background:#fff;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="15,4 7,12 15,20"></polyline></svg></div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Back</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Fit</div>
+<div style="display:flex;align-items:center;justify-content:center"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="9,4 17,12 9,20"></polyline></svg></div>
+</div>
+<div style="position:absolute;left:12px;bottom:52px;background:#fff;border:1px solid #000;padding:4px 10px;font-family:'JetBrains Mono',monospace;font-size:14px">dolomites.jpg · 4 / 61 · fit width</div>
+</div></div>
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">76-fiction · GC · Colossal Cave · verbs on the rail, nouns on the compass</div>
+<div data-screen-label="76-fiction" style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden">
+<div style="position:absolute;top:24px;left:32px;right:32px;display:flex;justify-content:space-between;font-size:18px;letter-spacing:.08em;text-transform:uppercase"><span>Adventure</span><span style="font-family:'JetBrains Mono',monospace;text-transform:none;letter-spacing:0">turn 12</span></div>
+<div style="position:absolute;top:64px;left:32px;right:32px;font-family:Literata,serif;font-size:24px;line-height:1.5">
+<p>You are standing at the end of a road before a small brick building. Around you is a forest. A small stream flows out of the building and down a gully.</p>
+<p style="font-family:'JetBrains Mono',monospace;font-size:20px;margin-top:20px">&gt; enter building</p>
+<p style="margin-top:20px">You are inside a building, a well house for a large spring. There are some keys on the ground here. There is a shiny brass lamp nearby.</p>
+</div>
+<div style="position:absolute;left:32px;right:32px;bottom:64px;height:52px;border:2px solid #000;display:flex;align-items:center;padding:0 14px"><span style="font-family:'JetBrains Mono',monospace;font-size:20px">&gt; take </span><span style="background:#000;color:#fff;font-family:'JetBrains Mono',monospace;font-size:20px;padding:0 6px">lamp</span><span style="display:inline-block;width:2px;height:24px;background:#000;margin-left:4px"></span></div>
+<div style="position:absolute;right:2px;top:340px;writing-mode:vertical-rl;font-family:'JetBrains Mono',monospace;font-size:18px;background:#fff;padding:4px 0;border:1px solid #000">Nouns</div>
+<div style="position:absolute;right:2px;top:440px;writing-mode:vertical-rl;font-family:'JetBrains Mono',monospace;font-size:18px;background:#fff;padding:4px 0;border:1px solid #000">History</div>
+<div style="position:absolute;left:0;right:0;bottom:0;height:40px;border-top:4px solid #000;background:#fff;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Look</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Back</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Enter</div>
+<div style="display:flex;align-items:center;justify-content:center">Take</div>
+</div>
+</div></div>
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">80-games-list · GC</div>
+<div data-screen-label="80-games-list" style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden;padding:32px 32px 0">
+<div style="display:flex;justify-content:space-between;align-items:baseline;border-bottom:4px solid #000;padding-bottom:10px"><span style="font-family:Literata,serif;font-size:32px">Games</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">2 / 2</span></div>
+<sc-for list="{{ games }}" as="r" hint-placeholder-count="5">
+<div style="height:72px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #000;padding:0 8px;background:{{ r.bg }};color:{{ r.fg }}"><div><div style="font-size:26px">{{ r.t }}</div><div style="font-size:16px">{{ r.d }}</div></div><span style="font-family:'JetBrains Mono',monospace;font-size:16px">{{ r.v }}</span></div>
+</sc-for>
+<div style="font-size:18px;margin-top:18px;padding:0 8px">Still screens, button cursors, no clocks ticking against you.</div>
+<div style="position:absolute;left:0;right:0;bottom:0;height:40px;border-top:4px solid #000;background:#fff;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="15,4 7,12 15,20"></polyline></svg></div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Back</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Play</div>
+<div style="display:flex;align-items:center;justify-content:center"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="9,4 17,12 9,20"></polyline></svg></div>
+</div>
+</div></div>
+</div>
+
+<!-- g4: games -->
+<div id="b5g4" style="display:flex;gap:40px">
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">80-sudoku · DU per move · 52 px cells, 14 px pencil marks</div>
+<div data-screen-label="80-sudoku" style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden;padding:32px 24px 0">
+<div style="display:flex;justify-content:space-between;align-items:baseline;padding:0 4px 12px"><span style="font-family:Literata,serif;font-size:32px">Sudoku</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">medium · 14:22</span></div>
+<div style="width:472px;border:3px solid #000;margin:0 auto">
+<sc-for list="{{ sudokuRows }}" as="row" hint-placeholder-count="9">
+<div style="display:flex;border-bottom:{{ row.bb }}">
+<sc-for list="{{ row.cells }}" as="c" hint-placeholder-count="9">
+<div style="width:52px;height:52px;border-right:{{ c.br }};display:flex;align-items:center;justify-content:center;font-family:Literata,serif;font-size:30px;background:{{ c.bg }};color:{{ c.fg }};position:relative"><span style="font-size:{{ c.fs }}px;line-height:1.1;text-align:center;letter-spacing:2px">{{ c.v }}</span></div>
+</sc-for>
+</div>
+</sc-for>
+</div>
+<div style="font-family:'JetBrains Mono',monospace;font-size:16px;margin-top:14px;padding:0 4px">Confirm places · long-Confirm pencils · Left/Right pick 1–9</div>
+<div style="display:flex;margin-top:10px;padding:0 4px">
+<sc-for list="{{ nums }}" as="n" hint-placeholder-count="9">
+<div style="width:48px;height:44px;border:1px solid #000;margin-left:-1px;display:flex;align-items:center;justify-content:center;font-family:Literata,serif;font-size:24px;background:{{ n.bg }};color:{{ n.fg }}">{{ n.v }}</div>
+</sc-for>
+</div>
+<div style="position:absolute;left:0;right:0;bottom:0;height:40px;border-top:4px solid #000;background:#fff;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="15,4 7,12 15,20"></polyline></svg></div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Pause</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Place</div>
+<div style="display:flex;align-items:center;justify-content:center"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="9,4 17,12 9,20"></polyline></svg></div>
+</div>
+</div></div>
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">80-2048 · DU per move · 112 px tiles, Literata numerals</div>
+<div data-screen-label="80-2048" style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden;padding:32px 24px 0">
+<div style="display:flex;justify-content:space-between;align-items:baseline;padding:0 4px 16px"><span style="font-family:Literata,serif;font-size:32px">2048</span><div style="text-align:right"><div style="font-family:Literata,serif;font-size:36px;line-height:1">4,820</div><div style="font-size:15px;letter-spacing:.08em;text-transform:uppercase">Score · best 12,384</div></div></div>
+<div style="width:472px;border:3px solid #000;padding:6px;display:grid;grid-template-columns:repeat(4,112px);gap:2px;justify-content:center;margin:0 auto">
+<sc-for list="{{ tiles }}" as="t" hint-placeholder-count="16">
+<div style="width:112px;height:112px;border:2px solid #000;display:flex;align-items:center;justify-content:center;font-family:Literata,serif;font-size:{{ t.fs }}px;background:{{ t.bg }};color:{{ t.fg }}">{{ t.v }}</div>
+</sc-for>
+</div>
+<div style="font-family:'JetBrains Mono',monospace;font-size:16px;margin-top:16px;padding:0 4px">Left/Right/Up/Down slide · higher tiles go darker</div>
+<div style="position:absolute;left:0;right:0;bottom:0;height:40px;border-top:4px solid #000;background:#fff;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="15,4 7,12 15,20"></polyline></svg></div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Pause</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Undo</div>
+<div style="display:flex;align-items:center;justify-content:center"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="9,4 17,12 9,20"></polyline></svg></div>
+</div>
+</div></div>
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">80-minesweeper · DU per move · 30 px cells</div>
+<div data-screen-label="80-minesweeper" style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden;padding:32px 24px 0">
+<div style="display:flex;justify-content:space-between;align-items:baseline;padding:0 4px 14px"><span style="font-family:Literata,serif;font-size:32px">Minesweeper</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">flags 8 of 40 · 03:12</span></div>
+<div style="width:fit-content;border:2px solid #000;margin:0 auto">
+<sc-for list="{{ mineRows }}" as="row" hint-placeholder-count="16">
+<div style="display:flex">
+<sc-for list="{{ row.cells }}" as="c" hint-placeholder-count="16">
+<div style="width:30px;height:30px;border:1px solid #000;margin:-1px 0 0 -1px;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:15px;background:{{ c.bg }};color:{{ c.fg }}">{{ c.v }}</div>
+</sc-for>
+</div>
+</sc-for>
+</div>
+<div style="font-family:'JetBrains Mono',monospace;font-size:16px;margin-top:14px;padding:0 4px">Confirm opens · long-Confirm flags · hatch = unopened</div>
+<div style="position:absolute;left:0;right:0;bottom:0;height:40px;border-top:4px solid #000;background:#fff;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="15,4 7,12 15,20"></polyline></svg></div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Pause</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Open</div>
+<div style="display:flex;align-items:center;justify-content:center">Flag</div>
+</div>
+</div></div>
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">80-chess · DU per move · 60 px squares, hatched dark</div>
+<div data-screen-label="80-chess" style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden;padding:32px 24px 0">
+<div style="display:flex;justify-content:space-between;align-items:baseline;padding:0 4px 14px"><span style="font-family:Literata,serif;font-size:32px">Chess</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">level 2 · you are white</span></div>
+<div style="width:fit-content;border:2px solid #000;margin:0 auto">
+<sc-for list="{{ chessRows }}" as="row" hint-placeholder-count="8">
+<div style="display:flex">
+<sc-for list="{{ row.cells }}" as="c" hint-placeholder-count="8">
+<div style="width:60px;height:60px;display:flex;align-items:center;justify-content:center;font-size:44px;line-height:1;background:{{ c.bg }};box-shadow:{{ c.ring }}">{{ c.v }}</div>
+</sc-for>
+</div>
+</sc-for>
+</div>
+<div style="font-family:'JetBrains Mono',monospace;font-size:16px;margin-top:14px;padding:0 4px">12. Nf3 — your move · cursor inverts the square</div>
+<div style="position:absolute;left:0;right:0;bottom:0;height:40px;border-top:4px solid #000;background:#fff;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="15,4 7,12 15,20"></polyline></svg></div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Pause</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Pick up</div>
+<div style="display:flex;align-items:center;justify-content:center"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="9,4 17,12 9,20"></polyline></svg></div>
+</div>
+</div></div>
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">80-wordle · DU per row · 72 px tiles · T9 with state marks</div>
+<div data-screen-label="80-wordle" style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden;padding:32px 24px 0">
+<div style="display:flex;justify-content:space-between;align-items:baseline;padding:0 4px 16px"><span style="font-family:Literata,serif;font-size:32px">Daily word</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">try 3 of 6</span></div>
+<div style="display:flex;flex-direction:column;gap:8px;align-items:center">
+<sc-for list="{{ wordleRows }}" as="row" hint-placeholder-count="4">
+<div style="display:flex;gap:8px">
+<sc-for list="{{ row.cells }}" as="c" hint-placeholder-count="5">
+<div style="width:72px;height:72px;border:2px solid #000;display:flex;align-items:center;justify-content:center;font-family:Literata,serif;font-size:40px;background:{{ c.bg }};color:{{ c.fg }}">{{ c.v }}</div>
+</sc-for>
+</div>
+</sc-for>
+</div>
+<div style="font-family:'JetBrains Mono',monospace;font-size:16px;margin-top:18px;padding:0 4px;text-align:center">inverted = right place · hatch = wrong place · dots = not in the word</div>
+<div style="display:flex;justify-content:center;margin-top:14px">
+<sc-for list="{{ t9w }}" as="k" hint-placeholder-count="8">
+<div style="width:56px;height:48px;border:1px solid #000;margin-left:-1px;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:15px;background:{{ k.bg }};color:{{ k.fg }}">{{ k.c }}</div>
+</sc-for>
+</div>
+<div style="position:absolute;left:0;right:0;bottom:0;height:40px;border-top:4px solid #000;background:#fff;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="15,4 7,12 15,20"></polyline></svg></div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Quit</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Guess</div>
+<div style="display:flex;align-items:center;justify-content:center"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="9,4 17,12 9,20"></polyline></svg></div>
+</div>
+</div></div>
+</div>
+
+<!-- g5 -->
+<div id="b5g5" style="display:flex;gap:40px">
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">80-paused · GC · every game shares this card</div>
+<div data-screen-label="80-paused" style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden">
+<div style="position:absolute;inset:0;padding:32px 24px"><div style="width:472px;height:472px;border:3px solid #000;background:repeating-linear-gradient(180deg,#000 0 1px,#fff 1px 6px)"></div></div>
+<div style="position:absolute;inset:0;background:conic-gradient(#fff 0 25%,#0000 0 50%,#fff 0 75%,#0000 0) 0 0/4px 4px"></div>
+<div style="position:absolute;left:24px;right:24px;top:280px;background:#fff;border:2px solid #000;padding:28px">
+<div style="font-family:Literata,serif;font-size:32px">Paused</div>
+<div style="font-size:22px;margin-top:8px">Sudoku · medium · 14:22</div>
+<div style="font-family:'JetBrains Mono',monospace;font-size:18px;margin-top:10px">the board keeps no clock while you read</div>
+</div>
+<div style="position:absolute;left:0;right:0;bottom:0;height:40px;border-top:4px solid #000;background:#fff;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><div style="width:2px;height:2px;background:#000"></div></div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Quit</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Resume</div>
+<div style="display:flex;align-items:center;justify-content:center"><div style="width:2px;height:2px;background:#000"></div></div>
+</div>
+</div></div>
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">90-developer · GC · mono throughout, for the ⚠ verify list</div>
+<div data-screen-label="90-developer" style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden;padding:32px 32px 0;font-family:'JetBrains Mono',monospace">
+<div style="font-size:26px;border-bottom:4px solid #000;padding-bottom:10px">developer</div>
+<div style="font-size:16px;line-height:1.9;margin-top:14px">panel UC8253 · lut 0x66 · spi 10 MHz<br>GC 472 ms · DU 382 ms · 4-grey 127 ms<br>board X3 · gauge 62% · +412 mA (usb)<br>rtc 21:47:12 · temp 24.5 C · lut set: normal</div>
+<div style="font-size:15px;letter-spacing:.08em;margin:18px 0 6px;font-family:'Atkinson Hyperlegible',sans-serif;text-transform:uppercase">Key ADC · press to read</div>
+<div style="font-size:16px;line-height:1.9">g1: 3512 back · 2694 ok · 1493 left · 5 right<br>g2: 2242 up · 5 down · pwr: gpio3 low</div>
+<div style="font-size:15px;letter-spacing:.08em;margin:18px 0 6px;font-family:'Atkinson Hyperlegible',sans-serif;text-transform:uppercase">Heap · 380 KB</div>
+<div style="display:flex;align-items:flex-end;gap:1px;height:64px;border-bottom:2px solid #000"><sc-for list="{{ heapBars }}" as="b" hint-placeholder-count="40"><div style="width:10px;background:#000;height:{{ b.h }}px"></div></sc-for></div>
+<div style="font-size:14px;margin-top:6px">free 171 KB · low-water 118 KB · frag 8%</div>
+<div style="font-size:16px;line-height:1.8;margin-top:16px">sd bench: 1.9 MB/s read · 640 KB/s write<br>log tail:<br>21:46:58 ingest wives-and-daughters ok<br>21:47:02 spine rebuilt 1408p 86ch<br>21:47:09 du 379ms q=0</div>
+<div style="position:absolute;left:0;right:0;bottom:0;height:40px;border-top:4px solid #000;background:#fff;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-size:18px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><div style="width:2px;height:2px;background:#000"></div></div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Back</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Bench</div>
+<div style="display:flex;align-items:center;justify-content:center">Log</div>
+</div>
+</div></div>
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">99-recovery · GC · 32 px text, two actions, no icons</div>
+<div data-screen-label="99-recovery" style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden;padding:48px 40px 0">
+<div style="font-family:Literata,serif;font-size:32px;padding-bottom:12px;border-bottom:4px solid #000">Recovery</div>
+<div style="font-size:22px;line-height:1.5;margin-top:24px">The reader started here because Back and Up were held at reset, or the firmware failed three times.</div>
+<div style="font-size:22px;line-height:1.5;margin-top:18px">A file named update.bin at the root of the card will be installed. Nothing else is touched. Books and settings stay.</div>
+<div style="font-family:'JetBrains Mono',monospace;font-size:18px;margin-top:28px;line-height:1.8">card: present · update.bin found · 0.4.2 signed ✓<br>current: 0.4.0 slot A · crashes: 3</div>
+<div style="position:absolute;left:0;right:0;bottom:0;height:40px;border-top:4px solid #000;background:#fff;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><div style="width:2px;height:2px;background:#000"></div></div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Restart</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000;background:#000;color:#fff">Install</div>
+<div style="display:flex;align-items:center;justify-content:center"><div style="width:2px;height:2px;background:#000"></div></div>
+</div>
+</div></div>
+<div style="width:680px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">refresh-map · one page · when the panel flashes</div>
+<div style="width:680px;background:#fff;outline:1px solid #C9C5BC;padding:36px 40px">
+<div style="font-family:Literata,serif;font-size:32px;padding-bottom:10px;border-bottom:4px solid #000">Refresh map</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:0 40px;margin-top:18px;font-size:17px;line-height:1.5">
+<div>
+<div style="font-size:16px;letter-spacing:.08em;text-transform:uppercase;border-bottom:2px solid #000;padding-bottom:6px;margin-bottom:8px">Full · GC · ~470 ms flash</div>
+<div style="font-family:'JetBrains Mono',monospace;font-size:15px;line-height:2">enter / leave the reading page<br>every 10th page turn (setting)<br>any screen with an image or cover<br>dialogs and the compass, open + close<br>sleep screens, boot, OTA, recovery<br>chapter opening pages</div>
+</div>
+<div>
+<div style="font-size:16px;letter-spacing:.08em;text-transform:uppercase;border-bottom:2px solid #000;padding-bottom:6px;margin-bottom:8px">Partial · DU · ~380 ms, no flash</div>
+<div style="font-family:'JetBrains Mono',monospace;font-size:15px;line-height:2">page turns and skim frames<br>home layer open / close<br>list focus moves and pagination<br>steppers, toggles, keyboard focus<br>jump open and phone-typed filtering<br>locked-keys strip, download ticks</div>
+</div>
+</div>
+<div style="border-top:1px solid #000;margin-top:16px;padding-top:12px;font-family:'JetBrains Mono',monospace;font-size:14px;line-height:1.8">rule of thumb: images and modality flash; focus and turning never do.<br>UC8253 has no partial window — every DU still ships the full 52 KB frame.</div>
+</div></div>
+</div>
+
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  componentDidMount() {
+    document.querySelectorAll('canvas[data-qr]').forEach((c) => {
+      const m = +(c.dataset.mods || 25), s = +(c.dataset.px || 6), q = 4, W = (m + 2 * q) * s;
+      c.width = W; c.height = W;
+      const x = c.getContext('2d');
+      x.fillStyle = '#fff'; x.fillRect(0, 0, W, W); x.fillStyle = '#000';
+      let seed = +(c.dataset.seed || 7);
+      const rnd = () => { seed = (seed * 1103515245 + 12345) >>> 0; return seed / 4294967296; };
+      const F = (r, co) => (r < 7 && co < 7) || (r < 7 && co >= m - 7) || (r >= m - 7 && co < 7);
+      for (let r = 0; r < m; r++) for (let co = 0; co < m; co++) {
+        let b;
+        if (F(r, co)) {
+          const rr = r >= m - 7 ? r - (m - 7) : r, cc = co >= m - 7 ? co - (m - 7) : co;
+          b = (rr === 0 || rr === 6 || cc === 0 || cc === 6) || (rr >= 2 && rr <= 4 && cc >= 2 && cc <= 4);
+        } else if (r === 6 || co === 6) { b = (r + co) % 2 === 0; }
+        else { b = rnd() < 0.44; }
+        if (b) x.fillRect((co + q) * s, (r + q) * s, s, s);
+      }
+    });
+    const bayer = [[0,8,2,10],[12,4,14,6],[3,11,1,9],[15,7,13,5]];
+    document.querySelectorAll('canvas[data-dither]').forEach((c) => {
+      const w = +c.dataset.w, h = +c.dataset.h;
+      c.width = w; c.height = h;
+      const x = c.getContext('2d');
+      const g = x.createLinearGradient(0, 0, 0, h);
+      g.addColorStop(0, '#777'); g.addColorStop(0.5, '#ddd'); g.addColorStop(1, '#eee');
+      x.fillStyle = g; x.fillRect(0, 0, w, h);
+      x.fillStyle = '#f2f2f2'; x.beginPath(); x.arc(w * 0.32, h * 0.24, Math.min(w, h) * 0.11, 0, 7); x.fill();
+      x.fillStyle = '#888'; x.beginPath(); x.moveTo(0, h * 0.6); x.lineTo(w * 0.34, h * 0.34); x.lineTo(w * 0.62, h * 0.62); x.lineTo(0, h * 0.78); x.closePath(); x.fill();
+      x.fillStyle = '#444'; x.beginPath(); x.moveTo(w, h * 0.52); x.lineTo(w * 0.58, h * 0.3); x.lineTo(w * 0.3, h * 0.7); x.lineTo(w, h * 0.8); x.closePath(); x.fill();
+      x.fillStyle = '#2a2a2a'; x.fillRect(0, h * 0.74, w, h * 0.26);
+      const d = x.getImageData(0, 0, w, h), p = d.data;
+      for (let yy = 0; yy < h; yy++) for (let xx = 0; xx < w; xx++) {
+        const i = (yy * w + xx) * 4;
+        const lum = 0.299 * p[i] + 0.587 * p[i + 1] + 0.114 * p[i + 2];
+        const v = lum > (bayer[yy % 4][xx % 4] + 0.5) * 16 ? 255 : 0;
+        p[i] = p[i + 1] = p[i + 2] = v; p[i + 3] = 255;
+      }
+      x.putImageData(d, 0, 0);
+    });
+  }
+  renderVals() {
+    const HATCH = "repeating-linear-gradient(180deg,#000 0 1px,#fff 1px 6px)";
+    const DOTS = "conic-gradient(#000 0 25%,#fff 0 50%,#000 0 75%,#fff 0) 0 0/4px 4px";
+    // sudoku
+    const puzzle = [
+      "53..7....", "6..195...", ".98....6.",
+      "8...6...3", "4..8.3..1", "7...2...6",
+      ".6....28.", "...419..5", "....8..79"
+    ];
+    const sudokuRows = puzzle.map((rowStr, r) => ({
+      bb: (r === 2 || r === 5) ? "3px solid #000" : (r === 8 ? "none" : "1px solid #000"),
+      cells: rowStr.split('').map((ch, c) => {
+        const focus = r === 4 && c === 4;
+        const pencil = r === 0 && c === 3;
+        return {
+          v: focus ? "5" : (pencil ? "1 2 6" : (ch === '.' ? "" : ch)),
+          fs: pencil ? 14 : 30,
+          bg: focus ? "#000" : "#fff",
+          fg: focus ? "#fff" : "#000",
+          br: (c === 2 || c === 5) ? "3px solid #000" : (c === 8 ? "none" : "1px solid #000")
+        };
+      })
+    }));
+    // 2048: value → fill
+    const tv = [2,0,4,2, 8,32,16,4, 2,128,64,8, 4,16,8,2];
+    const tiles = tv.map((v, i) => {
+      const inv = v >= 64, hatch = v >= 16 && v < 64;
+      return {
+        v: v === 0 ? "" : String(v),
+        fs: v >= 100 ? 40 : 48,
+        bg: v === 0 ? "#fff" : (inv ? "#000" : (hatch ? HATCH : "#fff")),
+        fg: inv ? "#fff" : "#000"
+      };
+    });
+    // minesweeper 16x16
+    const mineRows = [];
+    let ms = 99;
+    const mrnd = () => { ms = (ms * 1103515245 + 12345) >>> 0; return ms / 4294967296; };
+    for (let r = 0; r < 16; r++) {
+      const cells = [];
+      for (let c = 0; c < 16; c++) {
+        const opened = r > 8 || (r > 5 && c > 9);
+        const focus = r === 9 && c === 4;
+        if (!opened) {
+          const flag = (r === 3 && c === 5) || (r === 6 && c === 11);
+          cells.push({ v: flag ? "⚑" : "", bg: flag ? "#fff" : HATCH, fg: "#000" });
+        } else {
+          const n = mrnd();
+          const v = n < 0.42 ? "" : (n < 0.72 ? "1" : (n < 0.9 ? "2" : "3"));
+          cells.push({ v: focus ? "▮" : v, bg: focus ? "#000" : "#fff", fg: focus ? "#fff" : "#000" });
+        }
+      }
+      mineRows.push({ cells });
+    }
+    // chess after 1.e4 e5 2.Nf3
+    const board = [
+      "r.bqkbnr", "pppp.ppp", "..n.....", "....p...",
+      "....P...", ".....N..", "PPPP.PPP", "RNBQKB.R"
+    ];
+    const G = { K: "♔", Q: "♕", R: "♖", B: "♗", N: "♘", P: "♙", k: "♚", q: "♛", r: "♜", b: "♝", n: "♞", p: "♟" };
+    const chessRows = board.map((rowStr, r) => ({
+      cells: rowStr.split('').map((ch, c) => ({
+        v: ch === '.' ? "" : G[ch],
+        bg: ((r + c) % 2 === 1) ? HATCH : "#fff",
+        ring: (r === 5 && c === 5) ? "inset 0 0 0 4px #000" : "none"
+      }))
+    }));
+    // wordle: target ROAST; guesses CRANE, STORY, current ROA__
+    const mkW = (word, states) => ({ cells: word.split('').map((ch, i) => {
+      const s = states[i];
+      return { v: ch === '.' ? "" : ch, bg: s === 2 ? "#000" : (s === 1 ? HATCH : (s === 0 ? DOTS : "#fff")), fg: s === 2 ? "#fff" : "#000" };
+    }) });
+    const wordleRows = [
+      mkW("CRANE", [0,1,1,0,0]),
+      mkW("STORY", [1,1,1,1,0]),
+      mkW("ROA..", [2,2,2,3,3]),
+      mkW(".....", [3,3,3,3,3])
+    ];
+    return {
+      langs: [
+        { t: "English", v: "✓", bg: "#000", fg: "#fff" }, { t: "Deutsch", v: "" }, { t: "Français", v: "" },
+        { t: "Español", v: "" }, { t: "Italiano", v: "" }, { t: "Português", v: "" }, { t: "Nederlands", v: "" }, { t: "Polski", v: "" }
+      ].map(r => Object.assign({ bg: "#fff", fg: "#000" }, r)),
+      apps: [
+        { t: "Clock and timer", d: "Pomodoro, alarms, a big quiet clock.", v: "" },
+        { t: "Flashcards", d: "Your looked-up words, spaced out.", v: "18 due", bg: "#000", fg: "#fff" },
+        { t: "News", d: "Feeds fetched at night, read like a book.", v: "19" },
+        { t: "Wikipedia", d: "Look things up; articles cached to card.", v: "" },
+        { t: "Weather", d: "Five days, no key needed.", v: "14°" },
+        { t: "Calculator", d: "With unit conversion.", v: "" },
+        { t: "Notes", d: "Short ones here, long ones from the phone.", v: "3" },
+        { t: "Images", d: "Photos on the card, dithered.", v: "61" },
+        { t: "Interactive fiction", d: "Z-machine stories, verbs on keys.", v: "" }
+      ].map(r => Object.assign({ bg: "#fff", fg: "#000" }, r)),
+      games: [
+        { t: "Sudoku", d: "Generator with pencil marks.", v: "resume ·" , bg: "#000", fg: "#fff"},
+        { t: "2048", d: "Slide tiles; ink gets darker as they grow.", v: "best 12,384" },
+        { t: "Minesweeper", d: "16 × 16, flags on long-Confirm.", v: "" },
+        { t: "Chess", d: "Three engine levels, or two players.", v: "" },
+        { t: "Daily word", d: "One word a day, offline list.", v: "streak 6" }
+      ].map(r => Object.assign({ bg: "#fff", fg: "#000" }, r)),
+      sudokuRows, tiles, mineRows, chessRows, wordleRows,
+      nums: ["1","2","3","4","5","6","7","8","9"].map((v, i) => ({ v, bg: i === 4 ? "#000" : "#fff", fg: i === 4 ? "#fff" : "#000" })),
+      t9w: ['abc', 'def', 'ghi', 'jkl', 'mno', 'pqrs', 'tuv', 'wxyz'].map((c, i) => ({ c, bg: i === 4 ? "#000" : (i === 1 ? DOTS : "#fff"), fg: i === 4 ? "#fff" : "#000" })),
+      heapBars: [30,30,31,32,30,34,38,36,35,44,40,38,37,36,50,46,44,42,41,40,39,52,48,46,45,44,43,42,56,50,48,47,46,45,44,43,42,41,40,39].map(h => ({ h }))
+    };
+  }
+}
+</script>
+</body>
+</html>
