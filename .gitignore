@@ -1,0 +1,28 @@
+# Rust build output (host workspace and device workspace)
+/firmware/target/
+/firmware/device/target/
+**/*.rs.bk
+
+# Built firmware images and release bundles (CI attaches them to releases)
+/dist/
+/firmware/dist/
+*.bin
+!/firmware/device/**/*.bin.keep
+
+# Generated review artefacts
+/firmware/target/snapshots/
+/firmware/tools/sleepgen/out/
+
+# Editors and OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Local secrets (Wi-Fi credentials for the simulator, signing keys)
+/firmware/.env
+/firmware/keys/
+*.pem
+*.key
+!**/fixtures/**/*.key

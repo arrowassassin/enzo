@@ -1,6 +1,0 @@
-target/
-device/target/
-*.bin
-!device/**/partitions*.bin
-/tools/sleepgen/out/
-.DS_Store
