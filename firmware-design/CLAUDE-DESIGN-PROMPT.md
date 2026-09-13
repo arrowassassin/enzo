@@ -208,3 +208,91 @@ Design three settings pages from brief section 6, screen 50:
   Bookshop shelves, Sync, Catalog refresh, and a "Last run" line with the
   result ("Today 06:02 · 3 articles, shelves updated").
 ```
+
+## Batch 1 acceptance check (paste before Batch 2)
+
+```
+Before Batch 2, audit Batch 1 - Foundation against firmware-design/07-ux-design-brief.md
+section 0, 3, 4 and 5, and report a pass/fail line per item. Fix every fail
+in place, then show the corrected boards.
+
+Typography board
+- Exactly three faces: Literata (titles, reading text, poster numerals),
+  Atkinson Hyperlegible (labels, lists), JetBrains Mono (edge labels, times,
+  table numbers). Nothing else, no Inter, no system fallback showing.
+- UI scale present and labelled at 1:1: 18 label/small caps, 22 body,
+  26 list title, 32 screen title, 44 poster numeral, 56 hero numeral.
+- Reading scale present: 20 22 24 26 28 31 34 38 px at line heights
+  1.3 / 1.45 / 1.6, with the 26 px / 1.45 / 32 px-margin default marked.
+- A chapter opening specimen: 56 px numeral, 32 px title, 4 px rule, three-line
+  drop cap.
+
+Components board (each with default, focused, disabled)
+- Running head (36 px, 4 px rule under the title on non-reading screens).
+- Edge-label rail: 40 px, four equal cells, 4 px rule above, JetBrains Mono
+  18 px, empty cells show a centred 2 px dot.
+- Side labels rotated 90° on the right edge.
+- Compass overlay: card over the lower 40 %, text above screened with a 50 %
+  dot pattern, choices placed at the key positions, 26 px label + 18 px context.
+- Home layer: card over the upper 60 %, title, author, "38 min left in this
+  chapter", "Finish by Thursday", three recent rows, the rail
+  Library · Close · Continue · Bookshop.
+- Jump list, list row 56/88 px, cover grid cell 152 × 228 with 6 px focus
+  frame, poster numeral, toggle/stepper/choice/slider rows, dialog card,
+  working card (no spinner), empty state, keyboard 48 × 56 keys with the
+  "Type on your phone" strip above it, T9 variant, specimen, phone window.
+- The Spine: 12 px strip, 1 px hairlines at 4 px pitch, read = full width,
+  unread = 6 px, 3 px chapter notches, 2 px position bar; three states
+  (reading, skim with the riding label, contents).
+
+Global rules
+- Pure #000 on #FFF only; any grey, gradient, shadow, transparency or
+  rounded corner is a fail. Dither only inside images.
+- Focus is full inversion of the row/cell/button, never an outline alone.
+- Strokes: 4 / 2 / 1 px only; no icon set beyond the 24 named in section 3.
+- Sizes: body ≥ 22 px, captions ≥ 18 px, rows ≥ 56 px, rail 40 px.
+- Every artboard names its refresh (DU or GC) and is on a 528 × 792 frame
+  with 24 px margins (components board excepted).
+- Copy is sentence case, numerals, no exclamation marks, no emoji.
+```
+
+## Batch 2 kickoff (paste after the audit passes)
+
+```
+Batch 2 — the reading core. Build only from the approved Batch 1 boards; do
+not restyle a component here, change it on the components board and reuse it.
+Screens and states per brief section 6:
+
+20 Reading page — at 22, 26 and 34 px, line heights 1.3 and 1.6; variants:
+   chapter opening with numeral and drop cap, inline image (dithered),
+   footnote marker, verse, code block, stacked table, last page, landscape.
+   The Spine on every one. No rail on the reading page. Mark: GC on entry,
+   DU per turn.
+21 Compass — page 1: Left Contents · Right Go to · Up Type · Down More ·
+   Back Close · Confirm Bookmark (and "Bookmarked ✓"); page 2 (More):
+   Left Dictionary · Right Highlights · Up Layout · Down Sleep · Confirm
+   Stats. GC on open and close.
+10 Home layer — over the page, plus the no-book variant with three Start
+   here picks and the Drop QR.
+22 Contents — nested TOC, current chapter with a filled bookmark, time-to-read
+   per chapter in mono on the right, the Spine drawn alongside.
+23 Go to — 44 px percent numeral with Left/Right stepping, chapter picker,
+   "Page 123 of 412", the skim hint.
+24 Skim — three frames of a held Right: the Spine position bar moving with
+   the riding label "Ch 14 · 51% · 2 h 03 left".
+25 Type and Layout — two screens; Type with the live specimen occupying the
+   top half; Layout with every row named in the brief including drop caps,
+   running head, Spine on/off, full-refresh cadence, profiles.
+26 Word cursor — cursor on the rarest word with the mono 1/6 counter; a
+   selection spanning two lines.
+27 Dictionary — headword 32, pronunciation 22, paginated definitions, rail
+   Back · Save word · Wikipedia · Next dict.
+40 Sleep screens — Cover, Poster, Quote, Quick resume, Custom, Charging,
+   Empty battery.
+44 Sleep screen picker and 45 Keys locked as specified.
+
+Deliver dark-mode variants for 10, 20, 21 and 40. Use the sample text from
+the brief's mock (The Left Hand of Darkness opening) and real public-domain
+titles elsewhere. Before showing the batch, list any screen where the
+two-press rule or the key grammar did not hold, with your proposed fix.
+```
