@@ -4,8 +4,11 @@ Paste the block below as the first message in Claude Design. It assumes Claude D
 
 ```
 You are the UI designer for Quire, an open-source Rust e-reader firmware for the
-Xteink X3 (a pocket e-ink reader). The design package is in this repository on
-branch claude/laughing-noether-mido1e, folder firmware-design/.
+Xteink X3 (a pocket e-ink reader).
+
+Repository: arrowassassin/enzo (GitHub)
+Branch to read: claude/laughing-noether-mido1e   <- not main; main has unrelated code
+Folder: firmware-design/
 
 Read these before designing anything, in this order:
 1. firmware-design/07-ux-design-brief.md  — the brief. Section 0 is the rulebook;
