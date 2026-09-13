@@ -49,6 +49,7 @@ Layout on the phone:
 - A settings tab that mirrors the device settings (read and write via a JSON API).
 - A status strip: battery, free space, firmware version, "Check for update".
 - A **Window** tab: the device screen mirrored live at 1:2 with the seven keys as buttons and a keyboard, so any text entry on the device can be typed on the phone (see 03 and 07).
+- A **Sleep images** section: drop photos here; the device dithers them to 528 × 792 and adds them to the Custom sleep-screen folder.
 - An **Analytics** tab: the reading statistics with interactive charts, exports (CSV, JSON, StoryGraph and Goodreads CSV) and a printable year poster.
 
 Upload protocol:

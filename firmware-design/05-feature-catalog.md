@@ -68,7 +68,8 @@ Feasibility notes reference the hardware sheet (02) and the format matrix (04). 
 | Full-refresh cadence: every 1/3/5/10/15/30 pages, plus always after images and dialogs | T0 | *(proven)* |
 | Manual refresh on a Power tap | T0 | |
 | Reader quick menu (one screen, no nesting): TOC, bookmarks, go to, font size, brightness-of-text, orientation, dictionary, stats, sync | T0 | |
-| Sleep screens: cover, cover + progress, custom images folder, quote of the day, quick resume (last page dimmed with a moon glyph), blank | T1 | *(proven)* |
+| Sleep screens: cover, poster (finish-by or streak), quote of the day, custom images (from SD or dropped via the phone, dithered on ingest, rotation fixed/each sleep/daily), quick resume, blank; a picker screen with live thumbnails and preview (07 screen 44) | T1 | *(proven)* |
+| Key lock with a locked-state strip and hold-Power unlock; optional auto-lock on sleep (07 screen 45) | T1 | |
 | Screenshot to SD (Power + Down) | T1 | |
 | Position QR code for the phone | T2 | *(proven)* |
 

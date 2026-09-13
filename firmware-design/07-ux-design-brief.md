@@ -172,11 +172,15 @@ Design order. Required states for each: default, focused, empty, error where app
 
 **41 Power menu** — Sleep, Power off, Restart, Refresh, Wi-Fi on/off, Lock keys, on the compass layout.
 
+**44 Sleep screen picker** — Reached from Settings → Sleep and power, from Jump ("Sleep screen"), and from the Power menu. Six live thumbnails at 1:4 scale rendered from the current book (Cover, Poster, Quote, Custom, Quick resume, Blank) in a 3 × 2 grid; Left/Right/Up/Down focus, Confirm applies (a small "in use" check under the thumbnail). Beneath the grid, options for the focused variant: Cover → title band on/off; Poster → Finish by or Streak; Quote → built-in or `quotes.txt` on SD; Custom → folder, rotation (fixed / each sleep / daily); Quick resume → moon glyph on/off. Rail: `Back · — · Use · Preview`; Preview shows the full-size screen for 3 s then returns. Custom images are added by dropping photos into the Drop page's "Sleep images" section or the `/sleep` folder on SD; the device dithers them to 528 × 792 at ingest.
+
+**45 Keys locked** — When Lock keys is on (Power menu, or a setting "lock when sleeping in a pocket"), the current page stays on screen with a small lock glyph in the running head. Any key press draws a one-line strip at the top for one refresh: "Keys locked · hold Power to unlock". Hold Power 2 s unlocks with a single DU. Also design the locked state over the sleep screen (lock glyph in the band).
+
 **42 Jump** — Component 6. Show it with a query typed from the phone filtering the list.
 
 **43 Phone window (in the Drop page, for reference)** — The device screen mirrored at 1:2 with seven keys drawn around it in the physical positions, a text field and keyboard beneath, and "Sent to reader" feedback. Design in the same 1-bit system so it feels like one product.
 
-**50 Settings** — Groups as a list: Reading, Display, Keys, Sleep and power, Wi-Fi and sync, Library, Bookshop, Language and time, Apps and games, About, Developer. Design Keys (a line drawing of the device with each key labelled and remappable, side-key swap, orientation follow), Sleep and power (timeouts, sleep screen choice, panel-off, battery with a `19 days` LEFT numeral), About (version, storage bars as hatched rules, Check for update, licences).
+**50 Settings** — Groups as a list: Reading, Display, Keys, Sleep and power, Wi-Fi and sync, Library, Bookshop, Language and time, Apps and games, About, Developer. Design Keys (a line drawing of the device with each key labelled and remappable, side-key swap, orientation follow), Sleep and power (timeouts, a row that opens 44 Sleep screen picker, key-lock options, panel-off, battery with a `19 days` LEFT numeral), About (version, storage bars as hatched rules, Check for update, licences).
 
 **51 OTA update** — Available version with paginated notes, Install, working card, Restart dialog, SD-update and recovery variants.
 
