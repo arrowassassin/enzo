@@ -14,7 +14,7 @@ This folder is the research and design package for a from-scratch, open-source e
 | [04-format-support-matrix.md](04-format-support-matrix.md) | Every reading format, on-device vs converter, tier, limits |
 | [05-feature-catalog.md](05-feature-catalog.md) | The full feature set in tiers T0 to T3, including apps and games |
 | [06-sideloading.md](06-sideloading.md) | Wireless transfer design: Drop page, iOS Shortcut, Android PWA, OPDS, Calibre, WebDAV, onboarding, security, acceptance tests |
-| [07-ux-design-brief.md](07-ux-design-brief.md) | **The Claude Design hand-off.** Section 0 is the paste-in instruction block; the rest is the key model, visual language, type scale, component library, screen inventory, flows, copy |
+| [07-ux-design-brief.md](07-ux-design-brief.md) | **The Claude Design hand-off** (also published as a page: <https://claude.ai/code/artifact/6d230cda-6d70-465f-8f0c-0bc566831401>). Section 0 is the paste-in instruction block; the rest is the key model, visual language, type scale, component library, screen inventory, flows, copy |
 | [08-roadmap.md](08-roadmap.md) | Milestones 0 to 5 and the immediate next steps |
 | [A-research-findings.md](A-research-findings.md) | Appendix A: the verified deep-research findings with sources, confidence, refuted claims |
 | B1 to B4 | Appendix B: the four targeted survey reports (hardware, Rust crates, sideloading, features and UX), verbatim with links |
