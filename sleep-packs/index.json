@@ -1,0 +1,103 @@
+{
+  "version": 1,
+  "format": {
+    "pbm": "P4",
+    "width": 528,
+    "height": 792,
+    "one": "ink",
+    "z": "zlib"
+  },
+  "licence": "CC0-1.0",
+  "packs": [
+    {
+      "id": "mountains",
+      "name": "Mountains",
+      "description": "Layered ridgelines fading into dithered haze, under a sun or a moon",
+      "images": 5,
+      "bytes": 261415,
+      "bytes_z": 67285,
+      "path": "mountains/pack.json"
+    },
+    {
+      "id": "tides",
+      "name": "Tides",
+      "description": "Wave-line seas under a sun or a moon, drawn as a moiré-safe line field",
+      "images": 5,
+      "bytes": 261415,
+      "bytes_z": 41309,
+      "path": "tides/pack.json"
+    },
+    {
+      "id": "constellations",
+      "name": "Constellations",
+      "description": "Star-atlas plates of Orion, the Plough, Cassiopeia, Cygnus and Scorpius",
+      "images": 5,
+      "bytes": 261415,
+      "bytes_z": 128087,
+      "path": "constellations/pack.json"
+    },
+    {
+      "id": "botanica",
+      "name": "Botanica",
+      "description": "Ferns, bushes and grasses grown from L-systems, drawn as botanical plates",
+      "images": 5,
+      "bytes": 261415,
+      "bytes_z": 36847,
+      "path": "botanica/pack.json"
+    },
+    {
+      "id": "deco",
+      "name": "Deco",
+      "description": "Art-deco sunbursts, fans, chevrons and stepped frames around a clock plaque",
+      "images": 5,
+      "bytes": 261415,
+      "bytes_z": 21999,
+      "path": "deco/pack.json"
+    },
+    {
+      "id": "typographic",
+      "name": "Typographic",
+      "description": "Book pages in Literata: drop caps, public-domain quotations and hairline rules",
+      "images": 5,
+      "bytes": 261415,
+      "bytes_z": 18883,
+      "path": "typographic/pack.json"
+    },
+    {
+      "id": "cities",
+      "name": "Cities",
+      "description": "Night skylines with lit windows, a harbour bridge, old-town spires and rain",
+      "images": 5,
+      "bytes": 261415,
+      "bytes_z": 21941,
+      "path": "cities/pack.json"
+    },
+    {
+      "id": "moons",
+      "name": "Moons",
+      "description": "Lunar phases with stippled craters and dithered maria",
+      "images": 5,
+      "bytes": 261415,
+      "bytes_z": 58582,
+      "path": "moons/pack.json"
+    },
+    {
+      "id": "maze",
+      "name": "Labyrinths",
+      "description": "Perfect mazes on square, polar and hex grids, and the classical seven-circuit labyrinth",
+      "images": 5,
+      "bytes": 261415,
+      "bytes_z": 26815,
+      "path": "maze/pack.json"
+    },
+    {
+      "id": "woodcut",
+      "name": "Woodcut",
+      "description": "Block-print landscapes: engraved hills, gouged skies and a rough border",
+      "images": 5,
+      "bytes": 261415,
+      "bytes_z": 51450,
+      "path": "woodcut/pack.json"
+    }
+  ]
+}

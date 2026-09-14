@@ -1,0 +1,17 @@
+[package]
+name = "quire-sleep"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Generates the 1-bit sleep-screen art packs (sleep-packs/) with a clean slot for the live clock"
+
+[dependencies]
+quire-gfx = { path = "../../crates/quire-gfx", default-features = false, features = ["std"] }
+quire-fonts = { path = "../../crates/quire-fonts" }
+miniz_oxide = { workspace = true }
+image = { workspace = true }
+anyhow = { workspace = true }
+clap = { workspace = true }
+serde = { workspace = true, features = ["std"] }
+serde_json = { workspace = true }
