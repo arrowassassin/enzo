@@ -4,7 +4,7 @@
 # esp-bootloader-esp-idf 0.5 are the matching releases.
 [workspace]
 resolver = "2"
-members = ["bin/*"]
+members = ["bin/*", "crates/*"]
 
 [workspace.package]
 version = "0.1.0"

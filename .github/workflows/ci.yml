@@ -46,10 +46,10 @@ jobs:
       - name: app image (for OTA and the SD update path)
         run: |
           mkdir -p ../../dist
-          espflash save-image --chip esp32c3 --partition-table partitions.csv --target-app-partition ota_0 \
+          espflash save-image --chip esp32c3 --flash-size 16mb --partition-table partitions.csv --target-app-partition ota_0 \
             target/riscv32imc-unknown-none-elf/release/quire-x3 ../../dist/quire-x3.bin
           if [ -f target/riscv32imc-unknown-none-elf/release/quire-recovery ]; then
-            espflash save-image --chip esp32c3 --partition-table partitions.csv --target-app-partition recovery \
+            espflash save-image --chip esp32c3 --flash-size 16mb --partition-table partitions.csv --target-app-partition recovery \
               target/riscv32imc-unknown-none-elf/release/quire-recovery ../../dist/quire-recovery.bin
           fi
       - name: factory image (bootloader + table + apps, flash at 0x0)

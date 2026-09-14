@@ -21,5 +21,14 @@ esp-backtrace.workspace = true
 esp-bootloader-esp-idf.workspace = true
 embassy-executor.workspace = true
 embassy-time.workspace = true
+embassy-futures.workspace = true
 static_cell.workspace = true
 log.workspace = true
+embedded-hal.workspace = true
+quire-board = { path = "../../crates/quire-board" }
+quire-epd = { path = "../../crates/quire-epd" }
+quire-ui = { path = "../../../crates/quire-ui" }
+quire-gfx = { path = "../../../crates/quire-gfx", default-features = false }
+quire-fs = { path = "../../../crates/quire-fs" }
+quire-library = { path = "../../../crates/quire-library" }
+quire-fonts = { path = "../../../crates/quire-fonts" }

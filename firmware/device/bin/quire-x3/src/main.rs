@@ -1,35 +1,481 @@
-//! Segment 0 toolchain proof: boots, allocates, starts the scheduler and the Wi-Fi
-//! driver, reports free heap. Everything else arrives in later segments.
+//! Quire on the Xteink X3: brings the board up, mounts the card, probes the panel, and
+//! runs the UI loop — keys sampled at 100 Hz, one-second ticks, ingest and page-index
+//! work in idle time, light sleep between events and deep sleep after the timeout.
 #![no_std]
 #![no_main]
 
 extern crate alloc;
 
-use embassy_time::{Duration, Timer};
-use esp_hal::{clock::CpuClock, interrupt::software::SoftwareInterruptControl, ram, timer::timg::TimerGroup};
+mod display;
+
+use alloc::string::String;
+use alloc::vec::Vec;
+use core::sync::atomic::Ordering;
+
+use embassy_time::{Duration, Instant, Timer};
 use esp_backtrace as _;
+use esp_hal::analog::adc::{Adc, AdcCalLine, AdcConfig, AdcPin, Attenuation};
+use esp_hal::clock::CpuClock;
+use esp_hal::gpio::{Input, InputConfig, Level, Output, OutputConfig, Pull, RtcPinWithResistors};
+use esp_hal::i2c::master::{Config as I2cConfig, I2c};
+use esp_hal::interrupt::software::SoftwareInterruptControl;
+use esp_hal::peripherals::ADC1;
+use esp_hal::rtc_cntl::sleep::{RtcioWakeupSource, TimerWakeupSource, WakeupLevel};
+use esp_hal::rtc_cntl::Rtc;
+use esp_hal::spi::master::{Config as SpiConfig, Spi};
+use esp_hal::time::Rate;
+use esp_hal::timer::timg::TimerGroup;
+use esp_hal::{ram, Blocking};
 use esp_println::println;
+use quire_board::bus::SharedBus;
+use quire_board::env::DeviceEnv;
+use quire_board::keys::KeyMachine;
+use quire_board::power::{self, UPTIME_MS};
+use quire_board::sdfs::{SdFs, Vm};
+use quire_board::{i2c, pins};
+use quire_gfx::{draw_text, Frame, Ink, TextStyle};
+use quire_library::{ingest_book, scan};
+use quire_ui::{Event, Refresh, SysRequest, Ui};
+use static_cell::StaticCell;
+
+use crate::display::Display;
 
 esp_bootloader_esp_idf::esp_app_desc!();
+
+/// Build stamp shown on About.
+const BUILD: &str = env!("CARGO_PKG_VERSION");
+
+static BUS: StaticCell<SharedBus> = StaticCell::new();
+static VM: StaticCell<Vm> = StaticCell::new();
+
+type KeyPin1 = AdcPin<esp_hal::peripherals::GPIO1<'static>, ADC1<'static>, AdcCalLine<ADC1<'static>>>;
+type KeyPin2 = AdcPin<esp_hal::peripherals::GPIO2<'static>, ADC1<'static>, AdcCalLine<ADC1<'static>>>;
+
+/// The key inputs.
+struct Keys {
+    adc: Adc<'static, ADC1<'static>, Blocking>,
+    g1: KeyPin1,
+    g2: KeyPin2,
+    power: Input<'static>,
+    machine: KeyMachine,
+}
+
+impl Keys {
+    fn read_mv(&mut self, which: u8) -> u16 {
+        // The calibrated read returns millivolts; a stuck conversion reads as idle.
+        let r = if which == 1 { nb::block!(self.adc.read_oneshot(&mut self.g1)) } else { nb::block!(self.adc.read_oneshot(&mut self.g2)) };
+        r.unwrap_or(4095)
+    }
+    /// Sample all three inputs; returns the key events that fired.
+    fn sample(&mut self, now_ms: u32) -> heapless::Vec<quire_ui::KeyEvent, 6> {
+        let g1 = self.read_mv(1);
+        let g2 = self.read_mv(2);
+        let power = self.power.is_low();
+        self.machine.sample(g1, g2, power, now_ms)
+    }
+    fn raw(&mut self) -> (u16, u16, bool) {
+        (self.read_mv(1), self.read_mv(2), self.power.is_low())
+    }
+}
+
+/// The pins the boot-time controller probe bit-bangs.
+struct ProbePins<'a> {
+    sclk: Output<'a>,
+    mosi: esp_hal::gpio::Flex<'a>,
+    rst: Output<'static>,
+    cs: Output<'static>,
+    dc: Output<'static>,
+    delay: esp_hal::delay::Delay,
+}
+
+impl quire_epd::ProbeBus for ProbePins<'_> {
+    fn rst(&mut self, high: bool) {
+        self.rst.set_level(if high { Level::High } else { Level::Low });
+    }
+    fn cs(&mut self, high: bool) {
+        self.cs.set_level(if high { Level::High } else { Level::Low });
+    }
+    fn dc(&mut self, high: bool) {
+        self.dc.set_level(if high { Level::High } else { Level::Low });
+    }
+    fn sclk(&mut self, high: bool) {
+        self.sclk.set_level(if high { Level::High } else { Level::Low });
+    }
+    fn mosi_drive(&mut self, high: bool) {
+        self.mosi.set_output_enable(true);
+        self.mosi.set_level(if high { Level::High } else { Level::Low });
+    }
+    fn mosi_release(&mut self) {
+        self.mosi.set_output_enable(false);
+        self.mosi.apply_input_config(&InputConfig::default().with_pull(Pull::Up));
+        self.mosi.set_input_enable(true);
+    }
+    fn mosi_read(&mut self) -> bool {
+        self.mosi.is_high()
+    }
+    fn delay_us(&mut self, us: u32) {
+        self.delay.delay_micros(us);
+    }
+}
+
+fn uptime_ms() -> u32 {
+    Instant::now().as_millis() as u32
+}
+
+fn tick_uptime() {
+    UPTIME_MS.store(uptime_ms(), Ordering::Relaxed);
+}
+
+/// Draw a full-screen message (before the UI exists, or when the card is missing).
+fn message_frame(title: &str, body: &str) -> Frame {
+    let mut f = Frame::panel();
+    f.clear(Ink::White);
+    let t = quire_fonts::ui::title();
+    let b = quire_fonts::ui::body();
+    draw_text(&mut f, t, 32, 300, title, TextStyle::INK);
+    let mut y = 360;
+    for line in quire_ui::text::wrap(b, body, 464) {
+        draw_text(&mut f, b, 32, y, &line, TextStyle::INK);
+        y += 30;
+    }
+    f
+}
 
 #[esp_rtos::main]
 async fn main(_spawner: embassy_executor::Spawner) -> ! {
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
-    let peripherals = esp_hal::init(config);
+    let mut peripherals = esp_hal::init(config);
 
+    // Heap: the region the bootloader leaves behind plus the main region. Everything
+    // large and long-lived (frame, page cache, section text) lives here.
     esp_alloc::heap_allocator!(#[ram(reclaimed)] size: 64 * 1024);
-    esp_alloc::heap_allocator!(size: 96 * 1024);
+    esp_alloc::heap_allocator!(size: 176 * 1024);
 
     let timg0 = TimerGroup::new(peripherals.TIMG0);
     let sw_int = SoftwareInterruptControl::new(peripherals.SW_INTERRUPT);
     esp_rtos::start(timg0.timer0, sw_int.software_interrupt0);
+    tick_uptime();
 
-    let (_wifi_controller, _interfaces) =
-        esp_radio::wifi::new(peripherals.WIFI, Default::default()).expect("wifi");
+    let reset = esp_hal::system::reset_reason();
+    let wake = esp_hal::system::wakeup_cause();
+    println!("quire-x3 {BUILD} boot: reset {reset:?}, wake {wake:?}, heap {} B", esp_alloc::HEAP.free());
+    power::release_holds();
 
-    println!("quire-x3 segment-0 boot ok; free heap {} B", esp_alloc::HEAP.free());
-    loop {
-        Timer::after(Duration::from_secs(5)).await;
-        println!("alive; free heap {} B", esp_alloc::HEAP.free());
+    // Power rails and the shared SPI bus first: the card and the panel hang off it.
+    let mut sd_power = Output::new(peripherals.GPIO13, Level::High, OutputConfig::default());
+    let sd_cs = Output::new(peripherals.GPIO12, Level::High, OutputConfig::default());
+    let epd_cs = Output::new(peripherals.GPIO21, Level::High, OutputConfig::default());
+    let epd_dc = Output::new(peripherals.GPIO4, Level::High, OutputConfig::default());
+    let epd_rst = Output::new(peripherals.GPIO5, Level::High, OutputConfig::default());
+    let epd_busy = Input::new(peripherals.GPIO6, InputConfig::default().with_pull(Pull::Up));
+    Timer::after(Duration::from_millis(20)).await;
+
+    // The controller probe talks to the panel half-duplex on the MOSI pad, bit-banged, before
+    // the SPI peripheral claims the pins.
+    let (probe, epd_dc, epd_rst, epd_cs) = {
+        let sclk = Output::new(peripherals.GPIO8.reborrow(), Level::Low, OutputConfig::default());
+        let mut mosi = esp_hal::gpio::Flex::new(peripherals.GPIO10.reborrow());
+        mosi.apply_output_config(&OutputConfig::default());
+        mosi.set_output_enable(true);
+        mosi.set_low();
+        let mut pins = ProbePins { sclk, mosi, rst: epd_rst, cs: epd_cs, dc: epd_dc, delay: esp_hal::delay::Delay::new() };
+        let r = quire_epd::probe(&mut pins);
+        pins.mosi.set_output_enable(false);
+        (r, pins.dc, pins.rst, pins.cs)
+    };
+    println!("panel probe: {:?}", probe.verdict);
+
+    let spi = Spi::new(peripherals.SPI2, SpiConfig::default().with_frequency(Rate::from_mhz(10)).with_mode(esp_hal::spi::Mode::_0))
+        .expect("spi")
+        .with_sck(peripherals.GPIO8)
+        .with_mosi(peripherals.GPIO10)
+        .with_miso(peripherals.GPIO7);
+    let bus: &'static SharedBus = BUS.init(SharedBus::new(spi, 10_000_000));
+
+    let mut display = Display::new(bus, epd_dc, epd_rst, epd_busy, epd_cs, probe);
+
+    // I²C: gauge, clock, IMU.
+    let mut i2c_bus = I2c::new(peripherals.I2C0, I2cConfig::default().with_frequency(Rate::from_khz(400)))
+        .expect("i2c")
+        .with_sda(peripherals.GPIO20)
+        .with_scl(peripherals.GPIO0);
+    let battery = i2c::read_battery(&mut i2c_bus);
+    let clock = i2c::read_clock(&mut i2c_bus);
+    let imu = i2c::Imu::init(&mut i2c_bus);
+    println!("battery {battery:?}, clock {clock:?}, imu {}", imu.is_some());
+
+    // Keys.
+    let mut adc_cfg = AdcConfig::new();
+    let g1: KeyPin1 = adc_cfg.enable_pin_with_cal(peripherals.GPIO1, Attenuation::_11dB);
+    let g2: KeyPin2 = adc_cfg.enable_pin_with_cal(peripherals.GPIO2, Attenuation::_11dB);
+    let adc = Adc::new(peripherals.ADC1, adc_cfg);
+    let power_key = Input::new(peripherals.GPIO3.reborrow(), InputConfig::default().with_pull(Pull::Up));
+    let mut keys = Keys { adc, g1, g2, power: power_key, machine: KeyMachine::new() };
+
+    // Local time: the clock chip, else the resume block, else a fixed epoch the first-run
+    // wizard corrects.
+    let resume = power::load();
+    let local_now = clock.or(resume.map(|r| r.clock).filter(|c| *c > 1_600_000_000)).unwrap_or(1_789_000_000);
+    let clean = matches!(reset, Some(esp_hal::rtc_cntl::SocResetReason::ChipPowerOn) | Some(esp_hal::rtc_cntl::SocResetReason::CoreDeepSleep))
+        || wake != esp_hal::system::SleepSource::Undefined;
+    let crashes = power::note_boot(clean, local_now);
+    let safe_mode = crashes >= power::SAFE_MODE_CRASHES;
+    if safe_mode {
+        println!("safe mode after {crashes} crashes");
     }
+
+    // Mount the card; without one, say so and wait for it. The card's CS pin is re-created
+    // per attempt because a failed mount consumes it with the discarded card object.
+    drop(sd_cs);
+    let fs = loop {
+        // SAFETY: GPIO12 was released above and is used by nothing else.
+        let cs = Output::new(unsafe { esp_hal::peripherals::GPIO12::steal() }, Level::High, OutputConfig::default());
+        match SdFs::mount(bus, cs, &VM) {
+            Ok(fs) => break fs,
+            Err(e) => {
+                println!("card: {e}");
+                let f = message_frame("No card", "Insert a microSD card (FAT32) with your books and press any key.");
+                display.show(&f, Refresh::Gc, 1, || {});
+                loop {
+                    Timer::after(Duration::from_millis(50)).await;
+                    tick_uptime();
+                    if !keys.sample(uptime_ms()).is_empty() {
+                        break;
+                    }
+                }
+                sd_power.set_low();
+                Timer::after(Duration::from_millis(200)).await;
+                sd_power.set_high();
+                Timer::after(Duration::from_millis(50)).await;
+            }
+        }
+    };
+    let _ = safe_mode;
+
+    let mac = esp_hal::efuse::Efuse::mac_address();
+    let serial = alloc::format!("{:02X}{:02X}{:02X}{:02X}{:02X}{:02X}", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+    let mut env = DeviceEnv::new(fs, local_now, display.name(), serial, BUILD);
+    if let Some(b) = battery {
+        env.battery = b;
+    }
+
+    let mut ui = Ui::new(&mut env);
+    display.set_upside_down(ui.settings.left_handed);
+    let refresh = ui.draw(&mut env);
+    display.show(ui.frame(), refresh.max(Refresh::Gc), ui.settings.gc_every_pages, || {});
+    println!("ui up: {} free heap", esp_alloc::HEAP.free());
+
+    let mut rtc = Rtc::new(peripherals.LPWR);
+    let mut last_tick = uptime_ms();
+    let mut last_battery = uptime_ms();
+    let mut last_activity = uptime_ms();
+    let mut timer_due: Option<u32> = None;
+    let mut ingest_queue: Vec<quire_library::BookId> = Vec::new();
+    let mut scanned = false;
+
+    loop {
+        tick_uptime();
+        let now_ms = uptime_ms();
+        let mut refresh = Refresh::None;
+
+        // Keys at 100 Hz.
+        for ev in keys.sample(now_ms) {
+            last_activity = now_ms;
+            refresh = refresh.max(ui.handle(&mut env, Event::Key(ev)));
+        }
+
+        // Once a second: clock, tick, battery every 30 s, idle timeout.
+        if now_ms.wrapping_sub(last_tick) >= 1000 {
+            last_tick = now_ms;
+            env.tick_clock();
+            refresh = refresh.max(ui.handle(&mut env, Event::Tick));
+            if now_ms.wrapping_sub(last_battery) >= 30_000 {
+                last_battery = now_ms;
+                if let Some(b) = i2c::read_battery(&mut i2c_bus) {
+                    if b != env.battery {
+                        env.battery = b;
+                        refresh = refresh.max(ui.handle(&mut env, Event::Battery(b)));
+                    }
+                }
+            }
+            let idle_min = now_ms.wrapping_sub(last_activity) / 60_000;
+            if !ui.asleep && ui.settings.sleep_after_min > 0 && idle_min >= ui.settings.sleep_after_min as u32 {
+                refresh = refresh.max(ui.handle(&mut env, Event::Key(quire_ui::KeyEvent::press(quire_ui::Key::Power))));
+            }
+        }
+        if let Some(due) = timer_due {
+            if now_ms.wrapping_sub(due) < 1 << 31 {
+                timer_due = None;
+                refresh = refresh.max(ui.handle(&mut env, Event::Timer));
+            }
+        }
+
+        // Requests the screens made.
+        let mut go_to_sleep = false;
+        for req in env.take_requests() {
+            match req {
+                SysRequest::Sleep => go_to_sleep = true,
+                SysRequest::PowerOff => {
+                    ui.flush(&mut env);
+                    deep_sleep(&mut display, &mut sd_power, &mut rtc, &env);
+                }
+                SysRequest::Restart | SysRequest::Recovery => {
+                    ui.flush(&mut env);
+                    esp_hal::system::software_reset();
+                }
+                SysRequest::RefreshFull => refresh = Refresh::Gc,
+                SysRequest::SetTime(t) => {
+                    env.set_clock(t);
+                    let _ = i2c::set_clock(&mut i2c_bus, t);
+                }
+                SysRequest::Timer(ms) => timer_due = Some(now_ms.wrapping_add(ms)),
+                SysRequest::LockKeys(_) => {}
+                SysRequest::Screenshot => {
+                    let name = alloc::format!("/screenshot-{}.pbm", env.now());
+                    let _ = quire_library::cache::write_pbm(&env.fs, &name, &ui.frame().as_bitmap().to_bitmap());
+                }
+                SysRequest::Rescan => scanned = false,
+                SysRequest::IngestNow => ingest_queue = ui.lib.pending(),
+                SysRequest::Orientation(_) => {}
+                SysRequest::NightJobs(_) | SysRequest::Calibre(_) | SysRequest::SyncNow => {}
+                SysRequest::WifiOn | SysRequest::WifiOff | SysRequest::Hotspot | SysRequest::WifiScan => {}
+                SysRequest::WifiJoin { .. } | SysRequest::WifiForget(_) | SysRequest::Fetch(_) | SysRequest::Ota(_) => {}
+            }
+        }
+
+        if refresh != Refresh::None {
+            display.set_upside_down(ui.settings.left_handed);
+            let gc_every = ui.settings.gc_every_pages;
+            let frame = ui.frame();
+            display.show(frame, refresh, gc_every, || {
+                // Keys keep being sampled during the panel's busy wait; they are queued
+                // in the state machine and delivered on the next loop pass.
+            });
+        }
+
+        if go_to_sleep {
+            ui.flush(&mut env);
+            display.sleep();
+            light_sleep_until_wake(&mut keys, &mut rtc, &mut display, &mut sd_power, &env, &ui).await;
+            last_activity = uptime_ms();
+            let r = ui.handle(&mut env, Event::Wake);
+            display.show(ui.frame(), r.max(Refresh::Gc), ui.settings.gc_every_pages, || {});
+            continue;
+        }
+
+        // Idle work, one unit per pass so keys stay responsive.
+        let mut worked = false;
+        if !scanned {
+            scanned = true;
+            let now = env.now();
+            match scan(&env.fs, &mut ui.lib, now) {
+                Ok(r) if r.added > 0 || r.missing > 0 || r.returned > 0 => {
+                    let _ = ui.lib.save(&env.fs);
+                    refresh_after_idle(&mut ui, &mut env, &mut display, Event::BooksChanged);
+                }
+                Ok(_) => {}
+                Err(e) => println!("scan: {e}"),
+            }
+            ingest_queue = ui.lib.pending();
+            worked = true;
+        } else if let Some(r) = ui.reader.as_mut().filter(|r| !r.index_complete()) {
+            r.index_step(&env.fs, &mut ui.lib);
+            worked = true;
+        } else if let Some(id) = ingest_queue.pop() {
+            worked = true;
+            let title = ui.lib.get(id).map(|e| e.title.clone()).unwrap_or_default();
+            println!("ingest {title}");
+            let mut last_shown = 0u32;
+            let result = ingest_book(&env.fs, &mut ui.lib, id, &mut |done, total| {
+                // Progress reaches the UI at most twice a second.
+                let t = uptime_ms();
+                if t.wrapping_sub(last_shown) > 500 {
+                    last_shown = t;
+                    let _ = (done, total);
+                }
+            });
+            let finished = Some(result.map_err(|e| alloc::format!("{e}")));
+            let _ = ui.lib.save(&env.fs);
+            refresh_after_idle(&mut ui, &mut env, &mut display, Event::Ingest { id, done: 1, total: 1, finished });
+        } else if let Some(r) = ui.reader.as_mut() {
+            r.prerender(&env.fs, &ui.settings);
+        }
+
+        if !worked {
+            Timer::after(Duration::from_millis(10)).await;
+        } else {
+            embassy_futures::yield_now().await;
+        }
+    }
+}
+
+fn refresh_after_idle(ui: &mut Ui<DeviceEnv>, env: &mut DeviceEnv, display: &mut Display, ev: Event) {
+    let r = ui.handle(env, ev);
+    if r != Refresh::None {
+        display.show(ui.frame(), r, ui.settings.gc_every_pages, || {});
+    }
+}
+
+/// Light sleep in 30 s slices until the Power key wakes us, or deep sleep once the
+/// power-off timeout passes.
+async fn light_sleep_until_wake(
+    keys: &mut Keys,
+    rtc: &mut Rtc<'static>,
+    display: &mut Display,
+    sd_power: &mut Output<'static>,
+    env: &DeviceEnv,
+    ui: &Ui<DeviceEnv>,
+) {
+    let started = uptime_ms();
+    let off_after_ms = (ui.settings.power_off_after_min as u32).saturating_mul(60_000);
+    loop {
+        {
+            // SAFETY: GPIO3 is also held as the `Input` in `keys`; the wake source only
+            // programs the RTC wake bits of the same pad and does not change its mode.
+            let mut wake_pin = unsafe { esp_hal::peripherals::GPIO3::steal() };
+            let mut pins: [(&mut dyn RtcPinWithResistors, WakeupLevel); 1] = [(&mut wake_pin, WakeupLevel::Low)];
+            let gpio = RtcioWakeupSource::new(&mut pins);
+            let timer = TimerWakeupSource::new(core::time::Duration::from_secs(30));
+            rtc.sleep_light(&[&timer, &gpio]);
+        }
+        tick_uptime();
+        // Debounce: the key has to be down for a moment.
+        let mut held = 0;
+        for _ in 0..6 {
+            if keys.raw().2 {
+                held += 1;
+            }
+            Timer::after(Duration::from_millis(10)).await;
+        }
+        if held >= 4 {
+            // Wait for release so the wake does not also register as a press.
+            while keys.raw().2 {
+                Timer::after(Duration::from_millis(10)).await;
+            }
+            keys.machine = KeyMachine::new();
+            return;
+        }
+        if off_after_ms > 0 && uptime_ms().wrapping_sub(started) >= off_after_ms {
+            deep_sleep(display, sd_power, rtc, env);
+        }
+    }
+}
+
+/// Power everything down and enter deep sleep; only the Power key wakes the device.
+fn deep_sleep(display: &mut Display, sd_power: &mut Output<'static>, rtc: &mut Rtc<'static>, env: &DeviceEnv) -> ! {
+    display.sleep();
+    if let Some(mut r) = power::load() {
+        r.clock = env.now();
+        power::store(r);
+    } else {
+        power::store(power::Resume { clock: env.now(), ..Default::default() });
+    }
+    // The card rail stays off through the sleep (02-hardware.md §9.4).
+    sd_power.set_low();
+    power::hold_sd_rail(true);
+    // SAFETY: see `light_sleep_until_wake`.
+    let mut wake_pin = unsafe { esp_hal::peripherals::GPIO3::steal() };
+    let mut pins: [(&mut dyn RtcPinWithResistors, WakeupLevel); 1] = [(&mut wake_pin, WakeupLevel::Low)];
+    let gpio = RtcioWakeupSource::new(&mut pins);
+    rtc.sleep_deep(&[&gpio])
 }
