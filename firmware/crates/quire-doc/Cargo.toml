@@ -1,0 +1,22 @@
+[package]
+name = "quire-doc"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Document parsers for Quire: EPUB, TXT, Markdown, FB2, HTML, CBZ, PDF and QBK, all streaming, all no_std"
+
+[dependencies]
+quire-fs = { path = "../quire-fs" }
+quire-qtx = { path = "../quire-qtx" }
+quire-gfx = { path = "../quire-gfx", default-features = false }
+miniz_oxide = { workspace = true }
+pulldown-cmark = { workspace = true }
+serde = { workspace = true }
+postcard = { workspace = true }
+
+[dev-dependencies]
+quire-fs = { path = "../quire-fs", features = ["std"] }
+quire-gfx = { path = "../quire-gfx", features = ["std"] }
+quire-layout = { path = "../quire-layout" }
+quire-fonts = { path = "../quire-fonts" }
