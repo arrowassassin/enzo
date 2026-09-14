@@ -105,8 +105,9 @@ impl Lang {
             Lang::Italian => hypher::Lang::Italian,
             Lang::Dutch => hypher::Lang::Dutch,
             Lang::Portuguese => hypher::Lang::Portuguese,
-            Lang::Russian => hypher::Lang::Russian,
-            Lang::None => return None,
+            // No Cyrillic strikes ship, so Russian text falls back to the glyph box and
+            // its 200 KB of patterns are left out of the image; it wraps without hyphens.
+            Lang::Russian | Lang::None => return None,
         })
     }
     /// From a BCP-47 / ISO 639 prefix ("en", "de-DE").
@@ -533,7 +534,7 @@ mod tests {
         w.para(ParaKind::Body);
         w.text("Llanfairpwllgwyngyllgogerychwyrndrobwllllantysiliogogogoch");
         let qtx = w.finish();
-        let idx = build_index(&qtx, Profile { size: 38, ..p }, g);
+        let idx = build_index(&qtx, Profile { size: 34, ..p }, g);
         assert!(!idx.is_empty() && idx.len() < 10, "no runaway pagination: {}", idx.len());
 
         // A stream of empty paragraphs terminates.

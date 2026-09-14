@@ -50,7 +50,7 @@ impl Style {
 }
 
 /// The reading sizes the layout engine offers, in pixels.
-pub const READING_SIZES: [u16; 8] = [20, 22, 24, 26, 28, 31, 34, 38];
+pub const READING_SIZES: [u16; 6] = [22, 24, 26, 28, 31, 34];
 
 fn fam_name(f: Family) -> &'static str {
     match f {
@@ -83,6 +83,12 @@ pub fn nearest(family: Family, style: Style, px: u16) -> &'static Font {
     if let Some(f) = get(family, style, px) {
         return f;
     }
+    // No bold-italic strikes ship: the italic strike is drawn dilated (`embolden`).
+    if style == Style::BoldItalic {
+        if let Some(f) = get(family, Style::Italic, px) {
+            return f;
+        }
+    }
     if let Some(f) = get(family, Style::Regular, px) {
         return f;
     }
@@ -100,7 +106,13 @@ pub fn nearest(family: Family, style: Style, px: u16) -> &'static Font {
 }
 
 /// Reading sizes with their own drop-cap strike; other sizes use the nearest of these.
-pub const DROPCAP_SIZES: [u16; 4] = [20, 26, 31, 38];
+pub const DROPCAP_SIZES: [u16; 3] = [22, 26, 31];
+
+/// True when a style flag set has no strike of its own and is drawn from the italic
+/// strike dilated by one pixel (bold italic).
+pub const fn embolden(style: Style) -> bool {
+    matches!(style, Style::BoldItalic)
+}
 
 /// The drop-cap strike for a reading size. Packs are named after the reading size they
 /// serve; the builder solves the em so the cap spans three lines.
@@ -220,7 +232,7 @@ mod tests {
 
     #[test]
     fn packs_exist_and_have_glyphs() {
-        assert!(PACKS.len() > 40, "{}", PACKS.len());
+        assert!(PACKS.len() >= 37, "{}", PACKS.len());
         let f = get(Family::Literata, Style::Regular, 26).expect("literata 26");
         assert_eq!(f.size(), 26);
         assert!(f.ascent() > 15 && f.descent() < -3, "ascent {} descent {}", f.ascent(), f.descent());
@@ -239,11 +251,24 @@ mod tests {
         assert_eq!(zero.bitmap.bits, oh.bitmap.bits);
     }
 
-    /// Font strikes are the largest thing in the firmware image; keep them inside a budget
-    /// the 6 MB OTA slot can hold alongside code, and make any growth deliberate.
+    /// Font strikes are the largest thing in the firmware image. The ESP32-C3 maps at
+    /// most 4 MB of flash for code and constants together, and code plus the Wi-Fi stack
+    /// takes about 2 MB of that, so the strikes stay under 1.5 MB; make any growth
+    /// deliberate.
+    #[test]
+    fn bold_italic_sets_from_the_italic_strike() {
+        for &px in &READING_SIZES {
+            let bi = nearest(Family::Literata, Style::BoldItalic, px);
+            let it = get(Family::Literata, Style::Italic, px).expect("italic strike");
+            assert!(core::ptr::eq(bi, it), "bold italic at {px} px uses the italic strike");
+            assert!(embolden(Style::BoldItalic) && !embolden(Style::Bold));
+        }
+        assert!(dropcap(22).is_some() && dropcap(34).is_some());
+    }
+
     #[test]
     fn font_packs_stay_within_the_flash_budget() {
-        const BUDGET: usize = 3 * 1024 * 1024;
+        const BUDGET: usize = 1536 * 1024;
         let total: usize = PACKS.iter().map(|(_, f)| f.byte_len()).sum();
         assert!(total <= BUDGET, "font packs are {} KB, over the {} KB budget", total / 1024, BUDGET / 1024);
         assert!(total > 512 * 1024, "suspiciously small: {} KB", total / 1024);

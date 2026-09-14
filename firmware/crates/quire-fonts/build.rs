@@ -25,21 +25,27 @@ enum Sty {
     Regular,
     Bold,
     Italic,
+    /// Not baked: bold italic is drawn from the italic strike dilated by a pixel.
+    #[allow(dead_code)]
     BoldItalic,
 }
 
-const READING: &[u16] = &[20, 22, 24, 26, 28, 31, 34, 38];
+/// Six reading sizes: the ESP32-C3 maps at most 4 MB of flash for code and constants,
+/// which the eight-size ladder with four styles overran once the Wi-Fi stack was in.
+const READING: &[u16] = &[22, 24, 26, 28, 31, 34];
 /// Reading sizes that get their own drop-cap strike; others use the nearest.
-pub const DROPCAP_SIZES: [u16; 4] = [20, 26, 31, 38];
+pub const DROPCAP_SIZES: [u16; 3] = [22, 26, 31];
 
 fn strikes() -> Vec<(Fam, Sty, u16, &'static str)> {
     let mut v = Vec::new();
     for &s in READING {
-        for sty in [Sty::Regular, Sty::Bold, Sty::Italic, Sty::BoldItalic] {
+        // Bold italic is set from the italic strike dilated by one pixel (see
+        // `quire_fonts::nearest`): it is rare in books and a strike per size cost 450 KB.
+        for sty in [Sty::Regular, Sty::Bold, Sty::Italic] {
             v.push((Fam::Literata, sty, s, "text"));
         }
     }
-    // Drop caps are large and rarely switched; four strikes cover the eight reading sizes.
+    // Drop caps are large and rarely switched; three strikes cover the six reading sizes.
     for s in DROPCAP_SIZES {
         v.push((Fam::Literata, Sty::Regular, s, "dropcap"));
     }

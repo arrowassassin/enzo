@@ -26,6 +26,8 @@ pub fn render_page(page: &Page, frame: &mut Frame, profile: &Profile, images: &d
     for item in &page.items {
         match item {
             DrawItem::Text { x, y, font, text, style: st } => {
+                let bold_italic = *st & (style::BOLD | style::ITALIC) == style::BOLD | style::ITALIC;
+                let ts = TextStyle { darker: ts.darker || bold_italic, ..ts };
                 let end = draw_text(frame, font, *x, *y, text, ts);
                 if st & style::UNDERLINE != 0 {
                     frame.hline(*x, *y + 3, (end - *x).max(0) as u32, 1, Ink::Black);

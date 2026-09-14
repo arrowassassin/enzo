@@ -16,7 +16,7 @@ authors = ["Quire contributors"]
 
 [workspace.dependencies]
 heapless = { version = "0.9", default-features = false }
-hypher = { version = "0.1", default-features = false, features = ["alloc", "english", "german", "french", "spanish", "italian", "dutch", "portuguese", "russian"] }
+hypher = { version = "0.1", default-features = false, features = ["alloc", "english", "german", "french", "spanish", "italian", "dutch", "portuguese"] }
 unicode-linebreak = "0.1"
 unicode-segmentation = "1.13"
 miniz_oxide = { version = "0.9", default-features = false, features = ["with-alloc"] }

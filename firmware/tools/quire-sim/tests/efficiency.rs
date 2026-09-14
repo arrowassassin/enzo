@@ -460,7 +460,7 @@ fn reader_method_costs() {
         let r = s_reader(&mut sim);
         (r.section, r.page, r.section_pages(r.section))
     };
-    sim.ui.settings.profile.size = 38;
+    sim.ui.settings.profile.size = 34;
     {
         let fs = sim.env.fs();
         let settings = &sim.ui.settings;
