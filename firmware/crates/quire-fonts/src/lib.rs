@@ -228,6 +228,15 @@ mod tests {
         assert!(a.bitmap.w > 5 && a.bitmap.h > 5 && a.advance() > 5);
         assert!(f.has('é') && f.has('—') && f.has('“') && f.has('€'));
         assert!(f.kern_q('A', 'V') < 0, "kerning present: {}", f.kern_q('A', 'V'));
+        // The hero and poster numerals set the quote sleep screen's opening mark.
+        assert!(ui::hero().has('“') && ui::hero().has('”') && ui::poster().has('“'));
+        // The mono face has the keyboard's delete glyph and a plain (undotted) zero: the
+        // pack bakes U+0030 from the 'O' outline, so the two bitmaps agree.
+        let m = ui::mono();
+        assert!(m.has('\u{232B}'));
+        let (zero, oh) = (m.glyph('0').unwrap(), m.glyph('O').unwrap());
+        assert_eq!(zero.advance_q, oh.advance_q);
+        assert_eq!(zero.bitmap.bits, oh.bitmap.bits);
     }
 
     /// Font strikes are the largest thing in the firmware image; keep them inside a budget

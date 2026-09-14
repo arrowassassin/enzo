@@ -6,33 +6,76 @@ use quire_gfx::{draw_text, measure_text, Font, Frame, TextStyle};
 
 use crate::theme::SMALLCAP_TRACKING;
 
-/// Greedy word wrap into lines that fit `width`.
+/// Advance of `s` in quarter pixels when it follows `prev` (kerning included), and its
+/// last character.
+fn advance_q(font: &Font, prev: Option<char>, s: &str) -> (i32, Option<char>) {
+    let mut q = 0i32;
+    let mut p = prev;
+    for c in s.chars() {
+        if let Some(p) = p {
+            q += font.kern_q(p, c);
+        }
+        q += font.glyph_or_fallback(c).advance_q as i32;
+        p = Some(c);
+    }
+    (q, p)
+}
+
+/// Whole pixels of a quarter-pixel advance, rounded as `measure_text` rounds.
+#[inline]
+fn px(q: i32) -> i32 {
+    (q + 2) >> 2
+}
+
+/// Greedy word wrap into lines that fit `width`. Measures incrementally (each glyph once)
+/// and allocates one String per output line; a word wider than the line is split by
+/// characters wherever it lands.
 pub fn wrap(font: &Font, text: &str, width: i32) -> Vec<String> {
     let mut lines = Vec::new();
     for para in text.split('\n') {
         let mut line = String::new();
+        let mut line_q = 0i32;
+        let mut last: Option<char> = None;
         for word in para.split_whitespace() {
-            let candidate = if line.is_empty() { String::from(word) } else { alloc::format!("{line} {word}") };
-            if measure_text(font, &candidate, TextStyle::INK) <= width || line.is_empty() {
-                line = candidate;
-                // A single word wider than the line: break it by characters.
-                while measure_text(font, &line, TextStyle::INK) > width && line.chars().count() > 1 {
-                    let mut cut = line.len();
-                    while cut > 0 {
-                        cut -= 1;
-                        if line.is_char_boundary(cut) && measure_text(font, &line[..cut], TextStyle::INK) <= width {
-                            break;
-                        }
-                    }
-                    if cut == 0 {
+            if !line.is_empty() {
+                let (space_q, after_space) = advance_q(font, last, " ");
+                let (word_q, word_last) = advance_q(font, after_space, word);
+                if px(line_q + space_q + word_q) <= width {
+                    line.push(' ');
+                    line.push_str(word);
+                    line_q += space_q + word_q;
+                    last = word_last;
+                    continue;
+                }
+                lines.push(core::mem::take(&mut line));
+            }
+            line.push_str(word);
+            let (q, l) = advance_q(font, None, word);
+            line_q = q;
+            last = l;
+            // A single word wider than the line: break it by characters, keeping the
+            // longest prefix that fits.
+            while px(line_q) > width && line.chars().count() > 1 {
+                let mut q = 0i32;
+                let mut prev: Option<char> = None;
+                let mut cut = 0usize;
+                for (i, c) in line.char_indices() {
+                    let (a, _) = advance_q(font, prev, c.encode_utf8(&mut [0; 4]));
+                    if px(q + a) > width {
                         break;
                     }
-                    lines.push(String::from(&line[..cut]));
-                    line = String::from(&line[cut..]);
+                    q += a;
+                    prev = Some(c);
+                    cut = i + c.len_utf8();
                 }
-            } else {
-                lines.push(core::mem::take(&mut line));
-                line = String::from(word);
+                if cut == 0 {
+                    break;
+                }
+                lines.push(String::from(&line[..cut]));
+                line = String::from(&line[cut..]);
+                let (rest_q, rest_last) = advance_q(font, None, &line);
+                line_q = rest_q;
+                last = rest_last;
             }
         }
         lines.push(line);
@@ -40,23 +83,26 @@ pub fn wrap(font: &Font, text: &str, width: i32) -> Vec<String> {
     lines
 }
 
-/// Truncate with an ellipsis so the text fits `width`.
+/// Truncate with an ellipsis so the text fits `width` (one pass over the glyphs).
 pub fn ellipsis(font: &Font, text: &str, width: i32) -> String {
     if measure_text(font, text, TextStyle::INK) <= width {
         return String::from(text);
     }
     let dots = "…";
     let dots_w = measure_text(font, dots, TextStyle::INK);
-    let mut out = String::new();
-    for c in text.chars() {
-        let mut t = out.clone();
-        t.push(c);
-        if measure_text(font, &t, TextStyle::INK) + dots_w > width {
+    let mut q = 0i32;
+    let mut prev: Option<char> = None;
+    let mut cut = 0usize;
+    for (i, c) in text.char_indices() {
+        let (a, _) = advance_q(font, prev, c.encode_utf8(&mut [0; 4]));
+        if px(q + a) + dots_w > width {
             break;
         }
-        out = t;
+        q += a;
+        prev = Some(c);
+        cut = i + c.len_utf8();
     }
-    let trimmed = out.trim_end();
+    let trimmed = text[..cut].trim_end();
     alloc::format!("{trimmed}{dots}")
 }
 
@@ -136,4 +182,39 @@ pub fn paginate(font: &Font, text: &str, width: i32, lines_per_page: usize) -> V
         return alloc::vec![Vec::new()];
     }
     lines.chunks(lines_per_page.max(1)).map(|c| c.to_vec()).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The incremental wrap and ellipsis agree with whole-string measurement.
+    #[test]
+    fn wrap_and_ellipsis_fit_their_width() {
+        let font = quire_fonts::ui::body();
+        let text = "Call me Ishmael. Some years ago—never mind how long precisely—having little or no money in my purse, \
+                    and nothing particular to interest me on shore, I thought I would sail about a little and see the \
+                    watery part of the world. Antidisestablishmentarianismxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx end.\nNext para";
+        for width in [80, 137, 200, 333] {
+            let lines = wrap(font, text, width);
+            assert!(lines.len() > 2);
+            for l in &lines {
+                let w = measure_text(font, l, TextStyle::INK);
+                assert!(w <= width || l.chars().count() == 1, "{l:?} is {w} px wide at {width}");
+            }
+            // Greedy: within a paragraph, adding the next line's first word would overflow.
+            let para: Vec<String> = wrap(font, text.split('\n').next().unwrap(), width);
+            for pair in para.windows(2) {
+                let first = pair[1].split_whitespace().next().unwrap_or("");
+                let joined = alloc::format!("{} {}", pair[0], first);
+                assert!(measure_text(font, &joined, TextStyle::INK) > width, "{joined:?} fits {width}");
+            }
+            let joined: Vec<String> = lines.iter().map(|l| l.replace(' ', "")).collect();
+            assert_eq!(joined.concat(), text.replace([' ', '\n'], ""), "no text lost at {width}");
+            let e = ellipsis(font, text, width);
+            assert!(measure_text(font, &e, TextStyle::INK) <= width, "{e:?} at {width}");
+            assert!(e.ends_with('…'));
+        }
+        assert_eq!(ellipsis(font, "short", 500), "short");
+    }
 }

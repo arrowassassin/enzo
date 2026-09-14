@@ -58,6 +58,16 @@ impl<E: Env> Screen<E> for DropScreen {
         let mut y = widgets::CONTENT_TOP;
         let wifi = cx.env.wifi();
         let free_ok = cx.env.device().card_free.map(|fr| fr > 4 * 1024 * 1024).unwrap_or(true);
+        if matches!(wifi, WifiState::Off | WifiState::Failed(_)) {
+            // Nothing can arrive yet: one empty state, and the rail carries the two fixes.
+            let hint = match &wifi {
+                WifiState::Failed(s) => alloc::format!("Couldn't join {s}. Check the password, or turn on the reader's own hotspot."),
+                _ => String::from("Join a network, or turn on the reader's own hotspot."),
+            };
+            widgets::empty_state(f, widgets::EMPTY_Y, "Not connected", &hint);
+            rail(f, ["", "Back", "Wi-Fi", "Hotspot"], None);
+            return Refresh::Gc;
+        }
         match &wifi {
             WifiState::Connected { .. } | WifiState::Hotspot { .. } => {
                 let url = drop_url(cx);
@@ -86,21 +96,7 @@ impl<E: Env> Screen<E> for DropScreen {
                 draw_text(f, fb, x, y + fb.ascent(), &alloc::format!("Joining {s}…"), TextStyle::INK);
                 y += line_h(fb) + 16;
             }
-            WifiState::Failed(s) => {
-                for l in crate::text::wrap(
-                    fb,
-                    &alloc::format!("Couldn't join {s}. Check the password, or start the hotspot with Right."),
-                    w - 2 * x,
-                ) {
-                    draw_text(f, fb, x, y + fb.ascent(), &l, TextStyle::INK);
-                    y += line_h(fb);
-                }
-                y += 16;
-            }
-            WifiState::Off => {
-                draw_text(f, fb, x, y + fb.ascent(), "Not connected. Turning Wi-Fi on…", TextStyle::INK);
-                y += line_h(fb) + 16;
-            }
+            WifiState::Failed(_) | WifiState::Off => {}
         }
         if !free_ok {
             f.fill_rect(Rect::new(x, y, (w - 2 * x) as u32, 2), Ink::Black);
@@ -145,10 +141,10 @@ impl<E: Env> Screen<E> for DropScreen {
         let line = match &wifi {
             WifiState::Connected { ssid, .. } => alloc::format!("Wi-Fi: {ssid} · {added} books added"),
             WifiState::Hotspot { ssid, .. } => alloc::format!("Hotspot: {ssid} · {added} books added"),
-            _ => String::from("Wi-Fi: off"),
+            _ => String::from("Joining…"),
         };
         draw_text(f, fl, x, foot, &ellipsis(fl, &line, w - 2 * x), TextStyle::INK);
-        widgets::side_labels(f, Some("Wi-Fi"), Some("Hotspot"), true);
+        // The rail already carries Wi-Fi and Hotspot: no side labels for the same actions.
         rail(f, ["", "Back", "Wi-Fi", "Hotspot"], None);
         Refresh::Gc
     }

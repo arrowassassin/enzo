@@ -136,7 +136,8 @@ impl<E: Env> Screen<E> for FirstRun {
                     "Drop: scan, then drag books onto the page.",
                     TextStyle::INK,
                 );
-                rail(f, ["Back", "Drop", "Bookshop", "Start reading"], None);
+                // "Start reading" does not fit a rail cell.
+                rail(f, ["Back", "Drop", "Bookshop", "Start"], None);
             }
         }
         Refresh::Gc

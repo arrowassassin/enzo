@@ -10,7 +10,7 @@ use quire_library::Status;
 use crate::spine;
 use crate::text::{centered_baseline, draw_centered, draw_label, ellipsis, line_h, wrap};
 use crate::theme::*;
-use crate::widgets::{self, rail, RowState, SIDE_DOWN_Y, SIDE_H, SIDE_UP_Y};
+use crate::widgets::{self, rail, RowState};
 use crate::{Action, Ctx, Env, Event, Key, KeyEvent, KeyKind, Refresh, Result_, Screen, SysRequest};
 
 use super::{finish_by_line, left_line};
@@ -169,10 +169,9 @@ impl<E: Env> Screen<E> for ReadingScreen {
     fn event(&mut self, cx: &mut Ctx<E>, ev: &Event) -> Action<E> {
         match ev {
             Event::Tick => {
-                // Idle work: pre-render the next page, then fill the page index.
+                // Idle work: fill the page index a step at a time.
                 let fs = cx.env.fs();
                 if let Some(r) = cx.reader.as_mut() {
-                    r.prerender(fs, cx.settings);
                     self.idle_ticks = self.idle_ticks.wrapping_add(1);
                     if self.idle_ticks.is_multiple_of(2) {
                         r.index_step(fs, cx.lib);
@@ -229,13 +228,13 @@ pub fn draw_compass(
     f.fill_rect(card, Ink::White);
     f.fill_rect(Rect::new(0, card.y, card.w, RULE), Ink::Black);
     let lf = quire_fonts::ui::label();
-    draw_text(f, lf, 28, card.y + 20 + lf.ascent(), &ellipsis(lf, context, card.w as i32 - 120), TextStyle::INK);
-    // Side choices.
+    draw_text(f, lf, widgets::INSET, card.y + 20 + lf.ascent(), &ellipsis(lf, context, card.w as i32 - 120), TextStyle::INK);
+    // Side choices: the same widget as every other side label.
     draw_side_choices(f, up, down);
-    // Hold hint centred in the free space.
+    // Hold hint centred on the page in the free space (the side labels sit at x ≥ 493).
     let hint_y = (card.y + 20 + line_h(lf) + (card.bottom() - 104)) / 2;
-    let hint = ellipsis(lf, hold_hint, card.w as i32 - 88);
-    draw_centered(f, lf, (card.w as i32 - 48) / 2, hint_y + lf.ascent() / 2, &hint, TextStyle::INK);
+    let hint = ellipsis(lf, hold_hint, card.w as i32 - 96);
+    draw_centered(f, lf, card.w as i32 / 2, hint_y + lf.ascent() / 2, &hint, TextStyle::INK);
     // Choice cells: 104 px tall above the bottom edge.
     let cy = card.bottom() - 104;
     f.fill_rect(Rect::new(0, cy, card.w, RULE_HEAVY), Ink::Black);
@@ -263,31 +262,10 @@ pub fn draw_compass(
     }
 }
 
-/// The two rotated side choices (Up above Down), body text reading upwards with a tick at
-/// the edge, spaced so they never run into each other or the choice cells.
+/// The two side choices (Up above Down): thin wrappers over the rail's side-label widget,
+/// so the compass and the power menu label the side keys exactly like every list does.
 fn draw_side_choices(f: &mut Frame, up: &str, down: &str) {
-    let font = quire_fonts::ui::body();
-    let th = line_h(font) + 2;
-    let w = f.width() as i32;
-    let x = w - 12 - th;
-    let floor = f.height() as i32 - 104 - RULE_HEAVY as i32 - 6;
-    let mut next_top = floor;
-    for (label, y) in [(down, SIDE_DOWN_Y), (up, SIDE_UP_Y)] {
-        if label.is_empty() {
-            continue;
-        }
-        let tw = quire_gfx::measure_text(font, label, TextStyle::INK) + 8;
-        let mut tmp = Frame::new(tw as u32, th as u32);
-        draw_text(&mut tmp, font, 4, 1 + font.ascent(), label, TextStyle::INK);
-        let rot = tmp.rotated(quire_gfx::Rotation::Ccw90);
-        let centre = y + SIDE_H / 2;
-        let top = (centre - tw / 2).min(next_top - tw).max(0);
-        let r = Rect::new(x, top, th as u32, tw as u32);
-        f.fill_rect(r, Ink::White);
-        f.blit(x, top, rot.as_bitmap(), quire_gfx::BlitMode::Or);
-        f.fill_rect(Rect::new(w - 4, centre - 12, 2, 24), Ink::Black);
-        next_top = top - 12;
-    }
+    widgets::side_labels(f, (!up.is_empty()).then_some(up), (!down.is_empty()).then_some(down), false);
 }
 
 impl<E: Env> Screen<E> for Compass {
@@ -332,7 +310,7 @@ impl<E: Env> Screen<E> for Compass {
             let today_secs = cx.stats.totals(quire_library::stats::Range::Today, quire_library::time::day_of(cx.env.now())).secs
                 + reader.session_secs(cx.env.now());
             let hl_text = alloc::format!("{hl} in book");
-            let stats_text = fmt_duration(today_secs);
+            let stats_text = alloc::format!("{} today", fmt_duration(today_secs));
             draw_compass(
                 f,
                 &context,
@@ -497,9 +475,10 @@ impl<E: Env> Screen<E> for HomeLayer {
                 f.fill_rect(Rect::new(x, y, w as u32, 48), Ink::Black);
             }
             let style = TextStyle { inverted: inv, ..TextStyle::INK };
-            let vw = quire_gfx::measure_text(fl, v, style);
-            draw_text(f, fb, x + 4, centered_baseline(fb, y, 48), &ellipsis(fb, t, w - vw - 24), style);
-            draw_text(f, fl, x + w - vw - 4, centered_baseline(fl, y, 48), v, style);
+            let fm = quire_fonts::ui::mono();
+            let vw = quire_gfx::measure_text(fm, v, style);
+            draw_text(f, fb, x, centered_baseline(fb, y, 48), &ellipsis(fb, t, w - vw - 24), style);
+            draw_text(f, fm, x + w - vw, centered_baseline(fm, y, 48), v, style);
             y += 48;
             if y + 48 > card.bottom() - 8 {
                 break;
@@ -587,16 +566,17 @@ impl<E: Env> Screen<E> for FootnoteCard {
         f.fill_rect(Rect::new(0, top, card.w, RULE), Ink::Black);
         let fl = quire_fonts::ui::label();
         let fb = quire_fonts::ui::body();
-        draw_label(f, 28, top + 20 + fl.ascent(), &alloc::format!("Footnote {}", self.label), false);
-        let lines = wrap(fb, &self.text, f.width() as i32 - 56);
+        let x = widgets::INSET;
+        draw_label(f, x, top + 20 + fl.ascent(), &alloc::format!("Footnote {}", self.label), false);
+        let lines = wrap(fb, &self.text, f.width() as i32 - 2 * x);
         let per = ((card.h as i32 - 60 - RAIL_H) / line_h(fb)).max(1) as usize;
         let mut y = top + 20 + line_h(fl) + 10;
         for l in lines.iter().skip(self.page * per).take(per) {
-            draw_text(f, fb, 28, y + fb.ascent(), l, TextStyle::INK);
+            draw_text(f, fb, x, y + fb.ascent(), l, TextStyle::INK);
             y += line_h(fb);
         }
         let more = lines.len() > (self.page + 1) * per;
-        rail(f, ["", "Back to text", "Open note", if more { "More" } else { "" }], None);
+        rail(f, ["", "Back", "Open note", if more { "More" } else { "" }], None);
         Refresh::Gc
     }
     fn key(&mut self, cx: &mut Ctx<E>, ev: KeyEvent) -> Action<E> {

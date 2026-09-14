@@ -78,7 +78,7 @@ pub fn all_rows<E: Env>(cx: &mut Ctx<E>) -> Vec<JumpRow> {
         JumpRow { title: "Year in review".into(), value: String::new(), target: Target::Screen("61-yearinreview"), group: 1 },
         JumpRow {
             title: "Battery".into(),
-            value: alloc::format!("{}%", cx.env.battery().percent),
+            value: cx.env.battery().days_left.map(|d| alloc::format!("{d} days")).unwrap_or_else(|| "—".into()),
             target: Target::Screen("50-battery"),
             group: 1
         },
@@ -178,7 +178,13 @@ impl Jump {
     }
     fn filtered(&self) -> Vec<usize> {
         let q = self.query.to_lowercase();
-        self.rows.iter().enumerate().filter(|(_, r)| q.is_empty() || r.title.to_lowercase().contains(&q)).map(|(i, _)| i).collect()
+        let mut hits: Vec<usize> =
+            self.rows.iter().enumerate().filter(|(_, r)| q.is_empty() || r.title.to_lowercase().contains(&q)).map(|(i, _)| i).collect();
+        if !q.is_empty() {
+            // Word-prefix matches ("we" → Weather) come before matches inside a word (Minesweeper).
+            hits.sort_by_key(|&i| (!self.rows[i].title.to_lowercase().split_whitespace().any(|w| w.starts_with(&q)), i));
+        }
+        hits
     }
 }
 
@@ -293,29 +299,36 @@ pub fn draw_empty_home<E: Env>(cx: &mut Ctx<E>, f: &mut Frame) {
     let ft = quire_fonts::ui::title();
     let fb = quire_fonts::ui::body();
     let fl = quire_fonts::ui::label();
+    let x = widgets::INSET;
+    let cw = w - 2 * x;
+    let fm = quire_fonts::ui::mono();
     let mut y = 40;
-    draw_text(f, ft, 32, y + ft.ascent(), "Nothing open yet", TextStyle::INK);
+    draw_text(f, ft, x, y + ft.ascent(), "Nothing open yet", TextStyle::INK);
     y += ft.ascent() + ft.below() + 8;
-    draw_text(f, fb, 32, y + fb.ascent(), &ellipsis(fb, "Three good places to start, free from the Bookshop.", w - 64), TextStyle::INK);
-    y += line_h(fb) + 24;
-    draw_label(f, 32, y + fl.ascent(), "Start here", false);
+    for l in crate::text::wrap(fb, "Three good places to start, free from the Bookshop.", cw) {
+        draw_text(f, fb, x, y + fb.ascent(), &l, TextStyle::INK);
+        y += line_h(fb);
+    }
+    y += 24;
+    draw_label(f, x, y + fl.ascent(), "Start here", false);
     y += line_h(fl) + 8;
+    // Title and author on the margin, the hours in mono against the rule's end.
     for (t, a, v) in super::bookshop::START_HERE.iter().take(3) {
-        f.fill_rect(Rect::new(32, y, (w - 64) as u32, 1), Ink::Black);
-        draw_text(f, fb, 36, y + 12 + fb.ascent(), &ellipsis(fb, t, w - 200), TextStyle::INK);
-        let vw = quire_gfx::measure_text(fl, v, TextStyle::INK);
-        draw_text(f, fl, w - 36 - vw, y + 12 + fb.ascent(), v, TextStyle::INK);
-        draw_text(f, fl, 36, y + 12 + line_h(fb) + fl.ascent(), &ellipsis(fl, a, w - 100), TextStyle::INK);
+        f.fill_rect(Rect::new(x, y, cw as u32, 1), Ink::Black);
+        let vw = quire_gfx::measure_text(fm, v, TextStyle::INK);
+        draw_text(f, fb, x, y + 12 + fb.ascent(), &ellipsis(fb, t, cw - vw - 24), TextStyle::INK);
+        draw_text(f, fm, w - x - vw, y + 12 + fb.ascent(), v, TextStyle::INK);
+        draw_text(f, fl, x, y + 12 + line_h(fb) + fl.ascent(), &ellipsis(fl, a, cw - vw - 24), TextStyle::INK);
         y += 12 + line_h(fb) + line_h(fl) + 12;
     }
-    f.fill_rect(Rect::new(32, y, (w - 64) as u32, 1), Ink::Black);
+    f.fill_rect(Rect::new(x, y, cw as u32, 1), Ink::Black);
     y += 28;
-    draw_label(f, 32, y + fl.ascent(), "Or drop your own", false);
+    draw_label(f, x, y + fl.ascent(), "Or drop your own", false);
     y += line_h(fl) + 8;
     let url = super::drop::drop_url(cx);
     let qr = crate::qr::size(&url, 4).unwrap_or(0);
-    crate::qr::draw(f, &url, 32, y, 4);
-    draw_text(f, quire_fonts::ui::list_title(), 32 + qr + 12, y + 30, &url.replace("http://", ""), TextStyle::INK);
-    draw_text(f, fl, 32 + qr + 12, y + 30 + line_h(fl) + 6, "Scan, then drag books onto the page.", TextStyle::INK);
+    crate::qr::draw(f, &url, x, y, 4);
+    draw_text(f, quire_fonts::ui::list_title(), x + qr + 12, y + 30, &url.replace("http://", ""), TextStyle::INK);
+    draw_text(f, fl, x + qr + 12, y + 30 + line_h(fl) + 6, "Scan, then drag books onto the page.", TextStyle::INK);
     rail(f, ["Library", "Close", "Get", "Bookshop"], None);
 }

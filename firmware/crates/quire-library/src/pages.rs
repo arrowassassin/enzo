@@ -62,16 +62,69 @@ pub fn save<F: Fs>(fs: &F, book: &Book, key: u32, section: u16, starts: &[Pos]) 
     Ok(())
 }
 
-/// Get the page starts for a section, building and caching them when missing.
+/// Get the page starts for a section, building and caching them when missing. Re-reads
+/// the count table to record a fresh build; callers holding the table use
+/// [`get_or_build_counted`].
 pub fn get_or_build<F: Fs>(fs: &F, book: &Book, key: u32, section: u16, data: &[u8], profile: Profile, geom: Geometry) -> Vec<Pos> {
+    let mut c = counts(fs, book, key);
+    get_or_build_counted(fs, book, key, section, data, profile, geom, &mut c)
+}
+
+/// [`get_or_build`] with the caller's copy of the count table (`u16::MAX` = unknown): a
+/// fresh build updates the slot and writes the table only when it changed, so a section
+/// boundary costs no extra card read.
+#[allow(clippy::too_many_arguments)]
+pub fn get_or_build_counted<F: Fs>(
+    fs: &F,
+    book: &Book,
+    key: u32,
+    section: u16,
+    data: &[u8],
+    profile: Profile,
+    geom: Geometry,
+    counts: &mut [u16],
+) -> Vec<Pos> {
     if let Some(s) = load(fs, book, key, section) {
+        record_count_in(fs, book, key, section, clamp_count(s.len()), counts);
         return s;
     }
     let starts = quire_layout::build_index(data, profile, geom);
     let starts = if starts.is_empty() { alloc::vec![Pos::START] } else { starts };
     let _ = save(fs, book, key, section, &starts);
-    record_count(fs, book, key, section, starts.len().min(u16::MAX as usize - 1) as u16);
+    record_count_in(fs, book, key, section, clamp_count(starts.len()), counts);
     starts
+}
+
+/// Like [`get_or_build_counted`], but the index must have a page starting at `pin` (the
+/// reader's position when the typography changed, so the new page begins on the same
+/// word): a cached index without it is rebuilt with the boundary kept.
+#[allow(clippy::too_many_arguments)]
+pub fn get_or_build_pinned<F: Fs>(
+    fs: &F,
+    book: &Book,
+    key: u32,
+    section: u16,
+    data: &[u8],
+    profile: Profile,
+    geom: Geometry,
+    counts: &mut [u16],
+    pin: Pos,
+) -> Vec<Pos> {
+    if let Some(s) = load(fs, book, key, section) {
+        if s.contains(&pin) {
+            record_count_in(fs, book, key, section, clamp_count(s.len()), counts);
+            return s;
+        }
+    }
+    let starts = quire_layout::page::build_index_pinned(data, profile, geom, pin);
+    let starts = if starts.is_empty() { alloc::vec![Pos::START] } else { starts };
+    let _ = save(fs, book, key, section, &starts);
+    record_count_in(fs, book, key, section, clamp_count(starts.len()), counts);
+    starts
+}
+
+fn clamp_count(n: usize) -> u16 {
+    n.min(u16::MAX as usize - 1) as u16
 }
 
 /// Path of the per-profile page-count table.
@@ -106,13 +159,18 @@ fn write_counts<F: Fs>(fs: &F, book: &Book, key: u32, counts: &[u16]) {
     }
 }
 
-/// Record a section's page count in the table.
+/// Record a section's page count in the table (re-reads the table first).
 pub fn record_count<F: Fs>(fs: &F, book: &Book, key: u32, section: u16, pages: u16) {
     let mut c = counts(fs, book, key);
-    if let Some(slot) = c.get_mut(section as usize) {
+    record_count_in(fs, book, key, section, pages, &mut c);
+}
+
+/// Record a section's page count in the caller's table, writing it out only if it changed.
+pub fn record_count_in<F: Fs>(fs: &F, book: &Book, key: u32, section: u16, pages: u16, counts: &mut [u16]) {
+    if let Some(slot) = counts.get_mut(section as usize) {
         if *slot != pages {
             *slot = pages;
-            write_counts(fs, book, key, &c);
+            write_counts(fs, book, key, counts);
         }
     }
 }
@@ -125,16 +183,32 @@ pub fn missing<F: Fs>(fs: &F, book: &Book, key: u32) -> Vec<u16> {
 /// Build the index of the first section listed in `todo` (an idle-time step). Returns the
 /// section built, or None when the list is empty. Callers keep `todo` from [`missing`].
 pub fn build_next<F: Fs>(fs: &F, book: &Book, key: u32, profile: Profile, geom: Geometry, todo: &mut Vec<u16>) -> Option<u16> {
+    let mut c = counts(fs, book, key);
+    build_next_counted(fs, book, key, profile, geom, todo, &mut c)
+}
+
+/// [`build_next`] with the caller's copy of the count table (updated in place, written
+/// only when it changed).
+pub fn build_next_counted<F: Fs>(
+    fs: &F,
+    book: &Book,
+    key: u32,
+    profile: Profile,
+    geom: Geometry,
+    todo: &mut Vec<u16>,
+    counts: &mut [u16],
+) -> Option<u16> {
     let section = todo.first().copied()?;
     todo.remove(0);
-    let starts = match book.section(fs, section) {
-        Ok(data) => get_or_build(fs, book, key, section, &data, profile, geom),
+    match book.section(fs, section) {
+        Ok(data) => {
+            get_or_build_counted(fs, book, key, section, &data, profile, geom, counts);
+        }
         Err(_) => {
             let _ = save(fs, book, key, section, &[Pos::START]);
-            alloc::vec![Pos::START]
+            record_count_in(fs, book, key, section, 1, counts);
         }
-    };
-    record_count(fs, book, key, section, starts.len().min(u16::MAX as usize - 1) as u16);
+    }
     Some(section)
 }
 

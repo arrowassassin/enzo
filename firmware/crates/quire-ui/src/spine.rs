@@ -57,7 +57,8 @@ pub fn draw_skim_label(f: &mut Frame, r: Rect, m: &SpineModel, line1: &str, line
     let w = measure_text(font, line1, TextStyle::INK).max(measure_text(font, line2, TextStyle::INK)) + 20;
     let h = 2 * crate::text::line_h(font) + 12;
     let by = r.y + ((m.current as u64 * (r.h as u64 - 2)) / (m.total as u64 - 1).max(1)) as i32;
-    let y = (by - h / 2).clamp(r.y, r.bottom() - h);
+    // Keep a breath of air under the running head above the strip.
+    let y = (by - h / 2).clamp(r.y + 8, r.bottom() - h);
     let x = r.x - 12 - w;
     let card = Rect::new(x, y, w as u32, h as u32);
     f.fill_rect(card, Ink::White);

@@ -1,5 +1,9 @@
 //! The open book: sections, page indexes, rendering, position, session tracking.
 //! Everything the reading page, compass, contents, go-to, skim and sleep screens need.
+//!
+//! The reader keeps one section of text (10–40 KB), its page starts, the laid-out current
+//! page (~5 KB) and the current page's location and facts. It never holds a frame: the
+//! `Ui` owns the only frame, and overlays draw over the page already in it.
 
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -27,14 +31,18 @@ pub struct Reader {
     pub profile: Profile,
     geom: Geometry,
     key: u32,
-    /// Current section index.
+    /// Current section index (read-only outside the reader: use `goto`).
     pub section: u16,
     data: Vec<u8>,
     starts: Vec<Pos>,
-    /// Current page within the section.
+    /// Current page within the section (read-only outside the reader: use `goto`).
     pub page: usize,
-    /// Pages per section, once known.
-    counts: Vec<Option<u16>>,
+    /// Pages per section for this profile (`u16::MAX` = not built yet).
+    counts: Vec<u16>,
+    /// Bumped whenever a page count changes (the Spine drawn on the page depends on it).
+    counts_gen: u16,
+    /// Whether the book's page total has been recorded in the library for this profile.
+    total_recorded: bool,
     images: ImageStore,
     /// Marks.
     pub marks: Marks,
@@ -46,11 +54,19 @@ pub struct Reader {
     /// Frame dimensions.
     w: u32,
     h: u32,
-    /// Pre-rendered next page, when idle time allowed it.
-    next_frame: Option<(u16, usize, Frame)>,
+    /// The current page, laid out on demand.
     cached_page: Option<Page>,
-    /// The current page as last rendered (overlays redraw over it without relayout).
-    frame_cache: Option<(u16, usize, Frame)>,
+    /// Location of the current page (computed once per page change).
+    cur: Loc,
+    /// The position the reader navigated to last; a typography change keeps the page
+    /// starting there (and does not move it), so repeated changes do not drift.
+    anchor: Loc,
+    /// Facts about the current page (computed once per page change).
+    info: PageInfo,
+    /// TOC entry of the current page.
+    toc_idx: Option<usize>,
+    /// The next section's text and page starts, loaded in idle time near the boundary.
+    next: Option<(u16, Vec<u8>, Vec<Pos>)>,
     /// Sections whose page index is still to build for this profile.
     todo: Vec<u16>,
     /// Where to return after following a note or link (Back pops it).
@@ -72,6 +88,19 @@ pub struct PageInfo {
     pub chapter_start: bool,
 }
 
+/// Everything that determines what `Reader::render` paints: two equal keys mean the same
+/// pixels, so a frame already holding the page can be drawn over instead of re-rendered.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RenderKey {
+    section: u16,
+    page: u32,
+    key: u32,
+    w: u32,
+    h: u32,
+    counts_gen: u16,
+    flags: u8,
+}
+
 impl Reader {
     /// Open a book from the library at its saved position.
     pub fn open<F: Fs>(fs: &F, lib: &Library, settings: &Settings, id: BookId, now: u32) -> Result<Reader, quire_library::LibError> {
@@ -84,7 +113,6 @@ impl Reader {
         let marks = Marks::load(fs, &book.dir);
         let loc = entry.loc;
         let mut r = Reader {
-            counts: alloc::vec![None; book.sections.len()],
             book,
             id,
             profile,
@@ -94,6 +122,9 @@ impl Reader {
             data: Vec::new(),
             starts: Vec::new(),
             page: 0,
+            counts: Vec::new(),
+            counts_gen: 0,
+            total_recorded: false,
             images: ImageStore::new(),
             marks,
             tracker: SessionTracker::start(id, now, loc.chars, false),
@@ -102,9 +133,12 @@ impl Reader {
             show_head: settings.running_head,
             w,
             h,
-            next_frame: None,
             cached_page: None,
-            frame_cache: None,
+            cur: Loc::default(),
+            anchor: Loc::default(),
+            info: PageInfo::default(),
+            toc_idx: None,
+            next: None,
             todo: Vec::new(),
             returns: Vec::new(),
         };
@@ -114,13 +148,10 @@ impl Reader {
     }
 
     fn load_counts<F: Fs>(&mut self, fs: &F) {
-        let c = pages::counts(fs, &self.book, self.key);
-        self.todo = c.iter().enumerate().filter(|(_, n)| **n == u16::MAX).map(|(i, _)| i as u16).collect();
-        for (i, n) in c.into_iter().enumerate() {
-            if let Some(slot) = self.counts.get_mut(i) {
-                *slot = (n != u16::MAX).then_some(n);
-            }
-        }
+        self.counts = pages::counts(fs, &self.book, self.key);
+        self.todo = self.counts.iter().enumerate().filter(|(_, n)| **n == u16::MAX).map(|(i, _)| i as u16).collect();
+        self.counts_gen = self.counts_gen.wrapping_add(1);
+        self.total_recorded = false;
     }
 
     /// The text geometry for a profile on a frame, leaving room for the Spine and head.
@@ -142,9 +173,10 @@ impl Reader {
         g
     }
 
-    /// Apply new typography (font size etc.): relayout the current section, keep the position.
+    /// Apply new typography (font size etc.): rebuild the current section's page index for
+    /// the new profile and keep the position.
     pub fn set_profile<F: Fs>(&mut self, fs: &F, settings: &Settings) {
-        let chars = self.chars_now();
+        let chars = self.cur.chars;
         self.profile = settings.profile;
         self.show_spine = settings.spine;
         self.show_head = settings.running_head;
@@ -152,15 +184,34 @@ impl Reader {
         let old_key = self.key;
         self.key = pages::profile_key(&self.profile, &self.geom);
         if old_key != self.key {
-            self.counts = alloc::vec![None; self.book.sections.len()];
             self.load_counts(fs);
             pages::purge_except(fs, &self.book, &[self.key, old_key]);
         }
-        self.next_frame = None;
+        self.next = None;
         self.cached_page = None;
-        self.frame_cache = None;
-        let loc = self.book.loc_at_chars(fs, chars).unwrap_or_default();
-        self.goto(fs, loc);
+        // The section text is already in RAM: the new page begins at the anchor (the
+        // position last navigated to), which the rebuilt index keeps as a page boundary.
+        let anchor = self.anchor;
+        let pos = if anchor.section == self.section {
+            anchor.pos
+        } else {
+            let within = chars.saturating_sub(self.book.chars_before_section(self.section));
+            if self.data.is_empty() {
+                Pos::START
+            } else {
+                quire_layout::pos_at_chars(&self.data, within)
+            }
+        };
+        self.starts = if self.book.section_count() == 0 {
+            alloc::vec![Pos::START]
+        } else {
+            pages::get_or_build_pinned(fs, &self.book, self.key, self.section, &self.data, self.profile, self.geom, &mut self.counts, pos)
+        };
+        self.todo.retain(|s| *s != self.section);
+        self.counts_gen = self.counts_gen.wrapping_add(1);
+        self.page = pages::page_of(&self.starts, pos);
+        self.sync();
+        self.anchor = anchor;
     }
 
     /// Set the frame size (orientation change).
@@ -176,20 +227,51 @@ impl Reader {
             return;
         }
         self.section = section;
-        self.data = self.book.section(fs, section).unwrap_or_default();
-        self.starts = pages::get_or_build(fs, &self.book, self.key, section, &self.data, self.profile, self.geom);
-        self.counts[section as usize] = Some(self.starts.len() as u16);
+        match self.next.take() {
+            Some((s, data, starts)) if s == section => {
+                self.data = data;
+                self.starts = starts;
+            }
+            _ => {
+                self.data = self.book.section(fs, section).unwrap_or_default();
+                self.starts =
+                    pages::get_or_build_counted(fs, &self.book, self.key, section, &self.data, self.profile, self.geom, &mut self.counts);
+                self.counts_gen = self.counts_gen.wrapping_add(1);
+            }
+        }
         self.todo.retain(|s| *s != section);
         self.cached_page = None;
-        self.next_frame = None;
-        self.frame_cache = None;
+    }
+
+    /// Recompute the cached location and page facts after the section or page changed.
+    fn sync(&mut self) {
+        self.cached_page = None;
+        let pos = self.starts.get(self.page).copied().unwrap_or(Pos::START);
+        let chars = self.book.chars_at(self.section, &self.data, pos);
+        self.cur = Loc { section: self.section, pos, chars };
+        self.toc_idx = self.book.toc_index_at_chars(chars);
+        let chapter = self
+            .toc_idx
+            .and_then(|i| self.book.toc.get(i))
+            .map(|e| e.title.clone())
+            .or_else(|| self.book.section_title(self.section).map(String::from))
+            .unwrap_or_default();
+        let total = self.book.total_chars().max(1);
+        self.info = PageInfo {
+            chapter,
+            chars,
+            permille: ((chars as u64 * 1000) / total as u64).min(1000) as u32,
+            last: self.at_end(),
+            chapter_start: self.page == 0 && self.book.sections.get(self.section as usize).map(|s| s.part == 0).unwrap_or(false),
+        };
     }
 
     /// Go to a location.
     pub fn goto<F: Fs>(&mut self, fs: &F, loc: Loc) {
         self.load_section(fs, loc.section);
         self.page = pages::page_of(&self.starts, loc.pos);
-        self.cached_page = None;
+        self.sync();
+        self.anchor = self.cur;
     }
 
     /// Go to a global character offset.
@@ -206,13 +288,12 @@ impl Reader {
 
     /// The current location.
     pub fn loc(&self) -> Loc {
-        let pos = self.starts.get(self.page).copied().unwrap_or(Pos::START);
-        Loc { section: self.section, pos, chars: self.book.chars_at(self.section, &self.data, pos) }
+        self.cur
     }
 
     /// Global characters at the current page.
     pub fn chars_now(&self) -> u32 {
-        self.loc().chars
+        self.cur.chars
     }
 
     /// Whether at the last page of the book.
@@ -292,11 +373,10 @@ impl Reader {
     }
 
     fn turned(&mut self, now: u32) {
-        self.cached_page = None;
-        self.frame_cache = None;
+        self.sync();
+        self.anchor = self.cur;
         self.turns_since_gc = self.turns_since_gc.saturating_add(1);
-        let chars = self.chars_now();
-        self.tracker.page(now, chars);
+        self.tracker.page(now, self.cur.chars);
     }
 
     /// Whether the next draw should be a full refresh (every N turns, or an image page).
@@ -313,67 +393,59 @@ impl Reader {
         self.turns_since_gc = u8::MAX;
     }
 
-    /// Lay out the current page.
-    pub fn page(&mut self) -> Option<Page> {
-        if let Some(p) = &self.cached_page {
-            return Some(p.clone());
+    /// Lay out the current page (cached until the page changes).
+    pub fn page(&mut self) -> Option<&Page> {
+        if self.cached_page.is_none() {
+            let start = *self.starts.get(self.page)?;
+            let page = Paginator::new(&self.data, self.profile, self.geom).page_from(start)?;
+            self.cached_page = Some(page);
         }
-        let start = *self.starts.get(self.page)?;
-        let pg = Paginator::new(&self.data, self.profile, self.geom);
-        let page = pg.page_from(start)?;
-        self.cached_page = Some(page.clone());
-        Some(page)
+        self.cached_page.as_ref()
     }
 
     /// Facts about the current page.
     pub fn info(&mut self) -> PageInfo {
-        let chars = self.chars_now();
-        let total = self.book.total_chars().max(1);
-        let title = self.chapter_title();
-        PageInfo {
-            chapter: title,
-            chars,
-            permille: ((chars as u64 * 1000) / total as u64).min(1000) as u32,
-            last: self.at_end(),
-            chapter_start: self.page == 0 && self.book.sections.get(self.section as usize).map(|s| s.part == 0).unwrap_or(false),
-        }
+        self.info.clone()
     }
 
     /// The chapter title for the running head (TOC entry, else the section's title).
     pub fn chapter_title(&self) -> String {
-        let loc = self.loc();
-        if let Some(i) = self.book.toc_index_at(&loc) {
-            if let Some(e) = self.book.toc.get(i) {
-                return e.title.clone();
-            }
-        }
-        self.book.section_title(self.section).map(String::from).unwrap_or_default()
+        self.info.chapter.clone()
     }
 
-    /// Chapter number (1-based position among TOC entries of the same depth), if any.
+    /// The chapter number as printed in the TOC title ("Chapter 12", "XII. …", "3 The
+    /// Whale"), else the 1-based position among TOC entries of the same depth.
     pub fn chapter_number(&self) -> Option<u32> {
-        let loc = self.loc();
-        let i = self.book.toc_index_at(&loc)?;
-        let depth = self.book.toc.get(i)?.depth;
+        let i = self.toc_idx?;
+        let entry = self.book.toc.get(i)?;
+        if let Some(n) = parse_chapter_number(&entry.title) {
+            return Some(n);
+        }
+        let depth = entry.depth;
         Some(self.book.toc.iter().take(i + 1).filter(|e| e.depth == depth).count() as u32)
     }
 
     /// The TOC index of the current chapter, if any.
     pub fn toc_index(&self) -> Option<usize> {
-        self.book.toc_index_at(&self.loc())
+        self.toc_idx
     }
 
-    /// Number of chapters at the top level.
+    /// Number of chapters at the current chapter's depth (the top level when outside any).
     pub fn chapter_count(&self) -> u32 {
-        let d = self.book.toc.iter().map(|e| e.depth).min().unwrap_or(0);
-        self.book.toc.iter().filter(|e| e.depth == d).count() as u32
+        let depth = self
+            .toc_idx
+            .and_then(|i| self.book.toc.get(i))
+            .map(|e| e.depth)
+            .or_else(|| self.book.toc.iter().map(|e| e.depth).min())
+            .unwrap_or(0);
+        self.book.toc.iter().filter(|e| e.depth == depth).count() as u32
     }
 
     /// Pages in a section (known or estimated).
     pub fn section_pages(&self, s: u16) -> u32 {
-        match self.counts.get(s as usize).copied().flatten() {
-            Some(n) => n as u32,
-            None => (self.book.sections.get(s as usize).map(|x| x.chars).unwrap_or(0) / CHARS_PER_PAGE_DEFAULT).max(1),
+        match self.counts.get(s as usize) {
+            Some(&n) if n != u16::MAX => n as u32,
+            _ => (self.book.sections.get(s as usize).map(|x| x.chars).unwrap_or(0) / CHARS_PER_PAGE_DEFAULT).max(1),
         }
     }
 
@@ -389,23 +461,50 @@ impl Reader {
 
     /// Whether every section's page count is known.
     pub fn index_complete(&self) -> bool {
-        self.counts.iter().all(|c| c.is_some())
+        !self.counts.contains(&u16::MAX)
     }
 
-    /// Build one more section index in idle time; false when done. When the index
-    /// completes, the book's page total is recorded in the library entry.
+    /// Idle work: first prefetch the next section when the reader is within two pages of
+    /// the boundary (so the turn across it touches no card), else build one more section
+    /// index. False when there is nothing left to do. When the index completes, the book's
+    /// page total is recorded in the library entry.
     pub fn index_step<F: Fs>(&mut self, fs: &F, lib: &mut Library) -> bool {
-        let Some(section) = pages::build_next(fs, &self.book, self.key, self.profile, self.geom, &mut self.todo) else {
-            return false;
-        };
-        let n = pages::counts(fs, &self.book, self.key).get(section as usize).copied().unwrap_or(u16::MAX);
-        if n != u16::MAX {
-            self.counts[section as usize] = Some(n);
+        let did = self.prefetch_next(fs)
+            || pages::build_next_counted(fs, &self.book, self.key, self.profile, self.geom, &mut self.todo, &mut self.counts).is_some();
+        if did {
+            self.counts_gen = self.counts_gen.wrapping_add(1);
         }
-        if self.index_complete() {
+        if !self.total_recorded && self.index_complete() {
+            self.total_recorded = true;
             lib.set_pages_total(self.id, self.key, self.total_pages());
         }
+        did
+    }
+
+    /// Load the next section's text and page starts ahead of time when the reader is near
+    /// the end of this one; drops them again once the reader moves away. Returns whether
+    /// anything was loaded.
+    pub fn prefetch_next<F: Fs>(&mut self, fs: &F) -> bool {
+        let ns = self.section + 1;
+        let near = self.page + 2 >= self.starts.len();
+        if !near || ns >= self.book.section_count() {
+            self.next = None;
+            return false;
+        }
+        if self.next.as_ref().is_some_and(|(s, _, _)| *s == ns) {
+            return false;
+        }
+        let data = self.book.section(fs, ns).unwrap_or_default();
+        let starts = pages::get_or_build_counted(fs, &self.book, self.key, ns, &data, self.profile, self.geom, &mut self.counts);
+        self.todo.retain(|s| *s != ns);
+        self.next = Some((ns, data, starts));
         true
+    }
+
+    /// Idle hook kept for platforms that called the old frame pre-render: it now prefetches
+    /// the next section (see [`Reader::prefetch_next`]); no frame is rendered.
+    pub fn prerender<F: Fs>(&mut self, fs: &F, _settings: &Settings) {
+        self.prefetch_next(fs);
     }
 
     /// The Spine model for the current position.
@@ -437,53 +536,46 @@ impl Reader {
 
     /// Characters left in the chapter (TOC chapter when there is one).
     pub fn chars_left_in_chapter(&self) -> u32 {
-        let chars = self.chars_now();
+        let chars = self.cur.chars;
         let (_, to, _) = self.book.chapter_bounds(chars);
         to.saturating_sub(chars)
     }
 
-    /// Render the current page into a frame (text block, Spine, running head). The result is
-    /// cached so overlays can redraw the page without relayout.
-    pub fn render<F: Fs>(&mut self, fs: &F, f: &mut Frame, settings: &Settings) -> Option<PageInfo> {
-        if let Some((s, p, cached)) = &self.frame_cache {
-            if *s == self.section && *p == self.page && cached.width() == f.width() && cached.height() == f.height() {
-                f.copy_rect_from(cached, cached.bounds());
-                return Some(self.info());
-            }
+    /// What the next `render` would paint, for callers that keep the last frame.
+    pub fn render_key(&self, settings: &Settings) -> RenderKey {
+        let head = self.show_head && settings.running_head;
+        let spine = self.show_spine && settings.spine;
+        RenderKey {
+            section: self.section,
+            page: self.page as u32,
+            key: self.key,
+            w: self.w,
+            h: self.h,
+            counts_gen: self.counts_gen,
+            flags: head as u8 | ((spine as u8) << 1),
         }
-        let info = self.render_uncached(fs, f, settings)?;
-        self.frame_cache = Some((self.section, self.page, f.clone()));
-        Some(info)
     }
 
-    fn render_uncached<F: Fs>(&mut self, fs: &F, f: &mut Frame, settings: &Settings) -> Option<PageInfo> {
+    /// Render the current page into a frame (text block, Spine, running head).
+    pub fn render<F: Fs>(&mut self, fs: &F, f: &mut Frame, settings: &Settings) -> Option<PageInfo> {
         f.clear(Ink::White);
-        let page = self.page()?;
-        let ids = page_image_ids(&page);
+        let ids = page_image_ids(self.page()?);
         if !ids.is_empty() {
-            let book = &self.book;
-            self.images.ensure(fs, book, &ids);
+            self.images.ensure(fs, &self.book, &ids);
         }
-        quire_layout::render_page(&page, f, &self.profile, &self.images);
-        let info = self.info();
+        let page = self.cached_page.as_ref()?;
+        quire_layout::render_page(page, f, &self.profile, &self.images);
         if self.show_head && settings.running_head {
+            // The head shares the text measure: its right edge is the text block's.
             let baseline = MARGIN + 18;
-            let right = if self.show_spine { self.w as i32 - MARGIN - SPINE_W - 6 } else { self.w as i32 - MARGIN };
-            crate::widgets::reading_head(
-                f,
-                &self.book.meta.title,
-                &info.chapter,
-                self.geom.text.x,
-                right.max(self.geom.text.right()),
-                baseline,
-            );
+            crate::widgets::reading_head(f, &self.book.meta.title, &self.info.chapter, self.geom.text.x, self.geom.text.right(), baseline);
         }
         if self.show_spine && settings.spine {
             let top = if self.show_head { MARGIN + 30 } else { MARGIN };
             let r = spine::strip_rect(self.w, self.h, top, MARGIN);
             spine::draw(f, r, &self.spine_model(), Ink::Black);
         }
-        Some(info)
+        Some(self.info.clone())
     }
 
     /// The Spine rectangle as drawn.
@@ -497,34 +589,9 @@ impl Reader {
         self.geom.text
     }
 
-    /// Pre-render the next page in idle time (a page turn then only blits).
-    pub fn prerender<F: Fs>(&mut self, fs: &F, settings: &Settings) {
-        if self.next_frame.as_ref().map(|(s, p, _)| *s == self.section && *p == self.page + 1).unwrap_or(false) {
-            return;
-        }
-        if self.page + 1 >= self.starts.len() {
-            return;
-        }
-        let saved = (self.section, self.page, self.cached_page.take());
-        self.page += 1;
-        let mut frame = Frame::new(self.w, self.h);
-        self.render_uncached(fs, &mut frame, settings);
-        self.page = saved.1;
-        self.cached_page = saved.2;
-        self.next_frame = Some((saved.0, saved.1 + 1, frame));
-    }
-
-    /// Take the pre-rendered frame if it matches the current page.
-    pub fn take_prerendered(&mut self) -> Option<Frame> {
-        match self.next_frame.take() {
-            Some((s, p, fr)) if s == self.section && p == self.page => Some(fr),
-            _ => None,
-        }
-    }
-
     /// Bookmark this page (toggle); returns whether it is now set.
     pub fn toggle_bookmark<F: Fs>(&mut self, fs: &F, now: u32) -> bool {
-        let loc = self.loc();
+        let loc = self.cur;
         let excerpt = self.page_excerpt(80);
         let set = self.marks.toggle_bookmark(loc.section, loc.pos, loc.chars, &excerpt, now);
         let _ = self.marks.save(fs, &self.book.dir);
@@ -532,8 +599,7 @@ impl Reader {
     }
     /// Whether this page is bookmarked.
     pub fn bookmarked(&self) -> bool {
-        let loc = self.loc();
-        self.marks.has_bookmark(loc.section, loc.pos)
+        self.marks.has_bookmark(self.cur.section, self.cur.pos)
     }
 
     /// The first words of the page.
@@ -560,8 +626,8 @@ impl Reader {
 
     /// The words on the page with their rectangles (for the word cursor).
     pub fn page_words(&mut self) -> Vec<(String, Rect)> {
-        let Some(page) = self.page() else { return Vec::new() };
         let font_h = self.profile.size as i32;
+        let Some(page) = self.page() else { return Vec::new() };
         let mut out = Vec::new();
         for item in &page.items {
             if let quire_layout::DrawItem::Text { text, x, y, font, .. } = item {
@@ -589,9 +655,8 @@ impl Reader {
 
     /// Remember the current location before following a link or note.
     pub fn push_return(&mut self) {
-        let loc = self.loc();
         if self.returns.len() < 8 {
-            self.returns.push(loc);
+            self.returns.push(self.cur);
         }
     }
     /// Go back to where a link or note was followed from; false when there is nowhere to go.
@@ -612,7 +677,7 @@ impl Reader {
 
     /// Save the position into the library entry.
     pub fn save_position(&self, lib: &mut Library) {
-        lib.set_loc(self.id, self.loc());
+        lib.set_loc(self.id, self.cur);
     }
 
     /// The last page was shown: mark the book finished today. Returns true the first time.
@@ -625,10 +690,16 @@ impl Reader {
 
     /// End the session and record it (called on close and before sleep).
     pub fn flush_session<F: Fs>(&mut self, fs: &F, lib: &mut Library, stats: &mut Stats, now: u32) {
-        let chars = self.chars_now();
+        let chars = self.cur.chars;
         let t = core::mem::replace(&mut self.tracker, SessionTracker::start(self.id, now, chars, false));
         let s = t.finish(now);
+        // Recording folds the session into the book's totals in the index; those only
+        // reach the card when the index is marked changed.
+        let before = lib.get(self.id).map(|e| e.stats.sessions);
         let _ = stats.record(fs, lib, &s);
+        if lib.get(self.id).map(|e| e.stats.sessions) != before {
+            lib.touch();
+        }
     }
 
     /// Close: save position and session.
@@ -650,8 +721,103 @@ impl Reader {
     /// Time left in the chapter and the book, in seconds, from pace.
     pub fn time_left(&self, lib: &Library, stats: &Stats) -> (u32, u32) {
         let Some(e) = lib.get(self.id) else { return (0, 0) };
-        let chars = self.chars_now();
+        let chars = self.cur.chars;
         let book_left = self.book.total_chars().saturating_sub(chars);
         (stats.secs_for_chars(e, self.chars_left_in_chapter()), stats.secs_for_chars(e, book_left))
+    }
+}
+
+/// The chapter number printed at the start of a TOC title: a decimal or an upper-case
+/// roman numeral as the first word, or as the second after a word such as "Chapter".
+pub fn parse_chapter_number(title: &str) -> Option<u32> {
+    for (i, word) in title.split_whitespace().take(2).enumerate() {
+        let w = word.trim_matches(|c: char| !c.is_alphanumeric());
+        if w.is_empty() {
+            continue;
+        }
+        if w.chars().all(|c| c.is_ascii_digit()) {
+            return w.parse::<u32>().ok().filter(|n| *n > 0);
+        }
+        if let Some(n) = roman(w) {
+            return Some(n);
+        }
+        if i > 0 {
+            break;
+        }
+    }
+    None
+}
+
+/// Value of a well-formed upper-case roman numeral.
+fn roman(w: &str) -> Option<u32> {
+    if w.is_empty() || w.len() > 9 {
+        return None;
+    }
+    let val = |c: char| -> Option<u32> {
+        Some(match c {
+            'I' => 1,
+            'V' => 5,
+            'X' => 10,
+            'L' => 50,
+            'C' => 100,
+            'D' => 500,
+            'M' => 1000,
+            _ => return None,
+        })
+    };
+    let mut total = 0u32;
+    let mut prev = 0u32;
+    for c in w.chars().rev() {
+        let v = val(c)?;
+        if v < prev {
+            total = total.checked_sub(v)?;
+        } else {
+            total += v;
+        }
+        prev = v;
+    }
+    // Reject forms such as "IIII" or "VX" by checking the canonical spelling.
+    let mut n = total;
+    let mut canon = String::new();
+    for (v, s) in [
+        (1000, "M"),
+        (900, "CM"),
+        (500, "D"),
+        (400, "CD"),
+        (100, "C"),
+        (90, "XC"),
+        (50, "L"),
+        (40, "XL"),
+        (10, "X"),
+        (9, "IX"),
+        (5, "V"),
+        (4, "IV"),
+        (1, "I"),
+    ] {
+        while n >= v {
+            canon.push_str(s);
+            n -= v;
+        }
+    }
+    (canon == w && total > 0).then_some(total)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_chapter_number;
+
+    #[test]
+    fn chapter_numbers_are_parsed_from_titles() {
+        assert_eq!(parse_chapter_number("Chapter 1. Loomings."), Some(1));
+        assert_eq!(parse_chapter_number("CHAPTER XII"), Some(12));
+        assert_eq!(parse_chapter_number("3 The Whale"), Some(3));
+        assert_eq!(parse_chapter_number("XLIV. The Chart"), Some(44));
+        assert_eq!(parse_chapter_number("Part I"), Some(1));
+        assert_eq!(parse_chapter_number("Epilogue"), None);
+        assert_eq!(parse_chapter_number("In which nothing happens"), None);
+        assert_eq!(parse_chapter_number("Mix and match"), None);
+        assert_eq!(parse_chapter_number("Chapter One"), None);
+        assert_eq!(parse_chapter_number("A Night at the Opera"), None);
+        assert_eq!(parse_chapter_number("Chapter 0"), None);
     }
 }

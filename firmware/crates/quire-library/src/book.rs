@@ -267,6 +267,11 @@ impl Book {
     pub fn cover<F: Fs>(&self, fs: &F) -> Option<Bitmap> {
         cache::load_pbm(fs, &quire_fs::join(&self.dir, "cover.pbm"))
     }
+    /// Stream the full-page cover into a frame without decoding it into RAM (see
+    /// [`cache::load_pbm_into`]).
+    pub fn cover_into<F: Fs>(&self, fs: &F, f: &mut quire_gfx::Frame, place: impl FnOnce(u32, u32) -> (i32, i32)) -> Option<(u32, u32)> {
+        cache::load_pbm_into(fs, &quire_fs::join(&self.dir, "cover.pbm"), f, place, quire_gfx::BlitMode::Or)
+    }
     /// Load one image.
     pub fn image<F: Fs>(&self, fs: &F, id: u16) -> Option<Bitmap> {
         cache::load_pbm(fs, &cache::image_path(&self.dir, id))

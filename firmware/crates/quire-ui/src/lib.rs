@@ -425,9 +425,16 @@ pub struct Ui<E: Env> {
     /// Whether the keys are locked.
     pub locked: bool,
     frame: Frame,
+    /// What the frame holds when it is exactly the reading page (no overlays drawn yet),
+    /// with the inversion applied to it: overlays are then drawn over it without a
+    /// re-render, so no second frame is ever needed.
+    frame_holds: Option<(reader::RenderKey, bool)>,
     /// Set while the platform is asleep (sleep screen shown).
     pub asleep: bool,
     last_saved: u32,
+    /// Hash of the settings as last written, so the periodic save touches the card only
+    /// when something changed.
+    settings_hash: u64,
 }
 
 impl<E: Env> Ui<E> {
@@ -437,6 +444,7 @@ impl<E: Env> Ui<E> {
         let lib = Library::load(fs);
         let stats = Stats::load(fs);
         let settings = Settings::load(fs);
+        let settings_hash = settings_hash(&settings);
         let mut ui = Ui {
             screens: Vec::new(),
             lib,
@@ -447,8 +455,10 @@ impl<E: Env> Ui<E> {
             phone_text: None,
             locked: false,
             frame: Frame::panel(),
+            frame_holds: None,
             asleep: false,
             last_saved: 0,
+            settings_hash,
         };
         if !ui.settings.first_run_done {
             ui.screens.push(Box::new(screens::firstrun::FirstRun::new()));
@@ -469,6 +479,7 @@ impl<E: Env> Ui<E> {
     /// Open a book by id into the reader.
     pub fn open_book(&mut self, env: &mut E, id: BookId) -> bool {
         self.close_book(env);
+        self.frame_holds = None;
         match Reader::open(env.fs(), &self.lib, &self.settings, id, env.now()) {
             Ok(r) => {
                 self.reader = Some(r);
@@ -481,6 +492,7 @@ impl<E: Env> Ui<E> {
 
     /// Close the open book, recording the session.
     pub fn close_book(&mut self, env: &mut E) {
+        self.frame_holds = None;
         if let Some(mut r) = self.reader.take() {
             r.close(env.fs(), &mut self.lib, &mut self.stats, env.now());
         }
@@ -550,18 +562,32 @@ impl<E: Env> Ui<E> {
             let Some(top) = screens.last_mut() else { return Refresh::None };
             match &ev {
                 Event::Key(k) if locked => {
-                    // Locked: only holding Power unlocks; anything else shows the strip.
+                    // Locked: only holding Power unlocks; anything else shows the strip
+                    // (once: a strip already showing, or the sleep screen, takes the key).
                     if k.key == Key::Power && k.kind == KeyKind::Long {
                         cx.env.request(SysRequest::LockKeys(false));
                         Action::System(SysRequest::LockKeys(false))
+                    } else if top.name() == "45-locked" || is_sleep_screen(top.name()) || top.name() == "44-picker-preview" {
+                        top.key(&mut cx, *k)
                     } else {
                         Action::Push(Box::new(screens::locked::LockedStrip::new()))
                     }
                 }
+                Event::Key(k) if is_sleep_screen(top.name()) || top.name() == "44-picker-preview" => {
+                    // Asleep (or previewing a sleep screen): the screen owns every key, so
+                    // Power wakes rather than stacking another sleep screen or power menu.
+                    top.key(&mut cx, *k)
+                }
                 Event::Key(k) => {
                     // Universal grammar: long Back opens Jump from anywhere except Jump itself.
                     if k.is_long(Key::Back) && top.name() != "42-jump" && top.name() != "01-boot" && top.name() != "99-recovery" {
-                        Action::Push(Box::new(screens::jump::Jump::new()))
+                        // Jump is a launcher, not a hierarchy: one already open beneath
+                        // (behind its keyboard, say) is returned to rather than stacked.
+                        if screens.iter().any(|s| s.name() == "42-jump") {
+                            Action::PopTo("42-jump")
+                        } else {
+                            Action::Push(Box::new(screens::jump::Jump::new()))
+                        }
                     } else if k.is_long(Key::Power) && top.name() != "41-power" {
                         Action::Push(Box::new(screens::power::PowerMenu::new()))
                     } else if k.is(Key::Power) && top.name() != "41-power" {
@@ -578,32 +604,75 @@ impl<E: Env> Ui<E> {
         // A sleep screen on top means the device goes to sleep once this frame is on the
         // panel: persist everything and ask the platform, whichever screen put it there.
         let top = self.top_name();
-        if (top == "40-sleep" || top == "40-sleep-charging") && !self.asleep {
+        if is_sleep_screen(top) && !self.asleep {
             self.asleep = true;
             self.flush(env);
             env.request(SysRequest::Sleep);
+        } else if !self.screens.iter().any(|s| is_sleep_screen(s.name())) {
+            // The sleep screen left (a Power press, or the platform's Wake): the next one
+            // must ask for sleep again.
+            self.asleep = false;
         }
-        // Periodic persistence of positions and stats.
-        let now = env.now();
-        if now.saturating_sub(self.last_saved) >= 30 {
-            self.last_saved = now;
-            if let Some(r) = self.reader.as_mut() {
-                r.save_position(&mut self.lib);
+        // Periodic persistence of positions, stats and settings: on the idle tick, never
+        // inside a key press, and only what changed (the library keeps its own dirty flags).
+        if matches!(ev, Event::Tick) {
+            let now = env.now();
+            if now.saturating_sub(self.last_saved) >= 30 {
+                self.last_saved = now;
+                if let Some(r) = self.reader.as_mut() {
+                    r.save_position(&mut self.lib);
+                }
+                let _ = self.lib.save(env.fs());
+                self.save_settings_if_changed(env);
             }
-            let _ = self.lib.save(env.fs());
-            let _ = self.settings.save(env.fs());
         }
         refresh
+    }
+
+    /// Write the settings when they differ from what was last written.
+    fn save_settings_if_changed(&mut self, env: &mut E) {
+        let h = settings_hash(&self.settings);
+        if h != self.settings_hash && self.settings.save(env.fs()).is_ok() {
+            self.settings_hash = h;
+        }
+    }
+
+    /// Identity of the screen beneath the overlays (index and address), to tell a change
+    /// of page from a focus move or an overlay coming and going.
+    fn base_id(&self) -> (usize, *const ()) {
+        let mut i = self.screens.len().saturating_sub(1);
+        while i > 0 && self.screens[i].overlay() {
+            i -= 1;
+        }
+        let ptr = self.screens.get(i).map(|s| s.as_ref() as *const dyn Screen<E> as *const ()).unwrap_or(core::ptr::null());
+        (i, ptr)
     }
 
     /// Apply an action as if the top screen returned it (the platform and tests use it to
     /// open Jump targets directly).
     pub fn apply(&mut self, env: &mut E, action: Action<E>) -> Refresh {
+        // Refresh policy: a change of the screen beneath the overlays is a full (GC)
+        // refresh; a redraw of the same screen is a DU unless the screen itself asks for
+        // GC (a page turn on its cadence, a list page change); overlays are always DU.
+        let structural = matches!(
+            action,
+            Action::Push(_) | Action::Pop | Action::Replace(_) | Action::ToReader | Action::PopTo(_) | Action::Open(_) | Action::PopWith(_)
+        );
+        let before = self.base_id();
+        let refresh = self.apply_inner(env, action);
+        if structural && refresh != Refresh::None && self.base_id() != before {
+            Refresh::Gc
+        } else {
+            refresh
+        }
+    }
+
+    fn apply_inner(&mut self, env: &mut E, action: Action<E>) -> Refresh {
         match action {
             Action::None => Refresh::None,
             Action::Redraw => self.draw(env),
             Action::Push(s) => {
-                self.screens.push(s);
+                self.push_bounded(s);
                 self.draw(env)
             }
             Action::Pop => {
@@ -617,7 +686,7 @@ impl<E: Env> Ui<E> {
                 if self.screens.len() > 1 {
                     self.screens.pop();
                 }
-                self.screens.push(s);
+                self.push_bounded(s);
                 self.draw(env)
             }
             Action::ToReader => {
@@ -670,6 +739,15 @@ impl<E: Env> Ui<E> {
         }
     }
 
+    /// Push a screen, forgetting the oldest history above the root when the stack is at
+    /// its limit (Jump can launch from any screen, so history is bounded, not the depth).
+    fn push_bounded(&mut self, s: Box<dyn Screen<E>>) {
+        while self.screens.len() >= MAX_STACK {
+            self.screens.remove(1);
+        }
+        self.screens.push(s);
+    }
+
     fn resume_top(&mut self, env: &mut E) {
         let (mut cx, screens) = self.ctx(env);
         if let Some(top) = screens.last_mut() {
@@ -677,28 +755,41 @@ impl<E: Env> Ui<E> {
         }
     }
 
-    /// Draw the stack into the frame: the topmost non-overlay screen, then overlays above it.
+    /// Draw the stack into the frame: the topmost non-overlay screen, then overlays above
+    /// it. When the frame already holds the reading page the overlays sit on, the page is
+    /// kept and only the overlays are drawn.
     pub fn draw(&mut self, env: &mut E) -> Refresh {
-        let mut frame = core::mem::replace(&mut self.frame, Frame::new(1, 1));
         let inverted = self.settings.inverted;
-        let refresh = {
-            let (mut cx, screens) = self.ctx(env);
-            let mut start = screens.len().saturating_sub(1);
-            while start > 0 && screens[start].overlay() {
-                start -= 1;
-            }
-            frame.clear(quire_gfx::Ink::White);
-            let mut refresh = Refresh::Du;
-            for s in screens[start..].iter_mut() {
-                let r = s.draw(&mut cx, &mut frame);
-                refresh = refresh.max(r);
-            }
-            refresh
+        let (start, _) = self.base_id();
+        let has_overlays = start + 1 < self.screens.len();
+        let page_key = match self.screens.get(start) {
+            Some(s) if s.name() == "20-reading" => self.reader.as_ref().map(|r| r.render_key(&self.settings)),
+            _ => None,
         };
+        let reuse = has_overlays && page_key.is_some() && self.frame_holds == page_key.map(|k| (k, inverted));
+        let Ui { screens, lib, stats, settings, reader, ingesting, phone_text, locked, frame, .. } = self;
+        let mut cx = Ctx { env, lib, stats, settings, reader, ingesting, phone_text: &mut *phone_text, locked: *locked };
+        let mut refresh = Refresh::Du;
+        if reuse {
+            // Undo the inversion so the overlays draw on the page as rendered.
+            if inverted {
+                frame.invert_rect(frame.bounds());
+            }
+        } else {
+            frame.clear(quire_gfx::Ink::White);
+            if let Some(base) = screens.get_mut(start) {
+                refresh = base.draw(&mut cx, frame);
+            }
+        }
+        let n = screens.len();
+        for s in screens[(start + 1).min(n)..].iter_mut() {
+            // Overlays cover part of the page: a DU is enough whatever they return.
+            let _ = s.draw(&mut cx, frame);
+        }
         if inverted {
             frame.invert_rect(frame.bounds());
         }
-        self.frame = frame;
+        self.frame_holds = if has_overlays { None } else { page_key.map(|k| (k, inverted)) };
         refresh
     }
 
@@ -714,8 +805,29 @@ impl<E: Env> Ui<E> {
             r.flush_session(env.fs(), &mut self.lib, &mut self.stats, env.now());
         }
         let _ = self.lib.save(env.fs());
-        let _ = self.settings.save(env.fs());
+        if self.settings.save(env.fs()).is_ok() {
+            self.settings_hash = settings_hash(&self.settings);
+        }
     }
+}
+
+/// FNV-1a of the settings' encoding: a cheap in-RAM "did anything change" check.
+fn settings_hash(settings: &Settings) -> u64 {
+    let bytes = postcard::to_allocvec(settings).unwrap_or_default();
+    let mut h: u64 = 0xcbf29ce484222325;
+    for b in bytes {
+        h ^= b as u64;
+        h = h.wrapping_mul(0x100000001b3);
+    }
+    h
+}
+
+/// Deepest the screen stack gets: the root plus seven screens of history.
+pub const MAX_STACK: usize = 8;
+
+/// Whether a screen name is the sleep screen the device sleeps behind.
+fn is_sleep_screen(name: &str) -> bool {
+    name == "40-sleep" || name == "40-sleep-charging"
 }
 
 /// Root of Quire's files on the card.

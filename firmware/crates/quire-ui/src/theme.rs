@@ -5,7 +5,7 @@ use quire_gfx::Pattern;
 /// Outer margin.
 pub const MARGIN: i32 = 24;
 /// Left/right inner padding of list rows.
-pub const ROW_PAD: i32 = 20;
+pub const ROW_PAD: i32 = 32;
 /// Edge-label rail height.
 pub const RAIL_H: i32 = 40;
 /// Running head height (screens).
@@ -32,8 +32,8 @@ pub const COVER_H: u32 = 228;
 pub const SPINE_W: i32 = 12;
 /// Tracking for small-cap labels (0.08 em of 18 px).
 pub const SMALLCAP_TRACKING: i32 = 1;
-/// Disabled content.
-pub const DISABLED: Pattern = Pattern::Dots50;
+/// Disabled content (a 25 % screen: the 50 % one destroys 22 px glyphs).
+pub const DISABLED: Pattern = Pattern::Sparse;
 /// Secondary surface.
 pub const SECONDARY: Pattern = Pattern::Hatch { pitch: 6 };
 /// The screen behind an overlay.

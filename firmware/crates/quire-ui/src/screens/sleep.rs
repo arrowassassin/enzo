@@ -86,8 +86,8 @@ pub fn quote_of_day<E: Env>(cx: &Ctx<E>) -> (String, String) {
     (String::from(q), String::from(s))
 }
 
-/// Pick the custom image file for this sleep.
-pub fn custom_image<E: Env>(cx: &mut Ctx<E>) -> Option<quire_gfx::Bitmap> {
+/// Path of the custom image file for this sleep, chosen by the rotation setting.
+pub fn custom_image_path<E: Env>(cx: &mut Ctx<E>) -> Option<String> {
     let folder = cx.settings.sleep_folder.clone();
     let mut files: Vec<String> = cx
         .env
@@ -112,7 +112,12 @@ pub fn custom_image<E: Env>(cx: &mut Ctx<E>) -> Option<quire_gfx::Bitmap> {
             files[i].clone()
         }
     };
-    quire_library::cache::load_pbm(cx.env.fs(), &quire_fs::join(&folder, &name))
+    Some(quire_fs::join(&folder, &name))
+}
+
+/// Where a full-page image of `bw × bh` sits, centred on a `w × h` frame.
+fn centred(w: i32, h: i32) -> impl FnOnce(u32, u32) -> (i32, i32) {
+    move |bw, bh| ((w - bw as i32) / 2, (h - bh as i32) / 2)
 }
 
 /// Draw a sleep variant into the frame at full size.
@@ -132,16 +137,11 @@ pub fn draw_variant<E: Env>(cx: &mut Ctx<E>, f: &mut Frame, v: SleepVariant, loc
     };
     match v {
         SleepVariant::Cover => {
-            let cover = cx.reader.as_ref().and_then(|r| quire_library::cache::load_cover(cx.env.fs(), r.id));
-            match cover {
-                Some(bm) => {
-                    let ox = (w - bm.w as i32) / 2;
-                    let oy = (h - bm.h as i32) / 2;
-                    f.blit(ox, oy, bm.as_ref(), BlitMode::Or);
-                }
-                None => {
-                    widgets::typographic_cover(f, Rect::new(0, 0, w as u32, h as u32), &title, &author);
-                }
+            // The cover streams from the card straight into the frame: no decoded copy.
+            let fs = cx.env.fs();
+            let placed = cx.reader.as_ref().and_then(|r| quire_library::cache::load_cover_into(fs, r.id, f, centred(w, h), BlitMode::Or));
+            if placed.is_none() {
+                widgets::typographic_cover(f, Rect::new(0, 0, w as u32, h as u32), &title, &author);
             }
             if cx.settings.sleep_band && cx.reader.is_some() {
                 let band_h = 112;
@@ -232,13 +232,10 @@ pub fn draw_variant<E: Env>(cx: &mut Ctx<E>, f: &mut Frame, v: SleepVariant, loc
                 draw_centered(f, fl, w / 2, centered_baseline(fl, card.y, 88), "Press Power", TextStyle::INK);
             }
         }
-        SleepVariant::Custom => match custom_image(cx) {
-            Some(bm) => {
-                let ox = (w - bm.w as i32) / 2;
-                let oy = (h - bm.h as i32) / 2;
-                f.blit(ox, oy, bm.as_ref(), BlitMode::Or);
-            }
-            None => {
+        SleepVariant::Custom => {
+            let placed =
+                custom_image_path(cx).and_then(|p| quire_library::cache::load_pbm_into(cx.env.fs(), &p, f, centred(w, h), BlitMode::Or));
+            if placed.is_none() {
                 widgets::empty_state(
                     f,
                     h / 2 - 60,
@@ -246,7 +243,7 @@ pub fn draw_variant<E: Env>(cx: &mut Ctx<E>, f: &mut Frame, v: SleepVariant, loc
                     "Drop photos into the Drop page's Sleep images, or the /sleep folder on the card.",
                 );
             }
-        },
+        }
         SleepVariant::Blank => {}
     }
 }
@@ -336,41 +333,69 @@ pub fn sleep_now<E: Env>() -> Action<E> {
 pub struct Picker {
     focus: usize,
     opt_focus: usize,
-    thumbs: Vec<(SleepVariant, quire_gfx::Bitmap)>,
+    /// One 1:4 thumbnail per variant (3.3 KB each), rendered on demand into the picker's
+    /// own frame before the picker is drawn; an option change drops only its variant's.
+    thumbs: [Option<quire_gfx::Bitmap>; 6],
     /// Focus is in the option rows rather than the grid.
     in_options: bool,
+}
+
+/// Shrink a full frame 1:4 by counting ink in each 4 × 4 cell, a byte (two cells) at a
+/// time. Text keeps its strokes with `n >= 5`; halftoned images (the cover, the screened
+/// page of Quick resume) take the majority so they read as grey, not solid.
+fn thumb_of(full: &Frame, majority: bool) -> quire_gfx::Bitmap {
+    let (tw, th) = (full.width() / 4, full.height() / 4);
+    let mut bm = quire_gfx::Bitmap::new(tw, th);
+    let stride = full.stride();
+    let bits = full.bits();
+    let need = if majority { 9 } else { 5 };
+    let mut counts = alloc::vec![0u8; tw as usize];
+    for y in 0..th {
+        counts.fill(0);
+        for dy in 0..4 {
+            let row = &bits[(y * 4 + dy) as usize * stride..];
+            for (b, &v) in row.iter().enumerate().take(stride) {
+                if v == 0 {
+                    continue;
+                }
+                let tx = b * 2;
+                if let Some(c) = counts.get_mut(tx) {
+                    *c += (v >> 4).count_ones() as u8;
+                }
+                if let Some(c) = counts.get_mut(tx + 1) {
+                    *c += (v & 0x0F).count_ones() as u8;
+                }
+            }
+        }
+        for (x, &n) in counts.iter().enumerate() {
+            if n >= need {
+                bm.set(x as u32, y, true);
+            }
+        }
+    }
+    bm
 }
 
 impl Picker {
     /// New, focused on the variant in use.
     pub fn new() -> Self {
-        Picker { focus: 0, opt_focus: 0, thumbs: Vec::new(), in_options: false }
+        Picker { focus: 0, opt_focus: 0, thumbs: [None, None, None, None, None, None], in_options: false }
     }
-    fn render_thumbs<E: Env>(&mut self, cx: &mut Ctx<E>) {
-        self.thumbs.clear();
-        for v in SleepVariant::ALL {
-            let mut full = Frame::panel();
-            draw_variant(cx, &mut full, v, false);
-            // 1:4 by sampling: a pixel is ink if any of its 4×4 source pixels is ink for
-            // text; for the cover use the majority so dithers stay grey-ish.
-            let (tw, th) = (full.width() / 4, full.height() / 4);
-            let mut bm = quire_gfx::Bitmap::new(tw, th);
-            for y in 0..th {
-                for x in 0..tw {
-                    let mut n = 0;
-                    for dy in 0..4 {
-                        for dx in 0..4 {
-                            if full.get((x * 4 + dx) as i32, (y * 4 + dy) as i32) {
-                                n += 1;
-                            }
-                        }
-                    }
-                    if n >= 5 {
-                        bm.set(x, y, true);
-                    }
-                }
+    /// Render the variants whose thumbnail is missing into `f` (the frame the picker is
+    /// about to draw into, so no scratch frame is needed) and shrink them.
+    fn render_thumbs<E: Env>(&mut self, cx: &mut Ctx<E>, f: &mut Frame) {
+        let mut rendered = false;
+        for (i, v) in SleepVariant::ALL.iter().enumerate() {
+            if self.thumbs[i].is_some() {
+                continue;
             }
-            self.thumbs.push((v, bm));
+            draw_variant(cx, f, *v, false);
+            let halftone = matches!(v, SleepVariant::Cover | SleepVariant::QuickResume);
+            self.thumbs[i] = Some(thumb_of(f, halftone));
+            rendered = true;
+        }
+        if rendered {
+            f.clear(Ink::White);
         }
     }
     fn options(&self, cx: &Ctx<impl Env>) -> Vec<(&'static str, SettingValue)> {
@@ -415,7 +440,8 @@ impl Picker {
             (SleepVariant::QuickResume, _) => s.sleep_moon = !s.sleep_moon,
             _ => {}
         }
-        self.thumbs.clear();
+        // Only the focused variant's thumbnail changed.
+        self.thumbs[self.focus] = None;
     }
 }
 
@@ -430,15 +456,14 @@ impl<E: Env> Screen<E> for Picker {
         "44-picker"
     }
     fn draw(&mut self, cx: &mut Ctx<E>, f: &mut Frame) -> Refresh {
-        if self.thumbs.is_empty() {
-            self.render_thumbs(cx);
-        }
+        self.render_thumbs(cx, f);
         running_head(f, "Sleep screen", None);
         let w = f.width() as i32;
         let (tw, th) = (132i32, 198i32);
         let gap = (w - 2 * widgets::INSET - 3 * tw) / 2;
         let fl = quire_fonts::ui::label();
-        for (i, (v, bm)) in self.thumbs.iter().enumerate() {
+        for (i, v) in SleepVariant::ALL.iter().enumerate() {
+            let Some(bm) = &self.thumbs[i] else { continue };
             let (c, r) = (i % 3, i / 3);
             let x = widgets::INSET + c as i32 * (tw + gap);
             let y = widgets::CONTENT_TOP + r as i32 * (th + 40);

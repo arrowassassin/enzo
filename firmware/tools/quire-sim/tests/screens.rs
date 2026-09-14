@@ -21,16 +21,17 @@ fn every_screen_draws_and_matches_snapshots() {
     let mut seen = BTreeMap::new();
     for s in &shots {
         let ink = s.frame.ink_count();
-        assert!(ink > 200, "{} drew almost nothing ({ink} px)", s.name);
+        // The blank sleep screen is paper on purpose.
+        assert!(ink > 200 || s.name == "40-sleep-blank", "{} drew almost nothing ({ink} px)", s.name);
         assert!(ink < 792 * 528 * 9 / 10, "{} is nearly all black ({ink} px)", s.name);
         assert!(!s.stack.is_empty(), "{}: empty stack", s.name);
         assert!(s.stack.len() <= 6, "{}: stack grew to {:?}", s.name, s.stack);
         assert!(seen.insert(s.name.clone(), quire_sim::frame_hash(&s.frame)).is_none(), "duplicate shot name {}", s.name);
     }
-    // Dialog and compass ask for GC; page turns are DU.
+    // Page turns and overlays over the page are DU; a new screen beneath (sleep) is GC.
     let by_name: BTreeMap<&str, &quire_sim::Shot> = shots.iter().map(|s| (s.name.as_str(), s)).collect();
     assert_eq!(by_name["20-reading-next"].refresh, Refresh::Du);
-    assert_eq!(by_name["24-compass"].refresh, Refresh::Gc);
+    assert_eq!(by_name["24-compass"].refresh, Refresh::Du);
     assert_eq!(by_name["40-sleep"].refresh, Refresh::Gc);
 
     let file = snapshot_file();

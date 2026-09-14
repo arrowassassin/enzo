@@ -46,7 +46,8 @@ impl<E: Env> Screen<E> for PowerMenu {
             hint,
             [("Sleep", "wake: pwr"), ("Close", "—"), ("Refresh", "full GC"), ("Restart", "—")],
             wifi,
-            "Lock keys",
+            // "Lock", not "Lock keys": beside "Wi-Fi off" the two would run together.
+            "Lock",
             None,
         );
         Refresh::Gc

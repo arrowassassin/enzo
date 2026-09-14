@@ -779,6 +779,29 @@ impl Stats {
         out
     }
 
+    /// Favourite hour (most active seconds) over the sessions that started in the days
+    /// `[from, to]`, read back from the log; `None` when nothing was read then.
+    /// (Added for the year-in-review poster, which must not show all-time figures on an
+    /// empty year; the aggregate keeps hours for all time only.)
+    pub fn favourite_hour_between<F: Fs>(&self, fs: &F, from: u16, to: u16) -> Option<u8> {
+        let mut hours = [0u32; 24];
+        for s in self.sessions_between(fs, from as u32 * DAY, (to as u32 + 1) * DAY, 4000) {
+            hours[hour_of(s.start) as usize % 24] += s.active_secs();
+        }
+        let (h, v) = hours.iter().enumerate().max_by_key(|(_, v)| **v)?;
+        (*v > 0).then_some(h as u8)
+    }
+
+    /// Longest session (active seconds, book, start) among those started in the days
+    /// `[from, to]`, from the log.
+    pub fn longest_session_between<F: Fs>(&self, fs: &F, from: u16, to: u16) -> Option<(u32, BookId, u32)> {
+        self.sessions_between(fs, from as u32 * DAY, (to as u32 + 1) * DAY, 4000)
+            .into_iter()
+            .map(|s| (s.active_secs(), s.book, s.start))
+            .max_by_key(|s| s.0)
+            .filter(|s| s.0 > 0)
+    }
+
     /// The most recent sessions, newest first.
     pub fn recent<F: Fs>(&self, fs: &F, limit: usize) -> Vec<Session> {
         self.sessions_between(fs, 0, u32::MAX, limit)

@@ -6,7 +6,6 @@ use alloc::string::String;
 use alloc::vec::Vec;
 use quire_gfx::{draw_text, Frame, Ink, Pattern, Rect, TextStyle};
 
-use crate::icons::{self, Icon};
 use crate::keyboard::KeyboardScreen;
 use crate::net::{FetchRequest, NetEvent, OtaInfo};
 use crate::text::{draw_label, ellipsis, line_h, page_indicator, wrap};
@@ -54,8 +53,8 @@ impl<E: Env> Screen<E> for SettingsHome {
         "50-settings"
     }
     fn draw(&mut self, cx: &mut Ctx<E>, f: &mut Frame) -> Refresh {
-        // Title-over-subtitle rows need the tall row.
-        let row_h = cx.settings.row_h().max(ROW_H_LARGE);
+        // 22 px title over an 18 px subtitle fits the normal row, like Apps and Games.
+        let row_h = cx.settings.row_h();
         self.nav.per_page = widgets::rows_between(widgets::CONTENT_TOP, f.height() as i32 - RAIL_H, row_h);
         running_head(f, "Settings", (self.nav.pages() > 1).then(|| page_indicator(self.nav.page(), self.nav.pages())).as_deref());
         let mut y = widgets::CONTENT_TOP;
@@ -179,7 +178,10 @@ impl GenericSettings {
                 SettingValue::Choice(s.night_jobs_hour.map(quire_library::time::fmt_hour).unwrap_or_else(|| String::from("Off"))),
             ),
             Row::PanelOff => ("Panel off when idle", on_off(s.panel_off)),
-            Row::Battery => ("Battery", SettingValue::Text(alloc::format!("{}%", cx.env.battery().percent))),
+            Row::Battery => (
+                "Battery",
+                SettingValue::Text(cx.env.battery().days_left.map(|d| alloc::format!("{d} days")).unwrap_or_else(|| "—".into())),
+            ),
             Row::BookshopLanguage => ("Language", SettingValue::Choice(s.bookshop_language.to_uppercase())),
             Row::Clock24 => ("24-hour clock", on_off(s.clock_24h)),
             Row::Language => ("Language", SettingValue::Choice(String::from("English"))),
@@ -401,9 +403,15 @@ impl<E: Env> Screen<E> for KeysScreen {
         let (up, down) =
             if cx.settings.side_keys == crate::settings::SideKeys::Pages { ("Prev page", "Next page") } else { ("Prev ch", "Next ch") };
         let (u, d) = if cx.settings.swap_side_keys { (down, up) } else { (up, down) };
-        draw_device(f, f.width() as i32 / 2 - 40, widgets::CONTENT_TOP + 4, ["Left", "Back", "OK", "Right", u, d, "Power"]);
+        // Centre the drawing together with its side-key labels (140 px body + 12 px gap +
+        // the wider label), so the group sits on the page's centre.
+        let mono = quire_fonts::ui::mono();
+        let label_w = quire_gfx::measure_text(mono, u, TextStyle::INK).max(quire_gfx::measure_text(mono, d, TextStyle::INK));
+        // The body spans cx ± 70 and the labels run from cx + 86 to cx + 86 + label_w.
+        let group_cx = f.width() as i32 / 2 - (16 + label_w) / 2;
+        draw_device(f, group_cx, widgets::CONTENT_TOP + 12, ["Left", "Back", "OK", "Right", u, d, "Power"]);
         let row_h = cx.settings.row_h();
-        let top = widgets::CONTENT_TOP + 250;
+        let top = widgets::CONTENT_TOP + 12 + DEVICE_H;
         self.inner.nav.per_page = widgets::rows_between(top, f.height() as i32 - RAIL_H, row_h);
         let mut y = top;
         let rows = self.inner.rows.clone();
@@ -542,7 +550,7 @@ impl<E: Env> Screen<E> for BatteryScreen {
         let y = poster_tiles(f, widgets::INSET, widgets::CONTENT_TOP, w - 2 * widgets::INSET, &tiles, 2) + 24;
         let fl = quire_fonts::ui::label();
         let lines = [
-            alloc::format!("{} mV · from the BQ27220 gauge", b.millivolts),
+            String::from("From the battery gauge."),
             String::from("Days left assumes your reading of the last week."),
             String::from("Sleep after a shorter idle time and turn Wi-Fi off to last longer."),
         ];
@@ -599,9 +607,9 @@ impl Default for About {
 fn storage_bar(f: &mut Frame, x: i32, y: i32, w: i32, label: &str, used: u64, total: u64) -> i32 {
     let fl = quire_fonts::ui::label();
     let mono = quire_fonts::ui::mono();
-    draw_label(f, x, y + fl.ascent(), label, false);
     let t = alloc::format!("{} of {}", mb(used), mb(total));
     let tw = quire_gfx::measure_text(mono, &t, TextStyle::INK);
+    draw_label(f, x, y + fl.ascent(), &ellipsis(fl, &crate::text::small_caps(label), w - tw - 16), false);
     draw_text(f, mono, x + w - tw, y + fl.ascent(), &t, TextStyle::INK);
     let by = y + line_h(fl) + 4;
     let bar = Rect::new(x, by, w as u32, 16);
@@ -615,6 +623,8 @@ fn storage_bar(f: &mut Frame, x: i32, y: i32, w: i32, label: &str, used: u64, to
 fn mb(b: u64) -> String {
     if b >= 1024 * 1024 * 1024 {
         alloc::format!("{}.{} GB", b / (1024 * 1024 * 1024), (b % (1024 * 1024 * 1024)) * 10 / (1024 * 1024 * 1024))
+    } else if b < 1024 * 1024 {
+        alloc::format!("{} KB", b / 1024)
     } else {
         alloc::format!("{} MB", b / (1024 * 1024))
     }
@@ -635,7 +645,14 @@ impl<E: Env> Screen<E> for About {
         draw_text(f, quire_fonts::ui::title(), x, y + 26, "Quire", TextStyle::INK);
         draw_text(f, mono, x + 120, y + 26, &alloc::format!("{} · {}", d.version, d.build), TextStyle::INK);
         y += 48;
-        draw_text(f, fb, x, y + fb.ascent(), &ellipsis(fb, &alloc::format!("Panel {} · {}", d.panel, d.serial), w - 2 * x), TextStyle::INK);
+        draw_text(
+            f,
+            fb,
+            x,
+            y + fb.ascent(),
+            &ellipsis(fb, &alloc::format!("Panel: {} · serial {}", d.panel, d.serial), w - 2 * x),
+            TextStyle::INK,
+        );
         y += line_h(fb) + 16;
         y = storage_bar(f, x, y, w - 2 * x, "Flash", (d.flash_bytes as u64).saturating_sub(d.largest_block as u64), d.flash_bytes as u64);
         if let (Some(t), Some(fr)) = (d.card_total, d.card_free) {
@@ -645,7 +662,15 @@ impl<E: Env> Screen<E> for About {
             y += 32;
         }
         let books = cx.lib.books.iter().filter(|b| !b.missing).count();
-        y = storage_bar(f, x, y, w - 2 * x, "Heap", (d.largest_block as u64).min(d.free_heap as u64), d.free_heap as u64);
+        y = storage_bar(
+            f,
+            x,
+            y,
+            w - 2 * x,
+            "Heap · largest free block",
+            (d.largest_block as u64).min(d.free_heap as u64),
+            d.free_heap as u64,
+        );
         draw_text(f, fb, x, y + fb.ascent(), &alloc::format!("{books} books in the library"), TextStyle::INK);
         y += line_h(fb) + 12;
         let rows: [(&str, String); 2] = [
@@ -920,14 +945,22 @@ impl<E: Env> Screen<E> for Developer {
             y += line_h(mono);
         }
         y += 12;
-        draw_label(f, x, y + 14, "Heap, KB", false);
+        let fl = quire_fonts::ui::label();
+        draw_label(f, x, y + 14, "Heap free, KB", false);
         y += 24;
-        widgets::ink_line(f, Rect::new(x, y, (w - 2 * x) as u32, 120), &self.heap, ("40 s ago", "", "now"), " KB", None);
+        if self.heap.len() < 2 {
+            // One sample is not a graph yet.
+            draw_text(f, mono, x, y + mono.ascent(), "collecting…", TextStyle::INK);
+        } else {
+            // A 2 px stepped line, as the brief draws the heap.
+            widgets::step_line(f, Rect::new(x, y, (w - 2 * x) as u32, 100), &self.heap);
+            let ay = y + 100 + 6 + mono.ascent();
+            draw_text(f, mono, x, ay, "40 s ago", TextStyle::INK);
+            crate::text::draw_right(f, mono, w - x, ay, "now", TextStyle::INK);
+        }
         y += 130;
         // Key ADC readings are shown live by the platform via the device info serial field.
-        let fl = quire_fonts::ui::label();
         draw_text(f, fl, x, y + fl.ascent(), "Power + Down saves a screenshot to the card.", TextStyle::INK);
-        icons::draw(f, Icon::Warning, w - x - 24, widgets::CONTENT_TOP, Ink::Black);
         rail(f, ["", "Back", "Refresh", "Screenshot"], None);
         Refresh::Gc
     }

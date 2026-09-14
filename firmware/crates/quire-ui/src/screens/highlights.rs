@@ -87,7 +87,12 @@ impl<E: Env> Screen<E> for Highlights {
         let title = alloc::format!("Highlights {}", if marks.is_empty() { String::new() } else { alloc::format!("{}", marks.len()) });
         running_head(f, title.trim(), Some(&page_indicator(page, self.layout.len())));
         if marks.is_empty() {
-            widgets::empty_state(f, 300, "No highlights yet", "Long-press Confirm on the page, then grow a selection with Right.");
+            widgets::empty_state(
+                f,
+                widgets::EMPTY_Y,
+                "No highlights yet",
+                "Long-press Confirm on the page, then grow a selection with Right.",
+            );
             rail(f, ["", "Back", "", ""], None);
             return Refresh::Gc;
         }

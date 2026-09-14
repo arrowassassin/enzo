@@ -5,6 +5,7 @@ use alloc::vec::Vec;
 use quire_gfx::{Font, Rect};
 use quire_qtx::ParaKind;
 use serde::{Deserialize, Serialize};
+use unicode_linebreak::linebreaks;
 
 use crate::lines::{atomize, break_lines, skip_to, Atom, BreakOpts, Line};
 use crate::para::{block_chars, read_block, Block};
@@ -113,6 +114,15 @@ impl<'a> Paginator<'a> {
 
     /// Lay out the page beginning at `start`. Returns `None` when `start` is past the end.
     pub fn page_from(&self, start: Pos) -> Option<Page> {
+        self.page_bounded(start, None)
+    }
+
+    /// Lay out the page beginning at `start`, ending it no later than `limit` (a page
+    /// boundary the caller wants kept, see [`build_index_pinned`]): a paragraph holding the
+    /// limit is cut there, a word split at a part gets its hyphen, and the page's `next` is
+    /// the limit itself. A limit at or before `start` is ignored.
+    pub fn page_bounded(&self, start: Pos, limit: Option<Pos>) -> Option<Page> {
+        let limit = limit.filter(|l| *l > start);
         let text = self.geom.text;
         let bottom = text.bottom();
         let mut y = text.y;
@@ -128,6 +138,11 @@ impl<'a> Paginator<'a> {
         let mut placed_anything = false;
 
         while let Some(b) = read_block(self.qtx, pos.para) {
+            if placed_anything && limit.is_some_and(|l| pos >= l) {
+                // The kept boundary (or, if it fell inside a skipped block, the block after it).
+                next = Some(pos);
+                break;
+            }
             match &b.block {
                 Block::Chapter { number, title } => {
                     let (h, its) = self.chapter_block(number.as_deref(), title.as_deref(), y);
@@ -175,8 +190,15 @@ impl<'a> Paginator<'a> {
                 Block::Para { kind, runs } => {
                     let first_in_chapter = chapter_open || (b.off == 0 && first_block && pos.word == 0);
                     let resumed = pos.word > 0 || pos.part > 0;
-                    let mut pp =
-                        self.layout_para(*kind, runs, first_in_chapter && !resumed, prev_was_heading || chapter_open, (pos.word, pos.part));
+                    let until = limit.filter(|l| l.para == b.off).map(|l| (l.word, l.part));
+                    let mut pp = self.layout_para(
+                        *kind,
+                        runs,
+                        first_in_chapter && !resumed,
+                        prev_was_heading || chapter_open,
+                        (pos.word, pos.part),
+                        until,
+                    );
                     chapter_open = false;
                     if resumed {
                         pp.space_before = 0;
@@ -250,6 +272,10 @@ impl<'a> Paginator<'a> {
                         next = Some(Pos { para: b.off, word: l.first.0, part: l.first.1 });
                         break;
                     }
+                    if until.is_some() {
+                        next = limit;
+                        break;
+                    }
                     y += pp.space_after;
                     pos = Pos { para: b.next, word: 0, part: 0 };
                 }
@@ -269,14 +295,18 @@ impl<'a> Paginator<'a> {
         let text = self.geom.text;
         let mut items = Vec::new();
         let mut y = y0 + self.geom.line_h / 2;
+        // The opening scales with the reading size so the title is never smaller than the
+        // body: the numeral is two ems (at least the 56 px hero), the title an em and a
+        // half or so (at least the 32 px title face).
+        let size = self.profile.size;
         if let Some(n) = number {
-            let f = quire_fonts::ui::hero();
+            let f = quire_fonts::nearest(quire_fonts::Family::Literata, quire_fonts::Style::Regular, (size * 2).max(56));
             y += f.ascent();
             items.push(DrawItem::Text { x: text.x, y, font: f, text: n.to_string(), style: 0 });
             y += -f.descent() + 8;
         }
         if let Some(t) = title {
-            let f = quire_fonts::ui::title();
+            let f = quire_fonts::nearest(quire_fonts::Family::Literata, quire_fonts::Style::Regular, (size + 6).max(32));
             let atoms =
                 atomize(&[crate::para::Run { text: t.to_string(), style: 0, link: false, break_after: false }], &self.profile, false);
             let atoms: Vec<Atom> = atoms
@@ -321,6 +351,7 @@ impl<'a> Paginator<'a> {
         first_in_chapter: bool,
         after_heading: bool,
         start: (u32, u16),
+        until: Option<(u32, u16)>,
     ) -> PlacedPara {
         let text = self.geom.text;
         let p = &self.profile;
@@ -417,6 +448,9 @@ impl<'a> Paginator<'a> {
             dropcap = None;
             first_indent = 0;
         }
+        if let Some((word, part)) = until {
+            atoms = cut_at(atoms, word, part);
+        }
         if let ParaKind::Heading(level) = kind {
             let f = p.heading_font(level);
             for a in &mut atoms {
@@ -504,6 +538,33 @@ fn sup_sub(atom: &Atom, baseline: i32) -> (&'static Font, i32) {
     }
 }
 
+/// Drop the atoms from `(word, part)` on; an atom the cut falls inside keeps its head with
+/// a hyphen, as a hyphenation split would leave it.
+fn cut_at(atoms: Vec<Atom>, word: u32, part: u16) -> Vec<Atom> {
+    let mut out = Vec::with_capacity(atoms.len());
+    for mut a in atoms {
+        if a.word > word || (a.word == word && a.part >= part) {
+            break;
+        }
+        if a.word == word {
+            let keep = (part - a.part) as usize;
+            if let Some((byte, _)) = a.text.char_indices().nth(keep) {
+                let mut head = String::from(&a.text[..byte]);
+                head.push('-');
+                a.width_q = quire_gfx::text::measure_text_q(a.font, &head);
+                a.text = head;
+                a.hyphenable = false;
+            }
+        }
+        out.push(a);
+    }
+    if let Some(last) = out.last_mut() {
+        last.space_q = 0;
+        last.hard_break = false;
+    }
+    out
+}
+
 /// Build the page index for a chapter: the start position of every page.
 pub fn build_index(qtx: &[u8], profile: Profile, geom: Geometry) -> Vec<Pos> {
     let pg = Paginator::new(qtx, profile, geom);
@@ -521,20 +582,82 @@ pub fn build_index(qtx: &[u8], profile: Profile, geom: Geometry) -> Vec<Pos> {
     out
 }
 
-/// Characters of text before `pos` (progress numerator).
+/// The paragraph's words as `(word index, raw characters)`: one entry per line-break
+/// segment that carries text, numbered the way the layout engine numbers words, with the
+/// whitespace after a word (and any whitespace-only segments) folded into it. The lengths
+/// sum to the paragraph's character count, so a word's running sum is its raw offset and
+/// `chars_before` / `pos_at_chars` are exact inverses. No fonts, no measuring, one String.
+fn word_chars(runs: &[crate::para::Run]) -> Vec<(u32, u32)> {
+    let mut text = String::new();
+    for r in runs {
+        text.push_str(&r.text);
+        if r.break_after {
+            text.push('\n');
+        }
+    }
+    let mut out: Vec<(u32, u32)> = Vec::new();
+    let mut lead = 0u32;
+    let mut start = 0usize;
+    let mut word = 0u32;
+    let mut take = |seg: &str, word: u32, out: &mut Vec<(u32, u32)>| {
+        // The newline standing in for a hard break is not a character of the text.
+        let raw = seg.chars().filter(|c| *c != '\n').count() as u32;
+        if seg.trim_end_matches([' ', '\n', '\t', '\u{A0}']).is_empty() {
+            match out.last_mut() {
+                Some(last) => last.1 += raw,
+                None => lead += raw,
+            }
+        } else {
+            out.push((word, raw + core::mem::take(&mut lead)));
+        }
+    };
+    for (idx, _) in linebreaks(&text) {
+        take(&text[start..idx], word, &mut out);
+        start = idx;
+        word += 1;
+    }
+    if start < text.len() {
+        take(&text[start..], word, &mut out);
+    }
+    out
+}
+
+/// Build the page index with a page boundary kept at `pin` (the position the reader is at
+/// when the typography changes, so the new page begins on the same word). Pages before the
+/// pin end at it; from the pin on the index is the ordinary one.
+pub fn build_index_pinned(qtx: &[u8], profile: Profile, geom: Geometry, pin: Pos) -> Vec<Pos> {
+    let pg = Paginator::new(qtx, profile, geom);
+    let mut out = Vec::new();
+    let mut pos = Pos::START;
+    let mut guard = 0u32;
+    loop {
+        let limit = (pos < pin).then_some(pin);
+        let Some(page) = pg.page_bounded(pos, limit) else { break };
+        out.push(pos);
+        guard += 1;
+        match page.next {
+            Some(n) if n > pos && guard < 100_000 => pos = n,
+            _ => break,
+        }
+    }
+    out
+}
+
+/// Characters of text before `pos` (progress numerator): every block before it plus one,
+/// then the raw offset of the word inside its paragraph and the part into the word.
 pub fn chars_before(qtx: &[u8], pos: Pos) -> u32 {
     let mut n = 0u32;
     for b in crate::para::blocks(qtx) {
         if b.off >= pos.para {
             if b.off == pos.para {
                 if let Block::Para { runs, .. } = &b.block {
-                    let p = Profile::default();
-                    let atoms = atomize(runs, &p, false);
-                    for a in atoms {
-                        if a.word < pos.word {
-                            n += a.text.chars().count() as u32 + 1;
-                        } else if a.word == pos.word {
-                            n += pos.part as u32;
+                    for (word, chars) in word_chars(runs) {
+                        if word < pos.word {
+                            n += chars;
+                        } else {
+                            if word == pos.word {
+                                n += pos.part as u32;
+                            }
                             break;
                         }
                     }
@@ -547,7 +670,8 @@ pub fn chars_before(qtx: &[u8], pos: Pos) -> u32 {
     n
 }
 
-/// The position at or before a character offset (for sync and "go to percent").
+/// The position at or before a character offset (for sync and "go to percent"): the
+/// inverse of [`chars_before`] for any word start.
 pub fn pos_at_chars(qtx: &[u8], target: u32) -> Pos {
     let mut n = 0u32;
     let mut last = Pos::START;
@@ -555,15 +679,12 @@ pub fn pos_at_chars(qtx: &[u8], target: u32) -> Pos {
         let c = block_chars(&b.block) + 1;
         if n + c > target {
             if let Block::Para { runs, .. } = &b.block {
-                let p = Profile::default();
-                let atoms = atomize(runs, &p, false);
                 let mut m = n;
-                for a in atoms {
-                    let w = a.text.chars().count() as u32 + 1;
-                    if m + w > target {
-                        return Pos { para: b.off, word: a.word, part: 0 };
+                for (word, chars) in word_chars(runs) {
+                    if m + chars > target {
+                        return Pos { para: b.off, word, part: 0 };
                     }
-                    m += w;
+                    m += chars;
                 }
             }
             return Pos { para: b.off, word: 0, part: 0 };
@@ -572,4 +693,75 @@ pub fn pos_at_chars(qtx: &[u8], target: u32) -> Pos {
         last = Pos { para: b.off, word: 0, part: 0 };
     }
     last
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use alloc::string::ToString;
+    use quire_qtx::{Token, Writer};
+
+    fn sample() -> Vec<u8> {
+        let mut w = Writer::new();
+        w.push(&Token::ChapterTitle { number: Some("IV".to_string()), title: Some("Round trips".to_string()) });
+        w.para(ParaKind::Body);
+        w.text("  Leading blanks, double  spaces and a styled ");
+        w.push(&Token::Style(quire_qtx::style::ITALIC));
+        w.text("mid");
+        w.push(&Token::Style(0));
+        w.text("word run; then a very long stretch of ordinary prose that goes on for several lines so that pages break inside it, ");
+        w.text("with numbers 1,234.56 and dashes—like this—and a non\u{A0}breaking space. ".repeat(40).as_str());
+        w.para(ParaKind::Body);
+        w.text("A second paragraph. ");
+        w.push(&Token::Break);
+        w.text("After a hard break, more words follow and follow and follow. ".repeat(30).as_str());
+        w.finish()
+    }
+
+    /// Every page start maps to a character offset and back to the same word, at every
+    /// reading size, and offsets grow with the page number.
+    #[test]
+    fn chars_before_and_pos_at_chars_are_inverse_at_every_page_start() {
+        let qtx = sample();
+        for size in quire_fonts::READING_SIZES {
+            let p = Profile { size, ..Profile::default() };
+            let g = p.geometry(quire_gfx::PANEL_W, quire_gfx::PANEL_H);
+            let starts = build_index(&qtx, p, g);
+            assert!(starts.len() > 3, "{size}: {} pages", starts.len());
+            let mut prev = 0u32;
+            for (i, pos) in starts.iter().enumerate() {
+                let chars = chars_before(&qtx, *pos);
+                assert!(i == 0 || chars > prev, "{size}: page {i} offset {chars} after {prev}");
+                prev = chars;
+                let back = pos_at_chars(&qtx, chars);
+                assert_eq!((back.para, back.word), (pos.para, pos.word), "{size}: page {i} {pos:?} -> {chars} -> {back:?}");
+            }
+        }
+        // A pinned index keeps every page start of the unpinned one after the pin, has the
+        // pin itself as a page start, and its page before the pin ends exactly there.
+        let p = Profile { size: 26, ..Profile::default() };
+        let g = p.geometry(quire_gfx::PANEL_W, quire_gfx::PANEL_H);
+        let plain = build_index(&qtx, p, g);
+        let big = Profile { size: 34, ..Profile::default() };
+        let gb = big.geometry(quire_gfx::PANEL_W, quire_gfx::PANEL_H);
+        for pin in plain.iter().skip(1) {
+            let pinned = build_index_pinned(&qtx, big, gb, *pin);
+            assert!(pinned.contains(pin), "pin {pin:?} is a page start: {pinned:?}");
+            let i = pinned.iter().position(|s| s == pin).unwrap();
+            let before = Paginator::new(&qtx, big, gb).page_bounded(pinned[i - 1], Some(*pin)).unwrap();
+            assert_eq!(before.next, Some(*pin));
+            assert!(!before.items.is_empty());
+            // From the pin on, the index is the ordinary one.
+            let plain_big = build_index(&qtx, big, gb);
+            let from_pin = Paginator::new(&qtx, big, gb).page_from(*pin).unwrap().next;
+            assert!(from_pin.is_none_or(|n| pinned.contains(&n)) && plain_big.len() + 2 >= pinned.len());
+        }
+        // Word offsets are raw offsets: the sum over a paragraph is its character count.
+        for b in crate::para::blocks(&qtx) {
+            if let Block::Para { runs, .. } = &b.block {
+                let total: u32 = word_chars(runs).iter().map(|(_, c)| *c).sum();
+                assert_eq!(total, block_chars(&b.block));
+            }
+        }
+    }
 }

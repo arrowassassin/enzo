@@ -203,6 +203,9 @@ pub struct Library {
     dirty: bool,
     #[serde(skip)]
     dirty_pos: bool,
+    /// Bumped on every change, so screens can tell when a cached view is stale.
+    #[serde(skip)]
+    generation: u32,
 }
 
 impl Library {
@@ -282,6 +285,11 @@ impl Library {
         Ok(())
     }
 
+    /// A counter bumped on every change to the index or the positions: a screen that
+    /// caches a sorted view compares it to know when to rebuild.
+    pub fn generation(&self) -> u32 {
+        self.generation
+    }
     /// Whether there are unsaved changes.
     pub fn is_dirty(&self) -> bool {
         self.dirty || self.dirty_pos
@@ -289,10 +297,12 @@ impl Library {
     /// Mark the index changed (structure or metadata).
     pub fn touch(&mut self) {
         self.dirty = true;
+        self.generation = self.generation.wrapping_add(1);
     }
     /// Mark positions changed.
     pub fn touch_positions(&mut self) {
         self.dirty_pos = true;
+        self.generation = self.generation.wrapping_add(1);
     }
 
     /// Find a book.
@@ -311,6 +321,7 @@ impl Library {
     /// Add or update an entry.
     pub fn upsert(&mut self, mut entry: BookEntry) {
         self.dirty = true;
+        self.generation = self.generation.wrapping_add(1);
         if let Some(e) = entry.error.as_mut() {
             if e.len() > ERROR_BYTES {
                 let mut cut = ERROR_BYTES;
@@ -331,6 +342,7 @@ impl Library {
     pub fn remove(&mut self, id: BookId) -> Option<BookEntry> {
         let i = self.books.iter().position(|b| b.id == id)?;
         self.dirty = true;
+        self.generation = self.generation.wrapping_add(1);
         if self.current == Some(id) {
             self.current = None;
         }
@@ -387,6 +399,7 @@ impl Library {
     /// Create a collection.
     pub fn add_collection(&mut self, name: &str) -> u16 {
         self.dirty = true;
+        self.generation = self.generation.wrapping_add(1);
         self.next_collection = self.next_collection.max(1);
         let id = self.next_collection;
         self.next_collection += 1;
@@ -400,12 +413,14 @@ impl Library {
         if let Some(c) = self.collections.iter_mut().find(|c| c.id == id) {
             c.name = name.into();
             self.dirty = true;
+            self.generation = self.generation.wrapping_add(1);
         }
     }
 
     /// Delete a collection and its memberships.
     pub fn remove_collection(&mut self, id: u16) {
         self.dirty = true;
+        self.generation = self.generation.wrapping_add(1);
         self.collections.retain(|c| c.id != id);
         for b in &mut self.books {
             b.collections.retain(|c| *c != id);
@@ -415,6 +430,7 @@ impl Library {
     /// Toggle a book's membership.
     pub fn toggle_collection(&mut self, book: BookId, coll: u16) -> bool {
         self.dirty = true;
+        self.generation = self.generation.wrapping_add(1);
         if let Some(b) = self.books.iter_mut().find(|b| b.id == book) {
             if let Some(i) = b.collections.iter().position(|c| *c == coll) {
                 b.collections.remove(i);
@@ -472,6 +488,7 @@ impl Library {
             if b.pages_total != Some((key, pages)) {
                 b.pages_total = Some((key, pages));
                 self.dirty = true;
+                self.generation = self.generation.wrapping_add(1);
             }
         }
     }
@@ -479,8 +496,10 @@ impl Library {
     /// Record that a book was opened now.
     pub fn opened(&mut self, id: BookId, now: u32) {
         self.dirty_pos = true;
+        self.generation = self.generation.wrapping_add(1);
         if self.current != Some(id) {
             self.dirty = true;
+            self.generation = self.generation.wrapping_add(1);
         }
         self.current = Some(id);
         if let Some(b) = self.books.iter_mut().find(|b| b.id == id) {
@@ -501,6 +520,7 @@ impl Library {
                     b.status = Status::Reading;
                 }
                 self.dirty_pos = true;
+                self.generation = self.generation.wrapping_add(1);
             }
         }
     }
@@ -515,6 +535,7 @@ impl Library {
                     b.stats.started = Some(today);
                 }
                 self.dirty_pos = true;
+                self.generation = self.generation.wrapping_add(1);
                 return true;
             }
         }
@@ -524,6 +545,7 @@ impl Library {
     /// Mark finished (or not) today.
     pub fn set_finished(&mut self, id: BookId, finished: bool, today: u16) {
         self.dirty_pos = true;
+        self.generation = self.generation.wrapping_add(1);
         if let Some(b) = self.books.iter_mut().find(|b| b.id == id) {
             if finished {
                 b.status = Status::Finished;

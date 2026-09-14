@@ -3,7 +3,7 @@
 
 use alloc::string::String;
 use alloc::vec::Vec;
-use quire_gfx::{draw_text, measure_text, BitmapRef, BlitMode, Frame, Ink, Pattern, Rect, Rotation, TextStyle};
+use quire_gfx::{draw_text, measure_text, BitmapRef, BlitMode, Frame, Ink, Pattern, Rect, TextStyle};
 
 use crate::icons::{self, Icon};
 use crate::text::{centered_baseline, draw_centered, draw_label, draw_right, ellipsis, label_style, line_h, small_caps, wrap};
@@ -18,6 +18,9 @@ pub const CONTENT_TOP: i32 = 92;
 
 /// Y of the running head's 4 px rule.
 pub const HEAD_RULE_Y: i32 = 74;
+
+/// Y of every empty state's serif line (one height on every screen).
+pub const EMPTY_Y: i32 = CONTENT_TOP + 148;
 
 /// Running head for a screen: serif title, optional right-hand mono text, 4 px rule.
 /// The title sits on a baseline that keeps its descenders clear of the rule.
@@ -95,43 +98,69 @@ pub const SIDE_DOWN_Y: i32 = 592;
 /// Side label box height.
 pub const SIDE_H: i32 = 72;
 
-/// A rotated edge label beside a side key: mono small caps reading upwards, no box, with
-/// a 2 px tick on the very edge marking the key. `y` is the key's centre line.
-fn side_label(f: &mut Frame, y: i32, label: &str, inverted: bool) {
+/// A rotated edge label beside a side key: sentence-case mono (the rail's face) reading
+/// upwards, no box, with a 2 px tick on the very edge marking the key. `y` is the key's
+/// centre line. The compass and the power menu draw their side choices through this too,
+/// so the same physical key is always labelled at the same height in the same face.
+pub fn side_label(f: &mut Frame, y: i32, label: &str, inverted: bool) {
+    let (rot, r) = side_label_plate(f, y, label);
+    f.fill_rect(r, if inverted { Ink::Black } else { Ink::White });
+    paint_side_label(f, &rot, r, y, inverted);
+}
+
+/// The rotated text of a side label and the rect it occupies, centred on `y` and kept
+/// between the running head and the rail.
+fn side_label_plate(f: &Frame, y: i32, label: &str) -> (String, Rect) {
     let font = quire_fonts::ui::mono();
-    let text = label.to_uppercase();
+    let text = ellipsis(font, label, SIDE_H + 28);
     let tw = measure_text(font, &text, TextStyle::INK) + 8;
     let th = line_h(font) + 2;
-    let mut tmp = Frame::new(tw as u32, th as u32);
-    draw_text(&mut tmp, font, 4, 1 + font.ascent(), &text, TextStyle::INK);
-    // Reading bottom to top, like a spine.
-    let rot = tmp.rotated(Rotation::Ccw90);
     let w = f.width() as i32;
     let h = f.height() as i32;
     let x = w - 10 - th;
-    let mut top = y - tw / 2;
-    top = top.clamp(CONTENT_TOP, h - RAIL_H - 6 - tw);
-    let r = Rect::new(x, top, th as u32, tw as u32);
-    if inverted {
-        f.fill_rect(r, Ink::Black);
-        f.blit(x, top, rot.as_bitmap(), BlitMode::Clear);
-    } else {
-        f.fill_rect(r, Ink::White);
-        f.blit(x, top, rot.as_bitmap(), BlitMode::Or);
-    }
+    let top = (y - tw / 2).clamp(CONTENT_TOP, h - RAIL_H - 6 - tw);
+    (text, Rect::new(x, top, th as u32, tw as u32))
+}
+
+/// Draw a side label's text over its (already filled) plate and the key tick. Reading
+/// bottom to top, like a spine: the glyphs are blitted transposed straight into the
+/// frame, with the baseline on the column at `r.x + 1 + ascent` and the pen starting
+/// 4 px in from the bottom of the plate.
+fn paint_side_label(f: &mut Frame, text: &str, r: Rect, key_y: i32, inverted: bool) {
+    let font = quire_fonts::ui::mono();
+    let w = f.width() as i32;
+    let style = TextStyle { inverted, ..TextStyle::INK };
+    quire_gfx::draw_text_ccw(f, font, r.x + 1 + font.ascent(), r.bottom() - 5, text, style);
     // Tick at the edge, centred on the key.
-    f.fill_rect(Rect::new(w - 4, y - 12, 2, 24), Ink::Black);
+    f.fill_rect(Rect::new(w - 4, key_y - 12, 2, 24), Ink::Black);
 }
 
 /// Side labels beside Up and Down (only when the side keys act). `boxed` is kept for
 /// callers but the labels are always drawn open; a focused side key inverts instead.
+/// Two labels too long to both sit on their key centres are eased apart by the same
+/// amount each, so neither runs into the other.
 pub fn side_labels(f: &mut Frame, up: Option<&str>, down: Option<&str>, boxed: bool) {
     let _ = boxed;
-    if let Some(u) = up {
-        side_label(f, SIDE_UP_Y + SIDE_H / 2, u, false);
-    }
-    if let Some(d) = down {
-        side_label(f, SIDE_DOWN_Y + SIDE_H / 2, d, false);
+    let (uy, dy) = (SIDE_UP_Y + SIDE_H / 2, SIDE_DOWN_Y + SIDE_H / 2);
+    match (up, down) {
+        (Some(u), Some(d)) => {
+            let (ur, mut ua) = side_label_plate(f, uy, u);
+            let (dr, mut da) = side_label_plate(f, dy, d);
+            let overlap = ua.bottom() + 12 - da.y;
+            if overlap > 0 {
+                let shift = (overlap + 1) / 2;
+                ua.y -= shift;
+                da.y += shift;
+            }
+            // Both plates first, then both texts: neither erases the other's edge.
+            f.fill_rect(ua, Ink::White);
+            f.fill_rect(da, Ink::White);
+            paint_side_label(f, &ur, ua, uy, false);
+            paint_side_label(f, &dr, da, dy, false);
+        }
+        (Some(u), None) => side_label(f, uy, u, false),
+        (None, Some(d)) => side_label(f, dy, d, false),
+        (None, None) => {}
     }
 }
 
@@ -169,7 +198,7 @@ pub fn row(f: &mut Frame, y: i32, h: i32, title: &str, subtitle: Option<&str>, v
             draw_text(f, font, ROW_PAD, centered_baseline(font, y, h), &ellipsis(font, title, avail), style);
         }
         Some(sub) => {
-            let font = quire_fonts::ui::list_title();
+            let font = quire_fonts::ui::body();
             let sfont = quire_fonts::ui::label();
             let total = font.ascent() + font.below() + 4 + sfont.ascent() + sfont.below();
             let top = y + (h - total) / 2;
@@ -182,7 +211,7 @@ pub fn row(f: &mut Frame, y: i32, h: i32, title: &str, subtitle: Option<&str>, v
     }
     f.fill_rect(Rect::new(0, y + h - 1, w as u32, 1), Ink::Black);
     if state == RowState::Disabled {
-        f.screen_rect(Rect::new(0, y, w as u32, (h - 1) as u32), Pattern::Dots50);
+        f.screen_rect(Rect::new(0, y, w as u32, (h - 1) as u32), DISABLED);
     }
 }
 
@@ -230,7 +259,7 @@ pub fn row_thumb(f: &mut Frame, y: i32, thumb: Option<BitmapRef<'_>>, title: &st
     }
     f.fill_rect(Rect::new(0, y + h - 1, w as u32, 1), Ink::Black);
     if state == RowState::Disabled {
-        f.screen_rect(Rect::new(0, y, w as u32, (h - 1) as u32), Pattern::Dots50);
+        f.screen_rect(Rect::new(0, y, w as u32, (h - 1) as u32), DISABLED);
     }
 }
 
@@ -420,10 +449,13 @@ pub fn poster_tiles(f: &mut Frame, x: i32, y: i32, w: i32, tiles: &[(String, Str
         let (c, r) = (i % cols, i / cols);
         let tx = x + c as i32 * cw;
         let ty = y + r as i32 * th;
-        let nf = if measure_text(nfont, value, TextStyle::INK) > cw - 32 { quire_fonts::ui::title() } else { nfont };
-        draw_text(f, nf, tx + 20, ty + 24 + nfont.ascent(), value, TextStyle::INK);
-        let label = ellipsis(lfont, &small_caps(label), cw - 28);
-        draw_label(f, tx + 20, ty + 24 + nfont.ascent() + nfont.below() + 4 + lfont.ascent(), &label, false);
+        // Column 0 sits on the margin like the title and rule above it; later columns
+        // stand 20 px off their rule.
+        let pad = if c == 0 { 0 } else { 20 };
+        let nf = if measure_text(nfont, value, TextStyle::INK) > cw - pad - 12 { quire_fonts::ui::title() } else { nfont };
+        draw_text(f, nf, tx + pad, ty + 24 + nfont.ascent(), value, TextStyle::INK);
+        let label = ellipsis(lfont, &small_caps(label), cw - pad - 8);
+        draw_label(f, tx + pad, ty + 24 + nfont.ascent() + nfont.below() + 4 + lfont.ascent(), &label, false);
         if c + 1 < cols && i + 1 < tiles.len() {
             f.fill_rect(Rect::new(tx + cw - 1, ty, RULE, th as u32), Ink::Black);
         }
@@ -480,9 +512,10 @@ pub fn setting_row(f: &mut Frame, y: i32, h: i32, title: &str, value: &SettingVa
             avail -= 72;
         }
         SettingValue::Stepper(v) => {
+            let mf = quire_fonts::ui::mono();
             let t = alloc::format!("‹ {v} ›");
-            let tw = measure_text(font, &t, style);
-            draw_text(f, font, w - ROW_PAD - tw, centered_baseline(font, y, h), &t, style);
+            let tw = measure_text(mf, &t, style);
+            draw_text(f, mf, w - ROW_PAD - tw, centered_baseline(mf, y, h), &t, style);
             avail -= tw + 16;
         }
         SettingValue::Choice(v) => {
@@ -503,10 +536,10 @@ pub fn setting_row(f: &mut Frame, y: i32, h: i32, title: &str, value: &SettingVa
             avail -= tw + 14 + 180 + 16;
         }
         SettingValue::Text(v) => {
-            let lf = quire_fonts::ui::label();
-            let t = ellipsis(lf, v, (w - 2 * ROW_PAD) / 2);
-            let tw = measure_text(lf, &t, style);
-            draw_text(f, lf, w - ROW_PAD - tw, centered_baseline(lf, y, h), &t, style);
+            let mf = quire_fonts::ui::mono();
+            let t = ellipsis(mf, v, (w - 2 * ROW_PAD) / 2);
+            let tw = measure_text(mf, &t, style);
+            draw_text(f, mf, w - ROW_PAD - tw, centered_baseline(mf, y, h), &t, style);
             avail -= tw + 16;
         }
         SettingValue::Nav => {
@@ -521,7 +554,7 @@ pub fn setting_row(f: &mut Frame, y: i32, h: i32, title: &str, value: &SettingVa
     }
     f.fill_rect(Rect::new(0, y + h - 1, w as u32, 1), Ink::Black);
     if state == RowState::Disabled {
-        f.screen_rect(Rect::new(0, y, w as u32, (h - 1) as u32), Pattern::Dots50);
+        f.screen_rect(Rect::new(0, y, w as u32, (h - 1) as u32), DISABLED);
     }
 }
 
@@ -644,14 +677,20 @@ pub fn tabs(f: &mut Frame, y: i32, names: &[&str], active: usize, focused: bool,
     }
     let labels: Vec<String> = names.iter().map(|n| small_caps(n)).collect();
     let widths: Vec<i32> = labels.iter().map(|t| measure_text(font, t, label_style(false))).collect();
+    // Cells are 6 px wider than their text on each side: start so the first cell's left
+    // edge sits on the INSET, and leave the chevron its own room when names overflow.
+    let total: i32 = widths.iter().sum::<i32>() + gap * (names.len() as i32 - 1) + 12;
+    if total > limit - INSET {
+        limit -= 24;
+    }
     // Scroll so the active tab is fully visible.
-    let avail = limit - INSET;
+    let avail = limit - INSET - 12;
     let mut offset = 0;
     let active_end: i32 = widths.iter().take(active + 1).sum::<i32>() + gap * active as i32;
     if active_end > avail {
         offset = active_end - avail + 20;
     }
-    let mut x = INSET - offset;
+    let mut x = INSET + 6 - offset;
     let mut hidden_right = false;
     for (i, t) in labels.iter().enumerate() {
         let tw = widths[i];
@@ -675,7 +714,7 @@ pub fn tabs(f: &mut Frame, y: i32, names: &[&str], active: usize, focused: bool,
         draw_text(f, mf, INSET - 22, centered_baseline(mf, y, h), "‹", TextStyle::INK);
     }
     if hidden_right {
-        draw_text(f, mf, limit - 8, centered_baseline(mf, y, h), "›", TextStyle::INK);
+        draw_right(f, mf, w - INSET, centered_baseline(mf, y, h), "›", TextStyle::INK);
     }
     f.fill_rect(Rect::new(INSET, y + h, (w - 2 * INSET) as u32, RULE), Ink::Black);
     y + h + RULE as i32
@@ -701,7 +740,9 @@ pub fn text_field(f: &mut Frame, r: Rect, text: &str, hint: &str, focused: bool)
     f.fill_rect(r, Ink::White);
     let baseline = centered_baseline(font, r.y, r.h as i32);
     if text.is_empty() {
-        draw_text(f, quire_fonts::ui::label(), r.x + 8, centered_baseline(quire_fonts::ui::label(), r.y, r.h as i32), hint, TextStyle::INK);
+        // The caret stands before the hint, not on its first letter.
+        let hx = r.x + 8 + if focused { 8 } else { 0 };
+        draw_text(f, quire_fonts::ui::label(), hx, centered_baseline(quire_fonts::ui::label(), r.y, r.h as i32), hint, TextStyle::INK);
         if focused {
             f.fill_rect(Rect::new(r.x + 8, r.y + 8, 2, r.h.saturating_sub(16)), Ink::Black);
         }
@@ -778,6 +819,34 @@ pub fn ink_line(f: &mut Frame, r: Rect, values: &[u32], labels: (&str, &str, &st
     draw_text(f, mono, chart.x, ay, labels.0, TextStyle::INK);
     draw_centered(f, mono, chart.x + chart.w as i32 / 2, ay, labels.1, TextStyle::INK);
     draw_right(f, mono, chart.right(), ay, labels.2, TextStyle::INK);
+}
+
+/// A stepped line: one horizontal 2 px segment per sample, joined by verticals, over a
+/// 2 px baseline (the brief's heap graph). The samples are scaled to the tallest.
+pub fn step_line(f: &mut Frame, r: Rect, values: &[u32]) {
+    let n = values.len();
+    let base = r.bottom() - 2;
+    f.fill_rect(Rect::new(r.x, base, r.w, 2), Ink::Black);
+    if n == 0 {
+        return;
+    }
+    let max = values.iter().copied().max().unwrap_or(0).max(1);
+    let span = (r.h as i32 - 4).max(1);
+    let seg = (r.w as i32 / n as i32).max(1);
+    let mut prev_y: Option<i32> = None;
+    for (i, v) in values.iter().enumerate() {
+        let x = r.x + i as i32 * seg;
+        let y = base - ((*v as u64 * span as u64) / max as u64) as i32;
+        if let Some(py) = prev_y {
+            let (top, h) = if py < y { (py, y - py) } else { (y, py - y) };
+            if h > 0 {
+                f.fill_rect(Rect::new(x, top, 2, h as u32 + 2), Ink::Black);
+            }
+        }
+        let end = if i + 1 == n { r.right() } else { x + seg };
+        f.fill_rect(Rect::new(x, y, (end - x).max(2) as u32, 2), Ink::Black);
+        prev_y = Some(y);
+    }
 }
 
 /// A calendar heat map cell fill for a goal fraction: 0 / 25 / 50 / 100 %.

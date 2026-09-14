@@ -69,13 +69,15 @@ impl Default for WifiScreen {
     }
 }
 
+/// Signal strength as a word (the mono face has no bar glyphs).
 fn signal_bars(s: u8) -> String {
-    let n = s.min(4) as usize;
-    let mut o = String::new();
-    for i in 0..4 {
-        o.push(if i < n { '▮' } else { '▯' });
-    }
-    o
+    String::from(match s {
+        0 => "faint",
+        1 => "weak",
+        2 => "fair",
+        3 => "good",
+        _ => "strong",
+    })
 }
 
 impl<E: Env> Screen<E> for WifiScreen {
@@ -105,7 +107,7 @@ impl<E: Env> Screen<E> for WifiScreen {
             WifiState::Failed(s) => (alloc::format!("Couldn't join {s}."), String::from("Check the password.")),
             WifiState::Off => (String::from("Wi-Fi off"), String::from("Reading mode · Confirm on a network joins it.")),
         };
-        icons::draw(f, if matches!(state, WifiState::Off) { Icon::WifiOff } else { Icon::Wifi }, card.x + 14, card.y + 26, Ink::Black);
+        icons::draw(f, if matches!(state, WifiState::Off) { Icon::WifiOff } else { Icon::Wifi }, card.x + 14, card.y + 12, Ink::Black);
         draw_text(f, fb, card.x + 50, card.y + 14 + fb.ascent(), &ellipsis(fb, &l1, card.w as i32 - 64), TextStyle::INK);
         draw_text(f, fl, card.x + 50, card.y + 14 + line_h(fb) + fl.ascent(), &ellipsis(fl, &l2, card.w as i32 - 64), TextStyle::INK);
         y = card.bottom() + 12;

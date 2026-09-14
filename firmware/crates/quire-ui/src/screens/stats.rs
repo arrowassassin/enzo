@@ -62,8 +62,9 @@ impl<E: Env> Screen<E> for Overview {
                 }
                 None => String::from("Open a book to start today's reading."),
             };
-            empty_state(f, y + 120, "No reading yet today", &msg);
-            widgets::side_labels(f, Some("Books"), Some("Goals"), true);
+            let _ = y;
+            empty_state(f, widgets::EMPTY_Y, "No reading yet today", &msg);
+            widgets::side_labels(f, Some("Rhythm"), Some("Calendar"), true);
             rail(f, ["", "Back", "Continue", ""], None);
             return Refresh::Gc;
         }
@@ -104,39 +105,49 @@ impl<E: Env> Screen<E> for Overview {
             Range::All => {
                 let (y0, _, _) = time::civil(cx.stats.days.first().map(|d| d.day).unwrap_or(today));
                 let (y1, _, _) = time::civil(today);
-                let vals: Vec<u32> = (y0..=y1)
-                    .map(|y| cx.stats.totals_between(time::from_civil(y, 1, 1), time::from_civil(y, 12, 31)).secs / 3600)
-                    .collect();
-                (vals, ("", "", ""), " h")
+                if y0 == y1 {
+                    // One year of history: a bar per year would be a single block.
+                    (cx.stats.month_totals(y0).iter().map(|t| t.secs / 3600).collect(), ("Jan", "Jul", "Dec"), " h")
+                } else {
+                    let vals: Vec<u32> = (y0..=y1)
+                        .map(|y| cx.stats.totals_between(time::from_civil(y, 1, 1), time::from_civil(y, 12, 31)).secs / 3600)
+                        .collect();
+                    (vals, ("", "", ""), " h")
+                }
             }
         };
         let chart_h = (f.height() as i32 - RAIL_H - yy - 12).clamp(80, 150);
-        ink_line(f, Rect::new(widgets::INSET, yy, (w - 2 * widgets::INSET) as u32, chart_h as u32), &values, labels, unit, None);
+        // The chart stops short of the side-label plates at the right edge.
+        ink_line(f, Rect::new(widgets::INSET, yy, (w - 2 * widgets::INSET - 40) as u32, chart_h as u32), &values, labels, unit, None);
         yy += chart_h;
         let _ = yy;
-        widgets::side_labels(f, Some("Books"), Some("Goals"), true);
-        rail(f, ["Rhythm", "Back", "Calendar", "Books"], None);
+        // Left/Right switch the tab, so those cells stay dots; the side keys open the
+        // Rhythm and Calendar pages, Confirm the Books table (Goals live on its rail).
+        widgets::side_labels(f, Some("Rhythm"), Some("Calendar"), true);
+        rail(f, ["", "Back", "Books", ""], None);
         Refresh::Gc
     }
-    fn key(&mut self, _cx: &mut Ctx<E>, ev: KeyEvent) -> Action<E> {
+    fn key(&mut self, cx: &mut Ctx<E>, ev: KeyEvent) -> Action<E> {
         if ev.kind == KeyKind::Release {
             return Action::None;
         }
+        let session = cx.reader.as_ref().map(|r| r.session_secs(cx.env.now())).unwrap_or(0);
+        let today_empty = RANGES[self.range] == Range::Today && cx.stats.totals(Range::Today, cx.today()).secs + session == 0;
         match ev.key {
             Key::Back => Action::Pop,
-            Key::Left if ev.kind == KeyKind::Long => Action::Push(Box::new(Rhythm::new())),
             Key::Left => {
                 self.range = (self.range + 4) % 5;
                 Action::Redraw
             }
-            Key::Right if ev.kind == KeyKind::Long => Action::Push(Box::new(Books::new())),
             Key::Right => {
                 self.range = (self.range + 1) % 5;
                 Action::Redraw
             }
-            Key::Confirm => Action::Push(Box::new(Calendar::new())),
-            Key::Up => Action::Push(Box::new(Books::new())),
-            Key::Down => Action::Push(Box::new(Goals::new())),
+            // The empty Today page offers Continue (back to the book); otherwise Books.
+            Key::Confirm if today_empty && ev.kind == KeyKind::Press => Action::ToReader,
+            Key::Confirm => Action::Push(Box::new(Books::new())),
+            Key::Up => Action::Push(Box::new(Rhythm::new())),
+            Key::Down => Action::Push(Box::new(Calendar::new())),
             Key::Power => Action::None,
         }
     }
@@ -190,8 +201,10 @@ fn histogram(f: &mut Frame, r: Rect, values: &[u32], labels: &[(usize, &str)]) {
         }
     }
     for (i, l) in labels {
-        let x = r.x + *i as i32 * (bw + gap) + bw / 2;
-        draw_centered(f, fl, x, base + 6 + fl.ascent(), &small_caps(l), crate::text::label_style(false));
+        let t = small_caps(l);
+        let tw = quire_gfx::measure_text(fl, &t, crate::text::label_style(false));
+        let x = (r.x + *i as i32 * (bw + gap) + bw / 2 - tw / 2).clamp(r.x, r.right() - tw);
+        draw_text(f, fl, x, base + 6 + fl.ascent(), &t, crate::text::label_style(false));
     }
 }
 
@@ -217,12 +230,12 @@ impl<E: Env> Screen<E> for Rhythm {
         histogram(f, Rect::new(x, y, cw as u32, 90), &wd, &[(0, "M"), (1, "T"), (2, "W"), (3, "T"), (4, "F"), (5, "S"), (6, "S")]);
         y += 100;
         let tiles = alloc::vec![
-            (cx.stats.favourite_hour().map(time::fmt_hour).unwrap_or_else(|| String::from("—")), String::from("Favourite hour")),
+            (cx.stats.favourite_hour().map(time::fmt_hour).unwrap_or_else(|| String::from("—")), String::from("Peak hour")),
             (
                 cx.stats.favourite_weekday().map(|d| String::from(time::weekday_name(d))).unwrap_or_else(|| String::from("—")),
-                String::from("Favourite day")
+                String::from("Peak day")
             ),
-            (fmt_duration(cx.stats.typical_session_secs()), String::from("Typical session")),
+            (fmt_duration(cx.stats.typical_session_secs()), String::from("Per session")),
         ];
         y = poster_tiles(f, x, y, cw, &tiles, 3) + 12;
         // Session list for the selected day.
@@ -312,8 +325,9 @@ impl<E: Env> Screen<E> for Calendar {
         running_head(f, &title, None);
         let w = f.width() as i32;
         let x0 = widgets::INSET;
-        let cell = 56;
-        let gap = 4;
+        // Seven cells and six gaps fill the measure exactly (7 × 62 + 6 × 5 = 464).
+        let cell = 62;
+        let gap = 5;
         let fl = quire_fonts::ui::label();
         let mono = quire_fonts::ui::mono();
         let mut y = widgets::CONTENT_TOP;
@@ -369,12 +383,15 @@ impl<E: Env> Screen<E> for Calendar {
             if self.back == 0 { month.iter().filter(|(d, _)| (*d as u16) <= time::civil(today).2 as u16).count() } else { n as usize };
         let days_read = month.iter().filter(|(_, s)| *s >= quire_library::stats::STREAK_MIN_SECS).count();
         let tiles = alloc::vec![
-            (alloc::format!("{cur}"), String::from("Current streak")),
+            (alloc::format!("{cur}"), String::from("Streak")),
             (alloc::format!("{longest}"), String::from("Longest")),
-            (alloc::format!("{days_read} / {days_so_far}"), String::from("Days so far")),
+            (alloc::format!("{days_read} / {days_so_far}"), String::from("Days read")),
         ];
         y = poster_tiles(f, x0, y, w - 2 * x0, &tiles, 3) + 8;
-        draw_text(f, fl, x0, y + fl.ascent(), "empty · sparse · dense · solid = 0 / 25 / 50 / 100% of the daily goal", TextStyle::INK);
+        for l in crate::text::wrap(fl, "empty · sparse · dense · solid = 0 · 25 · 50 · 100% of the daily goal", w - 2 * x0) {
+            draw_text(f, fl, x0, y + fl.ascent(), &l, TextStyle::INK);
+            y += line_h(fl);
+        }
         rail(f, ["Earlier", "Back", "Today", "Later"], None);
         Refresh::Gc
     }
@@ -456,7 +473,7 @@ impl<E: Env> Screen<E> for Books {
         }
         f.fill_rect(Rect::new(widgets::INSET, widgets::CONTENT_TOP + 28, (w - 2 * widgets::INSET) as u32, RULE), Ink::Black);
         if books.is_empty() {
-            empty_state(f, top + 100, "No reading yet", "Books you read appear here with their time and pace.");
+            empty_state(f, widgets::EMPTY_Y, "No reading yet", "Books you read appear here with their time and pace.");
         }
         let mut y = top;
         for i in self.nav.visible() {
@@ -480,7 +497,8 @@ impl<E: Env> Screen<E> for Books {
             f.fill_rect(Rect::new(widgets::INSET, y + row_h - 1, (w - 2 * widgets::INSET) as u32, 1), Ink::Black);
             y += row_h;
         }
-        rail(f, ["", "Back", "Open", "Sort"], None);
+        // Sort by long-Confirm on a head, as the brief says; Right opens Goals.
+        rail(f, ["", "Back", "Open", "Goals"], None);
         Refresh::Gc
     }
     fn key(&mut self, cx: &mut Ctx<E>, ev: KeyEvent) -> Action<E> {
@@ -489,10 +507,7 @@ impl<E: Env> Screen<E> for Books {
         }
         match ev.key {
             Key::Back if ev.kind == KeyKind::Press => Action::Pop,
-            Key::Right if ev.kind == KeyKind::Press => {
-                self.sort = (self.sort + 1) % 4;
-                Action::Redraw
-            }
+            Key::Right if ev.kind == KeyKind::Press => Action::Push(Box::new(Goals::new())),
             Key::Confirm if ev.kind == KeyKind::Long => {
                 self.sort = (self.sort + 1) % 4;
                 Action::Redraw
@@ -584,7 +599,7 @@ impl<E: Env> Screen<E> for Goals {
         draw_label(f, sr.right() + 24, y + 24 + poster.ascent() + poster.below() + 4 + fl.ascent(), "Books this year", false);
         // Awards.
         let ax = sr.right() + 24;
-        let mut ay = y + 100;
+        let mut ay = y + 24 + poster.ascent() + poster.below() + 4 + line_h(fl) + 20;
         draw_label(f, ax, ay + fl.ascent(), "Awards", false);
         ay += line_h(fl) + 4;
         let awards = st.awards(cx.lib);
@@ -678,19 +693,22 @@ impl<E: Env> Screen<E> for YearInReview {
         let w = f.width() as i32;
         let hero = quire_fonts::ui::hero();
         let fl = quire_fonts::ui::label();
-        draw_text(f, quire_fonts::ui::title(), widgets::INSET, 60, &alloc::format!("Quire · {y0}"), TextStyle::INK);
-        f.fill_rect(Rect::new(widgets::INSET, 72, (w - 2 * widgets::INSET) as u32, RULE_HEAVY), Ink::Black);
+        running_head(f, &alloc::format!("Quire · {y0}"), None);
         let books = cx.lib.finished_between(a, b);
         let totals = cx.stats.totals_between(a, b);
+        let this_year = time::civil(today).0;
         let mut y = 110;
         draw_text(f, hero, widgets::INSET, y + hero.ascent(), &alloc::format!("{}", books.len()), TextStyle::INK);
         draw_label(f, widgets::INSET, y + hero.ascent() + hero.below() + 6 + fl.ascent(), "Books", false);
         draw_text(f, hero, w / 2 + 20, y + hero.ascent(), &alloc::format!("{} h", totals.secs / 3600), TextStyle::INK);
         draw_label(f, w / 2 + 20, y + hero.ascent() + hero.below() + 6 + fl.ascent(), "Read", false);
         y += hero.ascent() + hero.below() + 6 + line_h(fl) + 24;
+        // Every year is its own poster: the favourite hour and the longest session come
+        // from that year's sessions, and an empty year says so.
+        let fav = if totals.secs == 0 { None } else { cx.stats.favourite_hour_between(cx.env.fs(), a, b) };
         let tiles = alloc::vec![
-            (cx.stats.favourite_hour().map(time::fmt_hour).unwrap_or_else(|| String::from("—")), String::from("Favourite hour")),
-            (alloc::format!("{}", cx.stats.longest_streak_in_year(y0)), String::from("Longest streak")),
+            (fav.map(time::fmt_hour).unwrap_or_else(|| String::from("—")), String::from("Favourite hour")),
+            (alloc::format!("{}", totals.pages), String::from("Pages")),
         ];
         y = poster_tiles(f, widgets::INSET, y, w - 2 * widgets::INSET, &tiles, 2) + 20;
         // Five covers.
@@ -721,8 +739,8 @@ impl<E: Env> Screen<E> for YearInReview {
             y += ch as i32 + 24;
         }
         let fb = quire_fonts::ui::body();
-        let longest = cx.stats.longest;
-        if longest.0 > 0 {
+        let longest = if totals.secs == 0 { None } else { cx.stats.longest_session_between(cx.env.fs(), a, b) };
+        if let Some(longest) = longest {
             let title = cx.lib.get(longest.1).map(|b| b.title.clone()).unwrap_or_default();
             draw_text(
                 f,
@@ -738,10 +756,11 @@ impl<E: Env> Screen<E> for YearInReview {
         draw_text(f, fb, widgets::INSET, y + fb.ascent(), &alloc::format!("Longest streak · {ls} days"), TextStyle::INK);
         let foot = f.height() as i32 - RAIL_H - 16;
         draw_text(f, fl, widgets::INSET, foot, "Power + Down saves it", TextStyle::INK);
-        rail(f, ["Earlier", "Back", "", "Later"], None);
+        // No walking into the future: the current year has no "Later".
+        rail(f, ["Earlier", "Back", "", if y0 < this_year { "Later" } else { "" }], None);
         Refresh::Gc
     }
-    fn key(&mut self, _cx: &mut Ctx<E>, ev: KeyEvent) -> Action<E> {
+    fn key(&mut self, cx: &mut Ctx<E>, ev: KeyEvent) -> Action<E> {
         if ev.kind != KeyKind::Press {
             return Action::None;
         }
@@ -752,8 +771,8 @@ impl<E: Env> Screen<E> for YearInReview {
                 self.thumbs.clear();
                 Action::Redraw
             }
-            Key::Right => {
-                self.year = self.year.saturating_add(1);
+            Key::Right if self.year < time::civil(cx.today()).0 => {
+                self.year += 1;
                 self.thumbs.clear();
                 Action::Redraw
             }

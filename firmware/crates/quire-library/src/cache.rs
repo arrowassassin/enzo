@@ -19,8 +19,8 @@
 use alloc::string::String;
 use alloc::vec::Vec;
 use quire_doc::{DocError, Metadata, Sink, TocEntry};
-use quire_fs::{Fs, WriteFile};
-use quire_gfx::Bitmap;
+use quire_fs::{Fs, ReadAt, WriteFile};
+use quire_gfx::{Bitmap, BlitMode, Frame};
 use quire_qtx::{Reader, Token};
 use serde::{Deserialize, Serialize};
 
@@ -343,8 +343,8 @@ pub fn load_cover<F: Fs>(fs: &F, id: crate::BookId) -> Option<Bitmap> {
     load_pbm(fs, &quire_fs::join(&crate::book_dir(id), "cover.pbm"))
 }
 
-/// Read a P4 PBM into a bitmap.
-pub fn read_pbm(bytes: &[u8]) -> Option<Bitmap> {
+/// Parse a P4 PBM header: (width, height, offset of the packed rows).
+pub fn pbm_header(bytes: &[u8]) -> Option<(u32, u32, usize)> {
     if bytes.len() < 4 || &bytes[..2] != b"P4" {
         return None;
     }
@@ -374,18 +374,114 @@ pub fn read_pbm(bytes: &[u8]) -> Option<Bitmap> {
     if w == 0 || h == 0 || w > 4096 || h > 4096 {
         return None;
     }
-    let stride = (w as usize).div_ceil(8);
-    let need = stride * h as usize;
+    Some((w, h, i))
+}
+
+/// Read a P4 PBM into a bitmap (copies the rows out of the slice).
+pub fn read_pbm(bytes: &[u8]) -> Option<Bitmap> {
+    let (w, h, i) = pbm_header(bytes)?;
+    let need = (w as usize).div_ceil(8) * h as usize;
     if bytes.len() < i + need {
         return None;
     }
     Some(Bitmap { w, h, bits: bytes[i..i + need].to_vec() })
 }
 
+/// Turn a whole PBM file into a bitmap in place: the header is drained off the front of
+/// the vector and the rows stay where they are, so a full-page image costs one buffer.
+pub fn pbm_from_vec(mut bytes: Vec<u8>) -> Option<Bitmap> {
+    let (w, h, i) = pbm_header(&bytes)?;
+    let need = (w as usize).div_ceil(8) * h as usize;
+    if bytes.len() < i + need {
+        return None;
+    }
+    bytes.truncate(i + need);
+    bytes.drain(..i);
+    Some(Bitmap { w, h, bits: bytes })
+}
+
 /// Load a PBM file.
 pub fn load_pbm<F: Fs>(fs: &F, path: &str) -> Option<Bitmap> {
     let bytes = fs.read_to_vec(path).ok()?;
-    read_pbm(&bytes)
+    pbm_from_vec(bytes)
+}
+
+/// Stream a PBM file straight into a frame, a sector at a time, with no heap copy of the
+/// image: `place` receives the image size and returns where its top-left corner goes.
+/// Rows outside the frame are skipped without reading. Returns the image size.
+pub fn load_pbm_into<F: Fs>(
+    fs: &F,
+    path: &str,
+    f: &mut Frame,
+    place: impl FnOnce(u32, u32) -> (i32, i32),
+    mode: BlitMode,
+) -> Option<(u32, u32)> {
+    let file = fs.open(path).ok()?;
+    let mut chunk = Chunked { file: &file, buf: [0; 512], start: 0, len: 0 };
+    chunk.refill(0)?;
+    let (w, h, data) = pbm_header(&chunk.buf[..chunk.len])?;
+    let stride = (w as usize).div_ceil(8);
+    let (x, y) = place(w, h);
+    let mut row = alloc::vec![0u8; stride];
+    for r in 0..h {
+        let dy = y + r as i32;
+        if dy < 0 || dy >= f.height() as i32 {
+            continue;
+        }
+        let at = data as u64 + r as u64 * stride as u64;
+        if !chunk.read(at, &mut row) {
+            break;
+        }
+        f.blit_row(x, dy, &row, w, mode);
+    }
+    Some((w, h))
+}
+
+/// Stream a book's full-page cover into a frame (see [`load_pbm_into`]).
+pub fn load_cover_into<F: Fs>(
+    fs: &F,
+    id: crate::BookId,
+    f: &mut Frame,
+    place: impl FnOnce(u32, u32) -> (i32, i32),
+    mode: BlitMode,
+) -> Option<(u32, u32)> {
+    load_pbm_into(fs, &quire_fs::join(&crate::book_dir(id), "cover.pbm"), f, place, mode)
+}
+
+/// Sector-sized sequential reads over a `ReadAt`, aligned so each refill is one sector.
+struct Chunked<'a, R: ReadAt> {
+    file: &'a R,
+    buf: [u8; 512],
+    start: u64,
+    len: usize,
+}
+
+impl<R: ReadAt> Chunked<'_, R> {
+    fn refill(&mut self, at: u64) -> Option<()> {
+        self.start = at - at % 512;
+        self.len = self.file.read_at(self.start, &mut self.buf).ok()?;
+        (self.len > 0).then_some(())
+    }
+    /// Fill `out` from file offset `at`; false at end of file.
+    fn read(&mut self, mut at: u64, out: &mut [u8]) -> bool {
+        let mut done = 0;
+        while done < out.len() {
+            if at < self.start || at >= self.start + self.len as u64 {
+                if self.refill(at).is_none() {
+                    return false;
+                }
+                if at >= self.start + self.len as u64 {
+                    return false;
+                }
+            }
+            let i = (at - self.start) as usize;
+            let n = (self.len - i).min(out.len() - done);
+            out[done..done + n].copy_from_slice(&self.buf[i..i + n]);
+            done += n;
+            at += n as u64;
+        }
+        true
+    }
 }
 
 /// Remove a directory tree (bounded depth).
@@ -417,6 +513,74 @@ mod tests {
         bytes.extend_from_slice(&bm.bits);
         let back = read_pbm(&bytes).unwrap();
         assert_eq!(back, bm);
+        assert_eq!(pbm_from_vec(bytes.clone()).unwrap(), bm);
         assert!(read_pbm(b"P4\n0 0\n").is_none());
+        assert!(pbm_from_vec(b"P4\n13 3\n".to_vec()).is_none());
+    }
+
+    /// Streaming a PBM into a frame paints the same pixels as blitting the decoded bitmap,
+    /// including rows that fall outside the frame and an unaligned x.
+    #[test]
+    fn stream_into_frame_matches_blit() {
+        use quire_fs::{DirEntry, FsError, FsResult, WriteFile};
+        struct OneFile(Vec<u8>);
+        struct NoWrite;
+        impl WriteFile for NoWrite {
+            fn write_all(&mut self, _: &[u8]) -> FsResult<()> {
+                Err(FsError::Io(String::from("read only")))
+            }
+            fn flush(&mut self) -> FsResult<()> {
+                Ok(())
+            }
+        }
+        impl Fs for OneFile {
+            type File = Vec<u8>;
+            type Writer = NoWrite;
+            fn open(&self, path: &str) -> FsResult<Vec<u8>> {
+                (path == "/a.pbm").then(|| self.0.clone()).ok_or(FsError::NotFound)
+            }
+            fn create(&self, _: &str) -> FsResult<NoWrite> {
+                Ok(NoWrite)
+            }
+            fn append(&self, _: &str) -> FsResult<NoWrite> {
+                Ok(NoWrite)
+            }
+            fn exists(&self, path: &str) -> bool {
+                path == "/a.pbm"
+            }
+            fn read_dir(&self, _: &str) -> FsResult<Vec<DirEntry>> {
+                Ok(Vec::new())
+            }
+            fn mkdir_all(&self, _: &str) -> FsResult<()> {
+                Ok(())
+            }
+            fn remove(&self, _: &str) -> FsResult<()> {
+                Ok(())
+            }
+            fn rename(&self, _: &str, _: &str) -> FsResult<()> {
+                Ok(())
+            }
+            fn free_bytes(&self) -> Option<u64> {
+                None
+            }
+        }
+        let mut bm = Bitmap::new(203, 700);
+        let mut x = 12345u32;
+        for b in bm.bits.iter_mut() {
+            x ^= x << 13;
+            x ^= x >> 17;
+            x ^= x << 5;
+            *b = (x >> 9) as u8;
+        }
+        let mut bytes = b"P4\n# a comment\n203 700\n".to_vec();
+        bytes.extend_from_slice(&bm.bits);
+        let fs = OneFile(bytes);
+        let mut a = Frame::new(240, 300);
+        let mut b = Frame::new(240, 300);
+        let got = load_pbm_into(&fs, "/a.pbm", &mut a, |w, h| ((240 - w as i32) / 2 + 1, (300 - h as i32) / 2), BlitMode::Or);
+        assert_eq!(got, Some((203, 700)));
+        b.blit((240 - 203) / 2 + 1, (300 - 700) / 2, bm.as_ref(), BlitMode::Or);
+        assert_eq!(a, b);
+        assert!(a.ink_count() > 1000);
     }
 }

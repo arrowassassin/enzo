@@ -9,7 +9,7 @@ use quire_gfx::Frame;
 use quire_ui::Refresh;
 
 /// The plane buffer the driver streams to the panel (static: 52 KB is too much stack).
-static mut PLANE: [u8; PLANE_BYTES] = [0xFF; PLANE_BYTES];
+static mut PLANE: [u8; PLANE_BYTES] = [0; PLANE_BYTES]; // zero-initialised so it lives in .bss; the rotation fills it
 
 /// The driver plus the refresh policy.
 pub struct Display {

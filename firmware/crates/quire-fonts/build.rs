@@ -94,14 +94,25 @@ fn name(f: Fam, s: Sty, px: u16, kind: &str) -> String {
     }
 }
 
-fn charset(kind: &str) -> Vec<char> {
+fn charset(fam: Fam, kind: &str) -> Vec<char> {
     if kind == "dropcap" {
         return ('A'..='Z').chain(['‘', '“', '"', '\'', 'É', 'À', 'Ö', 'Ü', 'Ç']).collect();
     }
     if kind == "numeral" {
-        // Figures, the punctuation that appears between them, and letters for short words
-        // such as "Thursday" or "min". Everything else is set in a text strike.
-        return (0x20u32..=0x7E).chain(0xC0..=0xFF).filter_map(char::from_u32).chain(['·', '–', '—', '%', '°']).collect();
+        // Figures, the punctuation that appears between them, letters for short words
+        // such as "Thursday" or "min", and the quotation marks the quote sleep screen
+        // and chapter titles set in these sizes. Everything else is set in a text strike.
+        return (0x20u32..=0x7E)
+            .chain(0xC0..=0xFF)
+            .filter_map(char::from_u32)
+            .chain(['·', '–', '—', '%', '°', '‘', '’', '“', '”'])
+            .collect();
+    }
+    if matches!(fam, Fam::Mono) {
+        // The mono face sets times, counts and key labels; ⌫ is the keyboard's delete key.
+        let mut v = charset(Fam::Atkinson, kind);
+        v.push('\u{232B}');
+        return v;
     }
     // Basic Latin and Latin-1: English, French, German, Spanish, Italian, Portuguese,
     // Dutch and the Nordic languages. Latin Extended-A ships as an SD font pack.
@@ -232,7 +243,7 @@ fn main() {
         let em_px = if kind == "dropcap" { solve_dropcap_em(&font, &face, px) } else { px };
         let scale: PxScale = scale_for_em(&font, &face, em_px as f32);
         let sf = font.as_scaled(scale);
-        let chars = charset(kind);
+        let chars = charset(fam, kind);
         let mut glyphs = Vec::with_capacity(chars.len());
         for &c in &chars {
             let id = font.glyph_id(c);
@@ -241,7 +252,14 @@ fn main() {
             }
             let adv = sf.h_advance(id);
             let advance_q = (adv * 4.0).round().clamp(0.0, 65535.0) as u16;
-            let glyph = id.with_scale_and_position(scale, ab_glyph::point(0.0, 0.0));
+            // JetBrains Mono's zero is dotted, and at 18 px on 1-bit paper the dot fuses
+            // with the bowl into a slashed blob ("1 h Ø2"). The face has no plain-zero
+            // alternate (its GSUB `zero` feature is the slashed zero; the cv/ss sets leave
+            // the figure alone), so the pack takes the outline of 'O' for U+0030: in this
+            // monospace face it has the same advance and the same height as the figure and
+            // is 8 font units narrower on each side, which is the plain oval we want.
+            let outline_id = if matches!(fam, Fam::Mono) && c == '0' { font.glyph_id('O') } else { id };
+            let glyph = outline_id.with_scale_and_position(scale, ab_glyph::point(0.0, 0.0));
             match font.outline_glyph(glyph) {
                 Some(og) => {
                     let b = og.px_bounds();

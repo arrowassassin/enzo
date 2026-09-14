@@ -20,7 +20,7 @@ pub mod text;
 
 pub use font::{Font, Glyph};
 pub use frame::{Bitmap, BitmapRef, BlitMode, Frame, Ink, Pattern, Rect, Rotation};
-pub use text::{draw_text, measure_text, TextStyle};
+pub use text::{draw_text, draw_text_ccw, measure_text, TextStyle};
 
 /// Panel width in portrait orientation, pixels.
 pub const PANEL_W: u32 = 528;

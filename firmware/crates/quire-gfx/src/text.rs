@@ -46,6 +46,32 @@ pub fn draw_text(frame: &mut Frame, font: &Font, x: i32, y: i32, s: &str, style:
     pen_q >> 2
 }
 
+/// Draw `s` rotated 90° counter-clockwise, reading from bottom to top: the baseline is the
+/// vertical line at `x` and the pen starts at `y` and moves upwards. Glyph bitmaps are
+/// blitted transposed, so no scratch frame is needed. Returns the pen y after the last glyph.
+pub fn draw_text_ccw(frame: &mut Frame, font: &Font, x: i32, y: i32, s: &str, style: TextStyle) -> i32 {
+    let mode = if style.inverted { BlitMode::Clear } else { BlitMode::Or };
+    let mut pen_q = 0i32;
+    let mut prev: Option<char> = None;
+    for c in s.chars() {
+        if let Some(p) = prev {
+            pen_q += font.kern_q(p, c);
+        }
+        let g = font.glyph_or_fallback(c);
+        if g.bitmap.w > 0 {
+            let gx = (pen_q >> 2) + g.bearing_x as i32;
+            let top = y - gx - g.bitmap.w as i32 + 1;
+            frame.blit_ccw(x - g.top as i32, top, g.bitmap, mode);
+            if style.darker {
+                frame.blit_ccw(x - g.top as i32, top - 1, g.bitmap, mode);
+            }
+        }
+        pen_q += g.advance_q as i32 + (style.tracking << 2);
+        prev = Some(c);
+    }
+    y - (pen_q >> 2)
+}
+
 /// Width of `s` in pixels if drawn with `font` and `style`.
 pub fn measure_text(font: &Font, s: &str, style: TextStyle) -> i32 {
     let mut pen_q = 0i32;
