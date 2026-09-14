@@ -52,10 +52,16 @@ jobs:
             espflash save-image --chip esp32c3 --flash-size 16mb --partition-table partitions.csv --target-app-partition recovery \
               target/riscv32imc-unknown-none-elf/release/quire-recovery ../../dist/quire-recovery.bin
           fi
-      - name: factory image (bootloader + table + apps, flash at 0x0)
+      - name: assets image (the dictionary, flashed at the assets partition)
+        run: |
+          cp ../crates/quire-ui/data/en.qdict ../../dist/quire-assets.bin
+      - name: factory image (bootloader + table + app + assets, flash at 0x0)
         run: |
           espflash save-image --chip esp32c3 --merge --partition-table partitions.csv --target-app-partition ota_0 \
             --flash-size 16mb target/riscv32imc-unknown-none-elf/release/quire-x3 ../../dist/quire-x3-factory.bin
+          # espflash merges only the app; the assets partition is appended at its table offset.
+          assets_off=$(grep '^assets,' partitions.csv | cut -d, -f4 | tr -d ' ')
+          dd if=../../dist/quire-assets.bin of=../../dist/quire-x3-factory.bin bs=4096 seek=$((assets_off / 4096)) conv=notrunc status=none
           ls -la ../../dist
       - uses: actions/upload-artifact@v4
         with: { name: quire-x3-images, path: dist/*.bin }

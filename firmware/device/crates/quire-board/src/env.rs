@@ -9,7 +9,9 @@ use quire_net::NetShared;
 use quire_ui::net::NetState;
 use quire_ui::{Battery, DeviceInfo, Env, SysRequest, WifiState};
 
+use crate::assets::FlashRegion;
 use crate::sdfs::{SdFs, LOCAL_NOW};
+use quire_ui::dict::builtin::DictSource;
 
 /// Firmware version from the crate.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -36,6 +38,8 @@ pub struct DeviceEnv {
     pub build: &'static str,
     rng: esp_hal::rng::Rng,
     net: NetShared,
+    /// The assets partition holding the dictionary, when it was found.
+    pub assets: Option<FlashRegion>,
 }
 
 impl DeviceEnv {
@@ -55,6 +59,7 @@ impl DeviceEnv {
             build,
             rng: esp_hal::rng::Rng::new(),
             net: NetShared::new(),
+            assets: None,
         }
     }
 
@@ -115,6 +120,9 @@ impl Env for DeviceEnv {
     }
     fn random(&mut self) -> u32 {
         self.rng.random()
+    }
+    fn dictionary(&self) -> Option<&dyn DictSource> {
+        self.assets.as_ref().map(|a| a as &dyn DictSource)
     }
     fn net(&mut self) -> &mut dyn NetState {
         self.net.refresh();

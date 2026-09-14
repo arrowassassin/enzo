@@ -267,6 +267,13 @@ async fn main(spawner: embassy_executor::Spawner) -> ! {
     if let Some(b) = battery {
         env.battery = b;
     }
+    // The dictionary lives in the assets partition; without it the Dictionary screen
+    // offers card dictionaries only.
+    env.assets = quire_board::assets::FlashRegion::assets(esp_storage::FlashStorage::new(peripherals.FLASH));
+    match &env.assets {
+        Some(a) => println!("assets partition at {:#x}", a.base()),
+        None => println!("assets partition not found"),
+    }
 
     // The network task owns the radio and a clone of the card handle; it sleeps until a
     // screen asks for the radio.

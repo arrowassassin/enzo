@@ -78,7 +78,7 @@ impl Dictionary {
         self.loaded = true;
         let fs = cx.env.fs();
         self.sources.clear();
-        if builtin::blob().is_some() {
+        if cx.env.dictionary().and_then(builtin::Blob::parse).is_some() {
             self.sources.push(Source::Builtin);
         }
         self.sources.extend(dict::list(fs).into_iter().map(Source::Card));
@@ -107,7 +107,12 @@ impl Dictionary {
         if self.answers[i].is_none() {
             let fs = cx.env.fs();
             let answer = match &self.sources[i] {
-                Source::Builtin => builtin::lookup_stemmed(&self.word).map(|e| (e, String::from(builtin::NAME))),
+                Source::Builtin => cx
+                    .env
+                    .dictionary()
+                    .and_then(builtin::Blob::parse)
+                    .and_then(|b| b.lookup_stemmed(&self.word))
+                    .map(|e| (e, String::from(builtin::NAME))),
                 Source::Card(stem) => Dict::open(fs, stem).and_then(|d| d.lookup_stemmed(&self.word).map(|e| (e, d.name))),
             };
             self.answers[i] = Some(answer);

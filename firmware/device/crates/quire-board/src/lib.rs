@@ -16,6 +16,8 @@ pub mod pins;
 pub mod util;
 
 #[cfg(feature = "hal")]
+pub mod assets;
+#[cfg(feature = "hal")]
 pub mod bus;
 #[cfg(feature = "hal")]
 pub mod env;

@@ -19,6 +19,7 @@ esp-alloc.workspace = true
 esp-println.workspace = true
 esp-backtrace.workspace = true
 esp-bootloader-esp-idf.workspace = true
+esp-storage.workspace = true
 embassy-executor.workspace = true
 embassy-time.workspace = true
 embassy-futures.workspace = true

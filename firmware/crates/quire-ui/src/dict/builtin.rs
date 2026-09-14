@@ -69,16 +69,63 @@ pub const GROUP: usize = 64;
 #[cfg(feature = "builtin-dict")]
 static BLOB: &[u8] = include_bytes!("../../data/en.qdict");
 
-/// The compiled-in dictionary, if the `builtin-dict` feature is on.
-pub fn blob() -> Option<Blob<'static>> {
+/// Random-access bytes holding a `.qdict`: the compiled-in blob on the host and in the
+/// simulator, the assets flash partition on the device (the ESP32-C3 maps at most 4 MB
+/// of flash for code and constants, so the 1.5 MB blob is read through the SPI flash
+/// driver a few bytes at a time instead). Reads are small: a lookup touches the header,
+/// eleven 4-byte index entries, one group record and three to four compressed blocks
+/// of at most 4 KB.
+pub trait DictSource {
+    /// Bytes available.
+    fn len(&self) -> usize;
+    /// True when nothing is there.
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+    /// Fill `buf` from `off`; false when the range is outside the source.
+    fn read(&self, off: usize, buf: &mut [u8]) -> bool;
+}
+
+impl DictSource for &[u8] {
+    fn len(&self) -> usize {
+        <[u8]>::len(self)
+    }
+    fn read(&self, off: usize, buf: &mut [u8]) -> bool {
+        match self.get(off..off + buf.len()) {
+            Some(src) => {
+                buf.copy_from_slice(src);
+                true
+            }
+            None => false,
+        }
+    }
+}
+
+impl DictSource for Vec<u8> {
+    fn len(&self) -> usize {
+        Vec::len(self)
+    }
+    fn read(&self, off: usize, buf: &mut [u8]) -> bool {
+        DictSource::read(&self.as_slice(), off, buf)
+    }
+}
+
+/// The compiled-in dictionary bytes, if the `builtin-dict` feature is on. Platforms
+/// without it hand the UI their own source through `Env::dictionary`.
+pub fn compiled_in() -> Option<&'static dyn DictSource> {
     #[cfg(feature = "builtin-dict")]
     {
-        Blob::parse(BLOB)
+        Some(&BLOB)
     }
     #[cfg(not(feature = "builtin-dict"))]
     {
         None
     }
+}
+
+/// The compiled-in dictionary, parsed, if the `builtin-dict` feature is on.
+pub fn blob() -> Option<Blob<'static>> {
+    Blob::parse(compiled_in()?)
 }
 
 /// Look a word up in the built-in dictionary (exact, then lowercase).
@@ -97,7 +144,7 @@ const POS: [&str; 4] = ["n.", "v.", "adj.", "adv."];
 /// A parsed `.qdict` blob (borrowed; parsing reads only the header).
 #[derive(Clone, Copy)]
 pub struct Blob<'a> {
-    data: &'a [u8],
+    data: &'a dyn DictSource,
     words: u32,
     groups: u32,
     group_index: usize,
@@ -109,12 +156,23 @@ pub struct Blob<'a> {
     vblocks: u32,
 }
 
-fn u16_at(d: &[u8], o: usize) -> Option<u16> {
-    Some(u16::from_le_bytes(d.get(o..o + 2)?.try_into().ok()?))
+fn u16_at(d: &dyn DictSource, o: usize) -> Option<u16> {
+    let mut b = [0u8; 2];
+    d.read(o, &mut b).then(|| u16::from_le_bytes(b))
 }
 
-fn u32_at(d: &[u8], o: usize) -> Option<u32> {
-    Some(u32::from_le_bytes(d.get(o..o + 4)?.try_into().ok()?))
+fn u32_at(d: &dyn DictSource, o: usize) -> Option<u32> {
+    let mut b = [0u8; 4];
+    d.read(o, &mut b).then(|| u32::from_le_bytes(b))
+}
+
+/// Copy `a..b` out of the source.
+fn bytes_at(d: &dyn DictSource, a: usize, b: usize) -> Option<Vec<u8>> {
+    if b < a || b - a > 1 << 20 {
+        return None;
+    }
+    let mut v = vec![0u8; b - a];
+    d.read(a, &mut v).then_some(v)
 }
 
 /// One block at a time: a 4 KB buffer plus the decoder state, both reused across the
@@ -132,13 +190,15 @@ impl Inflater {
         Inflater { buf: vec![0; BLOCK], state: Box::default(), cur: None, len: 0 }
     }
 
-    /// Inflate `src` into the buffer unless it is already there; returns the block.
-    fn block(&mut self, tag: (u8, u32), src: &[u8]) -> Option<&[u8]> {
+    /// Inflate the block `fetch` yields into the buffer unless it is already there;
+    /// returns the block. The source bytes are only read on a miss.
+    fn block(&mut self, tag: (u8, u32), fetch: impl FnOnce() -> Option<Vec<u8>>) -> Option<&[u8]> {
         if self.cur != Some(tag) {
             self.cur = None;
+            let src = fetch()?;
             self.state.init();
             let flags = inflate_flags::TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF;
-            let (status, _, out) = decompress(&mut self.state, src, &mut self.buf, 0, flags);
+            let (status, _, out) = decompress(&mut self.state, &src, &mut self.buf, 0, flags);
             if status != TINFLStatus::Done {
                 return None;
             }
@@ -156,12 +216,14 @@ const SEC_VOCAB: u8 = 2;
 
 impl<'a> Blob<'a> {
     /// Parse the header; `None` if this is not a version-1 qdict.
-    pub fn parse(data: &'a [u8]) -> Option<Blob<'a>> {
-        if data.get(..4)? != b"QDCT" || u16_at(data, 4)? != 1 {
+    pub fn parse(data: &'a dyn DictSource) -> Option<Blob<'a>> {
+        let mut magic = [0u8; 4];
+        if !data.read(0, &mut magic) || &magic != b"QDCT" || u16_at(data, 4)? != 1 {
             return None;
         }
+        // A flash partition is larger than the blob it holds.
         let total = u32_at(data, 56)? as usize;
-        if total != data.len() || u32_at(data, 52)? as usize != BLOCK {
+        if total > data.len() || u32_at(data, 52)? as usize != BLOCK {
             return None;
         }
         Some(Blob {
@@ -184,26 +246,26 @@ impl<'a> Blob<'a> {
     }
 
     /// Group record `i`: (block, offset, gloss base, first key).
-    fn group(&self, i: u32) -> Option<(u32, usize, u32, &'a [u8])> {
+    fn group(&self, i: u32) -> Option<(u32, usize, u32, Vec<u8>)> {
         let at = u32_at(self.data, self.group_index + 4 * i as usize)? as usize;
         let end = u32_at(self.data, self.group_index + 4 * (i as usize + 1))? as usize;
         let block = u16_at(self.data, at)? as u32;
         let off = u16_at(self.data, at + 2)? as usize;
         let base = u32_at(self.data, at + 4)?;
-        Some((block, off, base, self.data.get(at + 8..end)?))
+        Some((block, off, base, bytes_at(self.data, at + 8, end)?))
     }
 
-    fn word_block(&self, i: u32) -> Option<&'a [u8]> {
+    fn word_block(&self, i: u32) -> Option<Vec<u8>> {
         if i >= self.wblocks {
             return None;
         }
         let a = u32_at(self.data, self.wtab + 4 * i as usize)? as usize;
         let b = u32_at(self.data, self.wtab + 4 * (i as usize + 1))? as usize;
-        self.data.get(a..b)
+        bytes_at(self.data, a, b)
     }
 
     /// Id-table entry `i` of a gloss/vocab section: (first id, data offset).
-    fn id_entry(tab: usize, data: &[u8], i: u32) -> Option<(u32, usize)> {
+    fn id_entry(tab: usize, data: &dyn DictSource, i: u32) -> Option<(u32, usize)> {
         Some((u32_at(data, tab + 8 * i as usize)?, u32_at(data, tab + 8 * i as usize + 4)? as usize))
     }
 
@@ -226,7 +288,7 @@ impl<'a> Blob<'a> {
         let bi = lo - 1;
         let (first, a) = Self::id_entry(tab, self.data, bi)?;
         let (_, b) = Self::id_entry(tab, self.data, bi + 1)?;
-        let block = inf.block((sec, bi), self.data.get(a..b)?)?;
+        let block = inf.block((sec, bi), || bytes_at(self.data, a, b))?;
         let mut p = 0usize;
         for _ in first..id {
             p += 1 + *block.get(p)? as usize;
@@ -321,7 +383,7 @@ impl<'a> Blob<'a> {
         let (mut lo, mut hi) = (0u32, self.groups);
         while lo < hi {
             let mid = lo + (hi - lo) / 2;
-            if self.group(mid)?.3 <= target {
+            if self.group(mid)?.3.as_slice() <= target {
                 lo = mid + 1;
             } else {
                 hi = mid;
@@ -332,7 +394,7 @@ impl<'a> Blob<'a> {
         }
         let (block, mut p, mut gloss_id, _) = self.group(lo - 1)?;
         let mut inf = Inflater::new();
-        let data = inf.block((SEC_WORD, block), self.word_block(block)?)?;
+        let data = inf.block((SEC_WORD, block), || self.word_block(block))?;
         let mut key: Vec<u8> = Vec::with_capacity(32);
         let mut senses: Vec<(u8, u32)> = Vec::new();
         for _ in 0..GROUP {
@@ -522,8 +584,10 @@ mod tests {
         }
         assert_eq!(blob.lookup("Paris ").unwrap().headword, "Paris");
         // A truncated or foreign blob is rejected at parse, never read past its end.
-        assert!(Blob::parse(&bytes[..bytes.len() - 1]).is_none());
-        assert!(Blob::parse(b"QDCT").is_none());
+        let short: &[u8] = &bytes[..bytes.len() - 1];
+        assert!(Blob::parse(&short).is_none());
+        let tiny: &[u8] = b"QDCT";
+        assert!(Blob::parse(&tiny).is_none());
         let mut bad = bytes.clone();
         bad[53] = 0;
         assert!(Blob::parse(&bad).is_none());
@@ -576,7 +640,7 @@ mod tests {
         // header must agree on the block size or parsing fails.
         assert_eq!(BLOCK, 4096);
         assert_eq!(GROUP, 64);
-        assert_eq!(u32_at(BLOB, 52), Some(BLOCK as u32));
+        assert_eq!(u32_at(&BLOB, 52), Some(BLOCK as u32));
         let decoder = core::mem::size_of::<DecompressorOxide>();
         assert!(decoder < 12 * 1024, "decoder state is {decoder} bytes");
         for w in ["pedestrian", "whale", "set", "run", "reveries", "antidisestablishmentarianism"] {

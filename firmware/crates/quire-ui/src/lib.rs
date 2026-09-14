@@ -331,6 +331,11 @@ pub trait Env {
     type Fs: Fs;
     /// Card access.
     fn fs(&self) -> &Self::Fs;
+    /// The built-in dictionary's bytes: the compiled-in blob where the `builtin-dict`
+    /// feature is on; the device reads them from its assets flash partition instead.
+    fn dictionary(&self) -> Option<&dyn dict::builtin::DictSource> {
+        dict::builtin::compiled_in()
+    }
     /// Local time, seconds since 1970 (the RTC keeps local time).
     fn now(&self) -> u32;
     /// Milliseconds since boot (for timers and the skim cadence).
