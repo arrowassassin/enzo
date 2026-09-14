@@ -136,11 +136,16 @@ impl Writer {
             }
         }
     }
-    /// Convenience: a text run.
+    /// Convenience: a text run, encoded directly (no intermediate token or buffer).
     pub fn text(&mut self, s: &str) {
-        if !s.is_empty() {
-            self.push(&Token::Text(String::from(s)));
+        if s.is_empty() {
+            return;
         }
+        self.chars += s.chars().count() as u32;
+        self.buf.reserve(s.len() + 6);
+        self.buf.push(TAG_TEXT);
+        write_varint(&mut self.buf, s.len() as u32);
+        self.buf.extend_from_slice(s.as_bytes());
     }
     /// Convenience: a paragraph start.
     pub fn para(&mut self, k: ParaKind) {
@@ -230,9 +235,192 @@ impl Iterator for Reader<'_> {
     }
 }
 
-/// Count text characters in a stream (progress denominators).
+/// Count text characters in a stream (progress denominators) without allocating.
 pub fn char_count(data: &[u8]) -> u32 {
-    Reader::new(data).filter_map(|t| if let Token::Text(s) = t { Some(s.chars().count() as u32) } else { None }).sum()
+    let mut r = Reader::new(data);
+    let mut n = 0u32;
+    while let Some(tag) = r.peek_tag() {
+        if tag == Tag::Text {
+            if let Some(b) = r.text_bytes() {
+                n += b.iter().filter(|x| (**x & 0xC0) != 0x80).count() as u32;
+            }
+        } else if r.skip_token().is_none() {
+            break;
+        }
+    }
+    n
+}
+
+/// Postcard tag of `Token::Text`.
+const TAG_TEXT: u8 = 1;
+
+fn write_varint(buf: &mut Vec<u8>, mut v: u32) {
+    while v >= 0x80 {
+        buf.push((v as u8) | 0x80);
+        v >>= 7;
+    }
+    buf.push(v as u8);
+}
+
+fn read_varint(data: &[u8], pos: &mut usize) -> Option<u32> {
+    let mut v = 0u32;
+    let mut shift = 0;
+    loop {
+        let b = *data.get(*pos)?;
+        *pos += 1;
+        v |= ((b & 0x7F) as u32) << shift;
+        if b & 0x80 == 0 {
+            return Some(v);
+        }
+        shift += 7;
+        if shift > 28 {
+            return None;
+        }
+    }
+}
+
+/// The kind of the next token, read without decoding it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Tag {
+    /// `Token::Para`.
+    Para,
+    /// `Token::Text`.
+    Text,
+    /// `Token::Style`.
+    Style,
+    /// `Token::Image`.
+    Image,
+    /// `Token::Anchor`.
+    Anchor,
+    /// `Token::Link`.
+    Link,
+    /// `Token::LinkEnd`.
+    LinkEnd,
+    /// `Token::Footnote`.
+    Footnote,
+    /// `Token::Rule`.
+    Rule,
+    /// `Token::Break`.
+    Break,
+    /// `Token::ChapterTitle`.
+    ChapterTitle,
+    /// `Token::End`.
+    End,
+}
+
+impl<'a> Reader<'a> {
+    /// The tag of the next token without consuming anything.
+    pub fn peek_tag(&self) -> Option<Tag> {
+        let b = *self.data.get(self.pos)?;
+        Some(match b {
+            0 => Tag::Para,
+            1 => Tag::Text,
+            2 => Tag::Style,
+            3 => Tag::Image,
+            4 => Tag::Anchor,
+            5 => Tag::Link,
+            6 => Tag::LinkEnd,
+            7 => Tag::Footnote,
+            8 => Tag::Rule,
+            9 => Tag::Break,
+            10 => Tag::ChapterTitle,
+            11 => Tag::End,
+            _ => return None,
+        })
+    }
+
+    /// Skip the next token without decoding it (no allocation). Returns its tag.
+    /// (Named `skip_token` because `Iterator::skip` already exists.)
+    pub fn skip_token(&mut self) -> Option<Tag> {
+        let tag = self.peek_tag()?;
+        let d = self.data;
+        let mut p = self.pos + 1;
+        let skip_string = |p: &mut usize| -> Option<()> {
+            let n = read_varint(d, p)? as usize;
+            *p = p.checked_add(n)?;
+            (*p <= d.len()).then_some(())
+        };
+        let ok = match tag {
+            Tag::Para => (|| {
+                let k = read_varint(d, &mut p)?;
+                match k {
+                    1 => p += 1,
+                    4 => {
+                        p += 2;
+                        read_varint(d, &mut p)?;
+                    }
+                    _ => {}
+                }
+                (p <= d.len()).then_some(())
+            })(),
+            Tag::Text | Tag::Anchor | Tag::Link | Tag::Footnote => skip_string(&mut p),
+            Tag::Style => {
+                p += 1;
+                (p <= d.len()).then_some(())
+            }
+            Tag::Image => (|| {
+                read_varint(d, &mut p)?;
+                read_varint(d, &mut p)?;
+                read_varint(d, &mut p)?;
+                Some(())
+            })(),
+            Tag::LinkEnd | Tag::Rule | Tag::Break | Tag::End => Some(()),
+            Tag::ChapterTitle => (|| {
+                for _ in 0..2 {
+                    let some = *d.get(p)?;
+                    p += 1;
+                    if some == 1 {
+                        skip_string(&mut p)?;
+                    }
+                }
+                Some(())
+            })(),
+        };
+        match ok {
+            Some(()) => {
+                self.pos = p;
+                Some(tag)
+            }
+            None => {
+                self.pos = d.len();
+                None
+            }
+        }
+    }
+
+    /// If the next token is `Text`, consume it and return its UTF-8 bytes without copying.
+    pub fn text_bytes(&mut self) -> Option<&'a [u8]> {
+        if self.peek_tag()? != Tag::Text {
+            return None;
+        }
+        let mut p = self.pos + 1;
+        let n = read_varint(self.data, &mut p)? as usize;
+        let end = p.checked_add(n)?;
+        if end > self.data.len() {
+            self.pos = self.data.len();
+            return None;
+        }
+        self.pos = end;
+        Some(&self.data[p..end])
+    }
+
+    /// If the next token is a string-bearing one (Anchor, Link, Footnote, Text), consume it and
+    /// return the tag and the string bytes without copying.
+    pub fn string_bytes(&mut self) -> Option<(Tag, &'a [u8])> {
+        let tag = self.peek_tag()?;
+        if !matches!(tag, Tag::Text | Tag::Anchor | Tag::Link | Tag::Footnote) {
+            return None;
+        }
+        let mut p = self.pos + 1;
+        let n = read_varint(self.data, &mut p)? as usize;
+        let end = p.checked_add(n)?;
+        if end > self.data.len() {
+            self.pos = self.data.len();
+            return None;
+        }
+        self.pos = end;
+        Some((tag, &self.data[p..end]))
+    }
 }
 
 /// Extract plain text (search, dictionary context), paragraphs separated by newlines.
@@ -266,6 +454,62 @@ pub fn plain_text(data: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn skip_matches_decode_and_text_fast_path_encodes_identically() {
+        let mut w = Writer::new();
+        w.para(ParaKind::Heading(2));
+        w.text("Héllo wörld, a run long enough to exceed the sixty-four byte stack buffer used by postcard's to_slice call.");
+        w.style(style::BOLD | style::ITALIC);
+        w.push(&Token::Image { id: 300, w: 480, h: 640 });
+        w.push(&Token::Anchor(String::from("ch1")));
+        w.push(&Token::Link(String::from("3#note-1")));
+        w.push(&Token::LinkEnd);
+        w.push(&Token::Footnote(String::from("n1")));
+        w.push(&Token::Rule);
+        w.push(&Token::Break);
+        w.push(&Token::ChapterTitle { number: Some(String::from("XII")), title: None });
+        w.push(&Token::ChapterTitle { number: None, title: Some(String::from("Loomings")) });
+        w.para(ParaKind::ListItem { ordered: true, level: 2, index: 300 });
+        w.push(&Token::End);
+        let data = w.finish();
+        // The hand-encoded text token decodes like a postcard one.
+        let mut w2 = Writer::new();
+        w2.push(&Token::Text(String::from(
+            "Héllo wörld, a run long enough to exceed the sixty-four byte stack buffer used by postcard's to_slice call.",
+        )));
+        let mut w3 = Writer::new();
+        w3.text("Héllo wörld, a run long enough to exceed the sixty-four byte stack buffer used by postcard's to_slice call.");
+        assert_eq!(w2.finish(), w3.finish());
+        // skip() lands on the same boundaries as next().
+        let mut a = Reader::new(&data);
+        let mut b = Reader::new(&data);
+        let mut tags = Vec::new();
+        loop {
+            let t = a.next();
+            let s = b.skip_token();
+            assert_eq!(a.offset(), b.offset());
+            match (t, s) {
+                (None, None) => break,
+                (Some(_), Some(tag)) => tags.push(tag),
+                other => panic!("mismatch {other:?}"),
+            }
+        }
+        assert_eq!(tags[0], Tag::Para);
+        assert_eq!(tags[1], Tag::Text);
+        assert_eq!(tags.len(), 14);
+        assert_eq!(
+            char_count(&data),
+            "Héllo wörld, a run long enough to exceed the sixty-four byte stack buffer used by postcard's to_slice call.".chars().count()
+                as u32
+        );
+        let mut r = Reader::new(&data);
+        r.skip_token();
+        assert_eq!(
+            r.text_bytes().map(|b| b.len()),
+            Some("Héllo wörld, a run long enough to exceed the sixty-four byte stack buffer used by postcard's to_slice call.".len())
+        );
+    }
     use alloc::string::ToString;
 
     #[test]

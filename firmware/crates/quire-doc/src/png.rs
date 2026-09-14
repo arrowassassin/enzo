@@ -1,35 +1,86 @@
 //! PNG decoder, row-streamed through zlib inflate: greyscale, RGB, palette, and alpha
 //! (composited over white), bit depths 1–16, non-interlaced. Adam7 is refused; the
 //! converter handles it.
+//!
+//! The chunk walk stops at the first `IDAT`; later `IDAT` chunks are discovered lazily
+//! as the inflater asks for more input, so the source is read strictly forward — one
+//! pass even when it is a deflated ZIP entry served by [`crate::inflate::InflatedRead`].
 
 use alloc::vec;
 use alloc::vec::Vec;
-use quire_fs::{ReadAt, Slice};
+use core::cell::{Cell, RefCell};
+use quire_fs::ReadAt;
 use quire_gfx::Bitmap;
 
 use crate::image::{Fit, RowSink};
 use crate::inflate::{Framing, Inflater};
 use crate::DocError;
 
-/// The IDAT chunks of a PNG, presented as one contiguous `ReadAt`.
+/// Largest legal `PLTE` chunk: 256 entries × RGB.
+const PLTE_MAX: u64 = 768;
+/// Largest `tRNS` chunk we accept (one alpha byte per palette entry).
+const TRNS_MAX: u64 = 256;
+/// Widest row we will buffer.
+const ROW_MAX: usize = 4 * 1024 * 1024;
+
+/// The IDAT chunks of a PNG, presented as one contiguous `ReadAt`, discovered on demand.
 struct Idat<'a, R: ReadAt> {
     src: &'a R,
-    /// (offset, len) of each chunk's data, and the cumulative start.
-    chunks: Vec<(u64, u64, u64)>,
-    total: u64,
+    /// (offset, len, cumulative start) of each IDAT chunk's data found so far.
+    chunks: RefCell<Vec<(u64, u64, u64)>>,
+    /// Total IDAT bytes found so far.
+    total: Cell<u64>,
+    /// Offset of the next chunk header to inspect.
+    next_hdr: Cell<u64>,
+    /// True once IEND (or the end of the file) was reached.
+    done: Cell<bool>,
+}
+
+impl<R: ReadAt> Idat<'_, R> {
+    /// Scan forward until at least one more IDAT chunk is known or the file ends.
+    fn discover(&self) -> quire_fs::FsResult<bool> {
+        let len = self.src.len();
+        while !self.done.get() {
+            let pos = self.next_hdr.get();
+            if pos + 8 > len {
+                self.done.set(true);
+                break;
+            }
+            let mut hdr = [0u8; 8];
+            self.src.read_exact_at(pos, &mut hdr)?;
+            let clen = u32::from_be_bytes([hdr[0], hdr[1], hdr[2], hdr[3]]) as u64;
+            let data = pos + 8;
+            self.next_hdr.set(data + clen + 4);
+            match &hdr[4..8] {
+                b"IDAT" => {
+                    let start = self.total.get();
+                    let clen = clen.min(len.saturating_sub(data));
+                    self.chunks.borrow_mut().push((data, clen, start));
+                    self.total.set(start + clen);
+                    return Ok(true);
+                }
+                b"IEND" => self.done.set(true),
+                _ => {}
+            }
+        }
+        Ok(false)
+    }
 }
 
 impl<R: ReadAt> ReadAt for Idat<'_, R> {
+    /// An upper bound (the container's length); `read_at` returns 0 at the real end.
     fn len(&self) -> u64 {
-        self.total
+        self.src.len()
     }
     fn read_at(&self, offset: u64, buf: &mut [u8]) -> quire_fs::FsResult<usize> {
-        if offset >= self.total {
-            return Ok(0);
+        while offset >= self.total.get() {
+            if !self.discover()? {
+                return Ok(0);
+            }
         }
-        // Find the chunk containing offset.
-        let idx = self.chunks.partition_point(|c| c.2 + c.1 <= offset);
-        let (off, len, start) = self.chunks[idx];
+        let chunks = self.chunks.borrow();
+        let idx = chunks.partition_point(|c| c.2 + c.1 <= offset);
+        let (off, len, start) = chunks[idx];
         let inner = offset - start;
         let n = buf.len().min((len - inner) as usize);
         self.src.read_at(off + inner, &mut buf[..n])
@@ -38,6 +89,12 @@ impl<R: ReadAt> ReadAt for Idat<'_, R> {
 
 /// Decode a PNG into a fitted 1-bit bitmap.
 pub fn decode<R: ReadAt>(src: &R, fit: Fit) -> Result<Bitmap, DocError> {
+    decode_multi(src, &[fit])?.pop().ok_or(DocError::Malformed("png"))
+}
+
+/// Decode a PNG once, producing one fitted bitmap per entry of `fits` (a cover and its
+/// thumbnail from a single pass over the pixels).
+pub fn decode_multi<R: ReadAt>(src: &R, fits: &[Fit]) -> Result<Vec<Bitmap>, DocError> {
     let mut sig = [0u8; 8];
     src.read_exact_at(0, &mut sig)?;
     if sig != [0x89, b'P', b'N', b'G', 13, 10, 26, 10] {
@@ -47,8 +104,7 @@ pub fn decode<R: ReadAt>(src: &R, fit: Fit) -> Result<Bitmap, DocError> {
     let (mut w, mut h, mut depth, mut ctype, mut interlace) = (0u32, 0u32, 0u8, 0u8, 0u8);
     let mut palette: Vec<u8> = Vec::new(); // grey per entry
     let mut trns: Vec<u8> = Vec::new();
-    let mut chunks: Vec<(u64, u64, u64)> = Vec::new();
-    let mut total = 0u64;
+    let mut first_idat: Option<u64> = None;
     let len = src.len();
     while pos + 8 <= len {
         let mut hdr = [0u8; 8];
@@ -66,20 +122,37 @@ pub fn decode<R: ReadAt>(src: &R, fit: Fit) -> Result<Bitmap, DocError> {
                 interlace = b[12];
             }
             b"PLTE" => {
+                if clen > PLTE_MAX {
+                    return Err(DocError::Malformed("png: palette too long"));
+                }
                 let b = src.read_range(data, clen as usize)?;
-                palette = b.chunks(3).map(|c| ((c[0] as u32 * 299 + c[1] as u32 * 587 + c[2] as u32 * 114) / 1000) as u8).collect();
+                palette = b
+                    .as_chunks::<3>()
+                    .0
+                    .iter()
+                    .map(|c| ((c[0] as u32 * 299 + c[1] as u32 * 587 + c[2] as u32 * 114) / 1000) as u8)
+                    .collect();
             }
-            b"tRNS" => trns = src.read_range(data, clen as usize)?,
+            b"tRNS" => {
+                if clen > TRNS_MAX {
+                    return Err(DocError::Malformed("png: trns too long"));
+                }
+                trns = src.read_range(data, clen as usize)?;
+            }
             b"IDAT" => {
-                chunks.push((data, clen, total));
-                total += clen;
+                // Pixel data starts here; the remaining IDAT chunks are found on demand.
+                first_idat = Some(pos);
+                break;
             }
             b"IEND" => break,
             _ => {}
         }
         pos = data + clen + 4;
     }
-    if w == 0 || h == 0 || chunks.is_empty() {
+    let Some(first_idat) = first_idat else {
+        return Err(DocError::Malformed("png: no image data"));
+    };
+    if w == 0 || h == 0 {
         return Err(DocError::Malformed("png: no image data"));
     }
     if interlace != 0 {
@@ -96,12 +169,12 @@ pub fn decode<R: ReadAt>(src: &R, fit: Fit) -> Result<Bitmap, DocError> {
     let bits_pp = channels as u32 * depth as u32;
     let stride = ((w as u64 * bits_pp as u64).div_ceil(8)) as usize;
     let bpp = (bits_pp as usize).div_ceil(8).max(1); // bytes per complete pixel, for filters
-    if stride > 4 * 1024 * 1024 {
+    if stride > ROW_MAX {
         return Err(DocError::TooLarge("png row"));
     }
-    let mut sink = RowSink::new(w, h, fit)?;
-    let idat = Idat { src, chunks, total };
-    let mut inf = Inflater::new(Slice::new(&idat, 0, total), Framing::Zlib);
+    let mut sinks = fits.iter().map(|f| RowSink::new(w, h, *f)).collect::<Result<Vec<_>, _>>()?;
+    let idat = Idat { src, chunks: RefCell::new(Vec::new()), total: Cell::new(0), next_hdr: Cell::new(first_idat), done: Cell::new(false) };
+    let mut inf = Inflater::new(&idat, Framing::Zlib);
     let mut prev = vec![0u8; stride];
     let mut cur = vec![0u8; stride];
     let mut grey = vec![0u8; w as usize];
@@ -130,11 +203,13 @@ pub fn decode<R: ReadAt>(src: &R, fit: Fit) -> Result<Bitmap, DocError> {
             filled = 0;
             unfilter(filter, &mut cur, &prev, bpp);
             to_grey(&cur, &mut grey, w, depth, ctype, &palette, &trns);
-            sink.push_row(&grey);
+            for s in sinks.iter_mut() {
+                s.push_row(&grey);
+            }
             core::mem::swap(&mut prev, &mut cur);
             row += 1;
             if row >= h {
-                return Ok(sink.finish());
+                return Ok(sinks.into_iter().map(RowSink::finish).collect());
             }
         }
         // Partial row remains.
@@ -151,10 +226,8 @@ pub fn decode<R: ReadAt>(src: &R, fit: Fit) -> Result<Bitmap, DocError> {
         }
         pending.clear();
     }
-    if row < h {
-        // Truncated file: keep what decoded.
-    }
-    Ok(sink.finish())
+    // Truncated file: keep what decoded.
+    Ok(sinks.into_iter().map(RowSink::finish).collect())
 }
 
 fn unfilter(filter: u8, cur: &mut [u8], prev: &[u8], bpp: usize) {
@@ -370,7 +443,45 @@ pub(crate) mod tests {
             let bytes = z.read(&e, 4 << 20).unwrap();
             let bm = decode(&bytes, Fit::inside(480, 640)).expect("real png");
             assert!(bm.w > 0 && bm.h > 0);
+            // Straight from the entry reader: the same bitmap.
+            let r = z.entry_reader(&e).unwrap();
+            let bm2 = decode(&r, Fit::inside(480, 640)).expect("streamed png");
+            assert_eq!(bm, bm2);
+            // Through a forward-only inflated stream: still identical, and never rewound
+            // (the chunk walk stops at the first IDAT; later IDATs are found lazily).
+            let z2 = miniz_oxide::deflate::compress_to_vec(&bytes, 6);
+            let s = crate::inflate::InflatedRead::new(&z2[..], crate::inflate::Framing::Raw, bytes.len() as u64);
+            assert_eq!(decode(&s, Fit::inside(480, 640)).expect("forward-only png"), bm);
+            assert_eq!(s.restarts(), 0, "png decode reads forward only");
         }
+    }
+
+    #[test]
+    fn multi_decode_matches_separate_decodes() {
+        let png = encode(300, 200, 2, &|x, y| [((x * 7 + y * 3) % 256) as u8, (y % 256) as u8, (x % 256) as u8, 255], 4, true);
+        let fits = [Fit::inside(480, 640), Fit::fill(152, 228), Fit { fs: false, ..Fit::fill(152, 228) }];
+        let together = decode_multi(&png, &fits).unwrap();
+        assert_eq!(together.len(), 3);
+        for (bm, fit) in together.iter().zip(fits) {
+            assert_eq!(*bm, decode(&png, fit).unwrap());
+        }
+        assert!(decode_multi(&png, &[]).unwrap().is_empty());
+    }
+
+    #[test]
+    fn oversized_palette_and_trns_are_errors_not_allocations() {
+        let mut png = encode(4, 4, 0, &|_, _| [0, 0, 0, 255], 0, false);
+        // Insert a PLTE chunk claiming 16 MB right after IHDR (offset 8 + 25).
+        let mut plte = Vec::new();
+        plte.extend_from_slice(&(16u32 << 20).to_be_bytes());
+        plte.extend_from_slice(b"PLTE");
+        let at = 8 + 25;
+        let tail = png.split_off(at);
+        png.extend_from_slice(&plte);
+        png.extend_from_slice(&tail);
+        assert!(matches!(decode(&png, Fit::inside(4, 4)), Err(DocError::Malformed(_))));
+        png[at + 4..at + 8].copy_from_slice(b"tRNS");
+        assert!(matches!(decode(&png, Fit::inside(4, 4)), Err(DocError::Malformed(_))));
     }
 
     #[test]

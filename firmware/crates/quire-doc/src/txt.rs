@@ -1,28 +1,36 @@
 //! Plain text: encoding detection, paragraph splitting and reflow of hard-wrapped
 //! Gutenberg-style files, streamed in chunks.
 
+use alloc::borrow::Cow;
 use alloc::string::String;
 use alloc::vec::Vec;
 use quire_fs::ReadAt;
-use quire_qtx::{ParaKind, Writer};
+use quire_qtx::{ParaKind, Token, Writer};
 
+use crate::html::{split_chapter_heading, split_paragraph, PARA_LIMIT};
 use crate::{DocError, Metadata, Sink, TocEntry};
 
 /// Decode bytes as text: UTF-8 (with or without BOM), UTF-16 with BOM, else Windows-1252.
-pub fn decode_bytes(data: &[u8]) -> String {
+/// Borrows when the input is already valid UTF-8, so a chapter costs no second copy.
+pub fn decode_text(data: &[u8]) -> Cow<'_, str> {
     if let Some(rest) = data.strip_prefix(&[0xEF, 0xBB, 0xBF]) {
-        return String::from_utf8_lossy(rest).into_owned();
+        return String::from_utf8_lossy(rest);
     }
     if data.len() >= 2 && (data[..2] == [0xFF, 0xFE] || data[..2] == [0xFE, 0xFF]) {
         let be = data[0] == 0xFE;
         let units: Vec<u16> =
             data[2..].as_chunks::<2>().0.iter().map(|c| if be { u16::from_be_bytes(*c) } else { u16::from_le_bytes(*c) }).collect();
-        return char::decode_utf16(units).map(|r| r.unwrap_or('\u{FFFD}')).collect();
+        return Cow::Owned(char::decode_utf16(units).map(|r| r.unwrap_or('\u{FFFD}')).collect());
     }
     match core::str::from_utf8(data) {
-        Ok(s) => String::from(s),
-        Err(_) => data.iter().map(|&b| cp1252(b)).collect(),
+        Ok(s) => Cow::Borrowed(s),
+        Err(_) => Cow::Owned(data.iter().map(|&b| cp1252(b)).collect()),
     }
+}
+
+/// Owned form of [`decode_text`], for callers that release the source bytes right away.
+pub fn decode_bytes(data: &[u8]) -> String {
+    decode_text(data).into_owned()
 }
 
 fn cp1252(b: u8) -> char {
@@ -122,20 +130,36 @@ pub fn ingest<R: ReadAt>(file: &R, name: &str, sink: &mut dyn Sink) -> Result<()
             *chapter_open = false;
             *chapter_chars = 0;
         }
+        let opening = heading && !*chapter_open;
+        let collapsed = collapse(text);
         if !*chapter_open {
-            let t = if heading { collapse(text) } else { String::new() };
+            // Section title in the same "number · title" form the EPUB path uses.
+            let t = if heading {
+                let (number, title) = split_chapter_heading(&collapsed);
+                crate::html::ChapterHeading { number, title }.display().unwrap_or_else(|| collapsed.clone())
+            } else {
+                String::new()
+            };
             sink.begin_chapter(*chapter, if heading { Some(&t) } else { None })?;
             if heading {
-                toc.push(TocEntry { title: t.clone(), chapter: *chapter, anchor: None, depth: 0 });
+                toc.push(TocEntry { title: collapsed.clone(), chapter: *chapter, anchor: None, depth: 0 });
             }
             *chapter_open = true;
         }
-        if heading {
+        if opening {
+            // The heading that opens a chapter is typeset as a chapter opening.
+            let (number, title) = split_chapter_heading(&collapsed);
+            w.push(&Token::ChapterTitle { number, title });
+        } else if heading {
             w.para(ParaKind::Heading(2));
-            w.text(&collapse(text));
+            w.text(&collapsed);
         } else {
-            w.para(ParaKind::Body);
-            w.text(&collapse(text));
+            // Bound paragraph size: a hard-wrapped file with no blank lines is split at
+            // sentence boundaries instead of becoming one enormous paragraph.
+            for piece in split_paragraph(&collapsed, PARA_LIMIT) {
+                w.para(ParaKind::Body);
+                w.text(piece);
+            }
         }
         *chapter_chars += text.chars().count() as u32;
         if w.len() > 48 * 1024 {
@@ -313,6 +337,7 @@ mod tests {
     #[test]
     fn encodings() {
         assert_eq!(decode_bytes("caf\u{e9}".as_bytes()), "café");
+        assert!(matches!(decode_text(b"plain"), Cow::Borrowed("plain")));
         assert_eq!(decode_bytes(b"\xEF\xBB\xBFhi"), "hi");
         assert_eq!(decode_bytes(b"caf\xE9 \x93q\x94"), "café “q”");
         let mut u16le = alloc::vec![0xFF, 0xFE];
@@ -320,6 +345,55 @@ mod tests {
             u16le.extend_from_slice(&c.to_le_bytes());
         }
         assert_eq!(decode_bytes(&u16le), "héllo");
+    }
+
+    #[test]
+    fn chapter_openings_and_bounded_paragraphs() {
+        let mut body = String::from("CHAPTER I. The Start\n\nFirst paragraph.\n\nCHAPTER II\n\n");
+        for _ in 0..40 {
+            body.push_str("Filler text of the second chapter, long enough to count as body.\n\n");
+        }
+        let mut sink = crate::memsink::MemSink::default();
+        ingest(&body.as_bytes(), "book.txt", &mut sink).unwrap();
+        let toks: Vec<Token> = quire_qtx::Reader::new(&sink.chapters[0].1).collect();
+        assert_eq!(toks[0], Token::ChapterTitle { number: Some("I".into()), title: Some("The Start".into()) });
+        assert!(toks.contains(&Token::Para(ParaKind::Heading(2))), "CHAPTER II stays a heading inside a short chapter");
+        assert_eq!(sink.chapters[0].0.as_deref(), Some("I · The Start"));
+        assert_eq!(sink.toc[0].title, "CHAPTER I. The Start");
+
+        // 200 KB, hard-wrapped, no blank lines: one logical paragraph.
+        let mut txt = String::new();
+        let mut n = 0;
+        while txt.len() < 200 * 1024 {
+            txt.push_str(&alloc::format!("Sentence number {n} goes on for a while and then it stops. "));
+            n += 1;
+            if n % 3 == 0 {
+                txt.push('\n');
+            }
+        }
+        let mut sink = crate::memsink::MemSink::default();
+        ingest(&txt.as_bytes(), "wall.txt", &mut sink).unwrap();
+        let mut cur = 0usize;
+        let mut max = 0usize;
+        let mut paras = 0;
+        for (_, bytes, _) in &sink.chapters {
+            for t in quire_qtx::Reader::new(bytes) {
+                match t {
+                    Token::Para(_) => {
+                        paras += 1;
+                        cur = 0;
+                    }
+                    Token::Text(s) => {
+                        cur += s.len();
+                        max = max.max(cur);
+                    }
+                    _ => {}
+                }
+            }
+        }
+        assert!(max <= 4608, "largest paragraph {max} bytes");
+        assert!(paras >= 40, "{paras} paragraphs");
+        assert!(sink.all_text().contains(&alloc::format!("Sentence number {} goes", n - 1)));
     }
 
     #[test]

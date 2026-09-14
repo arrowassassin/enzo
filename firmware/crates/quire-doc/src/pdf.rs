@@ -3,6 +3,7 @@
 //! Text PDFs are reflowed into QTX; scanned pages become image pages. Encrypted files
 //! are refused like DRM. Everything is bounded so a hostile file cannot exhaust RAM.
 
+use alloc::borrow::Cow;
 use alloc::string::String;
 use alloc::vec::Vec;
 use quire_fs::ReadAt;
@@ -15,7 +16,7 @@ pub use text::ingest;
 
 /// Largest inflated stream we hold in memory (content streams, object streams, ToUnicode).
 #[cfg(target_os = "none")]
-pub(crate) const STREAM_LIMIT: usize = 192 * 1024;
+pub(crate) const STREAM_LIMIT: usize = 96 * 1024;
 /// Largest inflated stream we hold in memory on the host.
 #[cfg(not(target_os = "none"))]
 pub(crate) const STREAM_LIMIT: usize = 2 * 1024 * 1024;
@@ -25,6 +26,30 @@ const OBJ_LIMIT: usize = 64 * 1024;
 /// Largest object we parse on the host.
 #[cfg(not(target_os = "none"))]
 const OBJ_LIMIT: usize = 512 * 1024;
+/// First read for an object; grown ×4 up to `OBJ_LIMIT` when the object runs past it.
+/// Most objects are under 1 KB, and every card read below 512 B costs the same as one of
+/// 512 B, so 2 KB fetches the typical object in one go.
+const OBJ_FIRST_READ: usize = 2048;
+/// First read for a cross-reference table.
+const XREF_FIRST_READ: usize = 8 * 1024;
+/// Parsed objects kept across lookups (resources, fonts, page nodes are hit repeatedly).
+const OBJ_CACHE: usize = 16;
+/// Largest parsed object we cache, as a rough weight (bytes of strings plus nodes).
+const OBJ_CACHE_WEIGHT: usize = 3072;
+/// Parsed object streams kept in memory.
+#[cfg(target_os = "none")]
+const OBJSTM_CACHE: usize = 1;
+/// Parsed object streams kept in memory on the host.
+#[cfg(not(target_os = "none"))]
+const OBJSTM_CACHE: usize = 4;
+/// Chunk size for the reconstruction scan.
+const SCAN_CHUNK: usize = 32 * 1024;
+/// Most pages we list.
+#[cfg(target_os = "none")]
+const PAGE_LIMIT: usize = 2000;
+/// Most pages we list on the host.
+#[cfg(not(target_os = "none"))]
+const PAGE_LIMIT: usize = 5000;
 
 /// A PDF object.
 #[derive(Clone, Debug, PartialEq)]
@@ -105,6 +130,30 @@ impl Obj {
             _ => None,
         }
     }
+    /// Rough memory weight, stopping early once `budget` is exhausted.
+    fn weigh(&self, budget: &mut usize) -> bool {
+        let cost = match self {
+            Obj::Str(s) => 24 + s.len(),
+            Obj::Name(n) => 24 + n.len(),
+            Obj::Array(_) | Obj::Dict(_) | Obj::Stream { .. } => 32,
+            _ => 8,
+        };
+        if *budget < cost {
+            return false;
+        }
+        *budget -= cost;
+        match self {
+            Obj::Array(a) => a.iter().all(|o| o.weigh(budget)),
+            Obj::Dict(d) | Obj::Stream { dict: d, .. } => d.iter().all(|(k, v)| {
+                if *budget < k.len() + 24 {
+                    return false;
+                }
+                *budget -= k.len() + 24;
+                v.weigh(budget)
+            }),
+            _ => true,
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------------------
@@ -127,13 +176,14 @@ pub struct Lexer<'a> {
     pub base: u64,
 }
 
-/// A lexer token.
+/// A lexer token. Keywords borrow the input: content streams have tens of thousands of
+/// operators and must not allocate one string each.
 #[derive(Clone, Debug, PartialEq)]
-pub enum Tok {
+pub enum Tok<'a> {
     /// Any object that is not an operator/keyword.
     Obj(Obj),
     /// A bare keyword: `obj`, `endobj`, `stream`, `R`, operators in content streams…
-    Kw(String),
+    Kw(&'a str),
     /// `[`
     ArrOpen,
     /// `]`
@@ -167,7 +217,7 @@ impl<'a> Lexer<'a> {
         }
     }
     /// Next token.
-    pub fn next_tok(&mut self) -> Tok {
+    pub fn next_tok(&mut self) -> Tok<'a> {
         self.skip_ws();
         if self.pos >= self.b.len() {
             return Tok::Eof;
@@ -335,8 +385,13 @@ impl<'a> Lexer<'a> {
                     self.pos += 1;
                     return self.next_tok();
                 }
-                let kw = String::from_utf8_lossy(&self.b[start..self.pos]).into_owned();
-                match kw.as_str() {
+                let raw = &self.b[start..self.pos];
+                // Keywords are ASCII; binary junk is cut at the first invalid byte.
+                let kw = match core::str::from_utf8(raw) {
+                    Ok(s) => s,
+                    Err(e) => core::str::from_utf8(&raw[..e.valid_up_to()]).unwrap_or(""),
+                };
+                match kw {
                     "true" => Tok::Obj(Obj::Bool(true)),
                     "false" => Tok::Obj(Obj::Bool(false)),
                     "null" => Tok::Obj(Obj::Null),
@@ -356,14 +411,11 @@ impl<'a> Lexer<'a> {
                 // Lookahead for "g R".
                 let save = self.pos;
                 if let Tok::Obj(Obj::Int(g)) = self.next_tok() {
-                    let save2 = self.pos;
-                    if let Tok::Kw(k) = self.next_tok() {
-                        if k == "R" && n >= 0 && g >= 0 {
+                    if let Tok::Kw("R") = self.next_tok() {
+                        if n >= 0 && g >= 0 {
                             return Ok(Obj::Ref(n as u32, g as u16));
                         }
                     }
-                    self.pos = save2;
-                    let _ = g;
                 }
                 self.pos = save;
                 Ok(Obj::Int(n))
@@ -407,8 +459,8 @@ impl<'a> Lexer<'a> {
                 }
                 // A stream?
                 let save = self.pos;
-                if let Tok::Kw(k) = self.next_tok() {
-                    if k == "stream" {
+                if let Tok::Kw("stream") = self.next_tok() {
+                    {
                         // After 'stream': CRLF or LF.
                         if self.b.get(self.pos) == Some(&b'\r') {
                             self.pos += 1;
@@ -470,6 +522,7 @@ fn parse_real(s: &str) -> f32 {
 // ---------------------------------------------------------------------------------------
 // Cross-reference and document.
 
+/// Where an object lives.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Loc {
     Free,
@@ -477,13 +530,40 @@ enum Loc {
     InStream(u32, u32),
 }
 
-/// A page: its object number (for destinations) and its dictionary with inherited attributes.
+/// A `Loc` packed into eight bytes: two tag bits, then a 62-bit offset or a 30-bit index
+/// over a 32-bit stream number. Halves the cross-reference table on the device.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Packed(u64);
+
+impl Packed {
+    const FREE: Packed = Packed(0);
+    fn from(loc: Loc) -> Packed {
+        match loc {
+            Loc::Free => Packed::FREE,
+            Loc::Offset(o) => Packed((1 << 62) | (o & ((1 << 62) - 1))),
+            Loc::InStream(s, i) => Packed((2 << 62) | (((i as u64) & 0x3FFF_FFFF) << 32) | s as u64),
+        }
+    }
+    fn loc(self) -> Loc {
+        match self.0 >> 62 {
+            1 => Loc::Offset(self.0 & ((1 << 62) - 1)),
+            2 => Loc::InStream(self.0 as u32, ((self.0 >> 32) & 0x3FFF_FFFF) as u32),
+            _ => Loc::Free,
+        }
+    }
+}
+
+/// A page: its object number (for destinations), its own dictionary when it was not
+/// reached through a reference, and the page-tree ancestors that may hold inherited
+/// attributes (`Resources`, `MediaBox`, `CropBox`, `Rotate`), nearest first.
 #[derive(Clone, Debug)]
 pub struct Page {
     /// Object number, when the page was reached through a reference.
     pub num: Option<u32>,
-    /// The page dictionary.
-    pub dict: Obj,
+    /// The page dictionary, kept only for pages without an object number.
+    pub dict: Option<Obj>,
+    /// Ancestors, nearest first, shared between siblings.
+    pub ancestors: alloc::rc::Rc<[u32]>,
 }
 
 /// A parsed object stream: (stream number, offsets table, data).
@@ -494,12 +574,27 @@ type ObjStmData = (Vec<(u32, usize)>, Vec<u8>);
 /// An open document.
 pub struct Document<'a, R: ReadAt> {
     src: &'a R,
-    xref: Vec<Loc>,
+    xref: Vec<Packed>,
     /// Trailer entries merged across the /Prev chain (first wins).
     pub trailer: Vec<(String, Obj)>,
     /// Cache of parsed object streams.
     objstm_cache: Vec<ObjStm>,
+    /// Small parsed objects, least recently used first.
+    obj_cache: Vec<(u32, Obj)>,
+    /// Objects the reconstruction scan saw a `/Page` in, for the page-tree fallback.
+    page_candidates: Vec<u32>,
     reconstructed: bool,
+    /// Objects whose parse is in progress (an indirect /Length or an object stream being
+    /// resolved), so a reference that leads back to one of them cannot recurse.
+    resolving: Vec<u32>,
+}
+
+/// Which reading of a buffer `parse_indirect_in` produced.
+enum Parsed {
+    /// The object, and whether its end (`endobj`, or `stream`) lay inside the buffer.
+    Obj(u32, Obj, bool),
+    /// The buffer ended inside the object.
+    Truncated,
 }
 
 impl<'a, R: ReadAt> Document<'a, R> {
@@ -511,7 +606,16 @@ impl<'a, R: ReadAt> Document<'a, R> {
         if !head[..n].starts_with(b"%PDF") {
             return Err(DocError::Malformed("not a pdf"));
         }
-        let mut doc = Document { src, xref: Vec::new(), trailer: Vec::new(), objstm_cache: Vec::new(), reconstructed: false };
+        let mut doc = Document {
+            src,
+            xref: Vec::new(),
+            trailer: Vec::new(),
+            objstm_cache: Vec::new(),
+            obj_cache: Vec::new(),
+            page_candidates: Vec::new(),
+            reconstructed: false,
+            resolving: Vec::new(),
+        };
         // startxref in the last 2 KB.
         let tail_len = len.min(2048) as usize;
         let tail = src.read_range(len - tail_len as u64, tail_len)?;
@@ -527,6 +631,9 @@ impl<'a, R: ReadAt> Document<'a, R> {
             ok = doc.load_xref_chain(s).is_ok();
         }
         if !ok || doc.trailer.iter().all(|(k, _)| k != "Root") {
+            doc.reconstruct()?;
+        } else if !matches!(doc.catalog(), Ok(Obj::Dict(_))) {
+            // The xref loaded but does not lead to a catalog: rebuild it.
             doc.reconstruct()?;
         }
         if doc.trailer.iter().any(|(k, _)| k == "Encrypt") {
@@ -550,16 +657,37 @@ impl<'a, R: ReadAt> Document<'a, R> {
         Ok(())
     }
 
+    fn loc(&self, num: u32) -> Loc {
+        self.xref.get(num as usize).map(|p| p.loc()).unwrap_or(Loc::Free)
+    }
+
     fn set(&mut self, num: u32, loc: Loc) {
         if num as usize > 5_000_000 {
             return;
         }
         if self.xref.len() <= num as usize {
-            self.xref.resize(num as usize + 1, Loc::Free);
+            self.xref.resize(num as usize + 1, Packed::FREE);
         }
         // First definition wins (newest xref section is loaded first).
-        if self.xref[num as usize] == Loc::Free {
-            self.xref[num as usize] = loc;
+        if self.xref[num as usize] == Packed::FREE {
+            self.xref[num as usize] = Packed::from(loc);
+        }
+    }
+
+    /// Read a cross-reference table at `off`: a small read first, grown until the
+    /// `trailer` keyword is inside the buffer (or the buffer is as large as we allow).
+    fn read_xref_buf(&self, off: u64) -> Result<Vec<u8>, DocError> {
+        let avail = (self.src.len() - off).min(OBJ_LIMIT as u64) as usize;
+        let mut n = XREF_FIRST_READ.min(avail);
+        loop {
+            let buf = self.src.read_range(off, n)?;
+            let mut lx = Lexer::new(&buf, off);
+            lx.skip_ws();
+            let table = buf[lx.pos..].starts_with(b"xref");
+            if !table || n >= avail || find(&buf, b"trailer").is_some() {
+                return Ok(buf);
+            }
+            n = (n * 4).min(avail);
         }
     }
 
@@ -568,8 +696,7 @@ impl<'a, R: ReadAt> Document<'a, R> {
         if off >= self.src.len() {
             return Err(DocError::Malformed("pdf: xref offset"));
         }
-        let chunk_len = (self.src.len() - off).min(OBJ_LIMIT as u64) as usize;
-        let buf = self.src.read_range(off, chunk_len)?;
+        let buf = self.read_xref_buf(off)?;
         let mut lx = Lexer::new(&buf, off);
         lx.skip_ws();
         if buf[lx.pos..].starts_with(b"xref") {
@@ -617,19 +744,17 @@ impl<'a, R: ReadAt> Document<'a, R> {
                         self.set(start + i, Loc::Offset(o));
                     } else {
                         self.set(start + i, Loc::Free);
-                        if self.xref.len() > (start + i) as usize && self.xref[(start + i) as usize] == Loc::Free {
-                            // keep free
-                        }
                     }
                 }
             }
         }
         // Cross-reference stream: "n g obj <<...>> stream".
-        let obj = self.parse_indirect_at(off)?;
-        let (dict, data) = match &obj {
-            Obj::Stream { dict, .. } => (dict.clone(), self.stream_data(&obj)?),
+        let (_, obj) = self.parse_indirect_at(off)?;
+        let data = match &obj {
+            Obj::Stream { .. } => self.stream_data(&obj)?,
             _ => return Err(DocError::Malformed("pdf: xref stream")),
         };
+        let Obj::Stream { dict, .. } = obj else { return Err(DocError::Malformed("pdf: xref stream")) };
         let w: Vec<usize> = dict
             .iter()
             .find(|(k, _)| k == "W")
@@ -685,20 +810,33 @@ impl<'a, R: ReadAt> Document<'a, R> {
     }
 
     /// Rebuild the xref by scanning for "N G obj" and "trailer" — the recovery path for
-    /// broken files, which are common.
+    /// broken files, which are common. Only objects whose header is followed by
+    /// `/ObjStm`, `/Catalog` or `/XRef` are parsed afterwards; everything else is just
+    /// registered by offset.
     fn reconstruct(&mut self) -> Result<(), DocError> {
+        /// Bytes after `obj` inspected for the type of the object.
+        const PEEK: usize = 256;
+        /// Bytes carried from one chunk to the next, so headers and peeks never split.
+        const CARRY: usize = 1024;
         self.reconstructed = true;
         self.xref.clear();
+        self.obj_cache.clear();
+        self.objstm_cache.clear();
+        self.page_candidates.clear();
         let len = self.src.len();
         let mut pos = 0u64;
-        let mut buf = alloc::vec![0u8; 64 * 1024];
+        let mut buf = alloc::vec![0u8; SCAN_CHUNK];
         let mut carry: Vec<u8> = Vec::new();
         let mut found_root = false;
+        let mut objstms: Vec<u32> = Vec::new();
+        let mut catalogs: Vec<u32> = Vec::new();
+        let mut xrefstms: Vec<u32> = Vec::new();
         while pos < len {
             let n = self.src.read_at(pos, &mut buf)?;
             if n == 0 {
                 break;
             }
+            let last = pos + n as u64 >= len;
             let mut data = core::mem::take(&mut carry);
             let carry_len = data.len();
             data.extend_from_slice(&buf[..n]);
@@ -706,6 +844,11 @@ impl<'a, R: ReadAt> Document<'a, R> {
             let mut i = 0usize;
             while i + 3 < data.len() {
                 if &data[i..i + 3] == b"obj" && (i == 0 || is_ws(data[i - 1]) || data[i - 1].is_ascii_digit()) {
+                    // Headers too close to the end of this chunk are left to the next
+                    // pass, whose carry contains them whole.
+                    if !last && i + 3 + PEEK > data.len() {
+                        break;
+                    }
                     // Walk back over "N G ".
                     let mut j = i;
                     while j > 0 && is_ws(data[j - 1]) {
@@ -729,16 +872,29 @@ impl<'a, R: ReadAt> Document<'a, R> {
                             let off = base + ns as u64;
                             if (num as usize) < 5_000_000 {
                                 if self.xref.len() <= num as usize {
-                                    self.xref.resize(num as usize + 1, Loc::Free);
+                                    self.xref.resize(num as usize + 1, Packed::FREE);
                                 }
-                                self.xref[num as usize] = Loc::Offset(off); // later definitions win
+                                self.xref[num as usize] = Packed::from(Loc::Offset(off)); // later definitions win
+                                let window = &data[i + 3..(i + 3 + PEEK).min(data.len())];
+                                if find(window, b"/ObjStm").is_some() && objstms.len() < 4096 {
+                                    objstms.push(num);
+                                }
+                                if find(window, b"/Catalog").is_some() && catalogs.len() < 64 {
+                                    catalogs.push(num);
+                                }
+                                if find(window, b"/XRef").is_some() && xrefstms.len() < 64 {
+                                    xrefstms.push(num);
+                                }
+                                if has_page_type(window) && self.page_candidates.len() < PAGE_LIMIT {
+                                    self.page_candidates.push(num);
+                                }
                             }
                         }
                     }
                     i += 3;
                     continue;
                 }
-                if &data[i..i + 3] == b"tra" && data[i..].starts_with(b"trailer") {
+                if data[i] == b't' && data[i..].starts_with(b"trailer") {
                     let mut lx = Lexer::new(&data[i + 7..], base + i as u64 + 7);
                     if let Ok(Obj::Dict(d)) = lx.parse_obj(0) {
                         for (k, v) in d {
@@ -754,50 +910,73 @@ impl<'a, R: ReadAt> Document<'a, R> {
                 i += 1;
             }
             // Keep a tail so patterns spanning chunks are found.
-            let keep = data.len().min(64);
+            let keep = data.len().min(CARRY);
             carry = data[data.len() - keep..].to_vec();
             pos += n as u64;
         }
+        for v in [&mut objstms, &mut catalogs, &mut xrefstms, &mut self.page_candidates] {
+            v.sort_unstable();
+            v.dedup();
+        }
         if !found_root {
-            // Look for an object with /Type /Catalog, or an xref stream trailer dict.
-            for num in 0..self.xref.len() {
-                if let Loc::Offset(_) = self.xref[num] {
-                    if let Ok(o) = self.get(num as u32) {
-                        if o.get("Type").and_then(|t| t.name()) == Some("Catalog") {
-                            self.trailer.push(("Root".into(), Obj::Ref(num as u32, 0)));
+            // Prefer the last catalog in the file (incremental updates append).
+            for &num in catalogs.iter().rev() {
+                if let Ok(o) = self.get(num) {
+                    if o.get("Type").and_then(|t| t.name()) == Some("Catalog") {
+                        self.trailer.push(("Root".into(), Obj::Ref(num, 0)));
+                        found_root = true;
+                        break;
+                    }
+                }
+            }
+        }
+        if !found_root {
+            for &num in xrefstms.iter().rev() {
+                if let Ok(o) = self.get(num) {
+                    if o.get("Type").and_then(|t| t.name()) == Some("XRef") {
+                        if let Some(r) = o.get("Root") {
+                            self.trailer.push(("Root".into(), r.clone()));
                             found_root = true;
                             break;
-                        }
-                        if o.get("Type").and_then(|t| t.name()) == Some("XRef") {
-                            if let Some(r) = o.get("Root") {
-                                self.trailer.push(("Root".into(), r.clone()));
-                                found_root = true;
-                                break;
-                            }
                         }
                     }
                 }
             }
         }
         // Objects inside object streams: register them so lookups succeed.
-        let nums: Vec<u32> = (0..self.xref.len() as u32).collect();
-        for num in nums {
-            if let Loc::Offset(_) = self.xref[num as usize] {
+        for &num in &objstms {
+            let Ok(i) = self.objstm_index(num) else { continue };
+            let count = self.objstm_cache[i].1.len();
+            for idx in 0..count {
+                let on = self.objstm_cache[i].1[idx].0 as usize;
+                if on < 5_000_000 {
+                    if self.xref.len() <= on {
+                        self.xref.resize(on + 1, Packed::FREE);
+                    }
+                    if self.xref[on] == Packed::FREE {
+                        self.xref[on] = Packed::from(Loc::InStream(num, idx as u32));
+                    }
+                }
+            }
+        }
+        if !found_root {
+            // The catalog may live inside an object stream: look there, stream by stream.
+            let mut in_streams: Vec<(u32, u32)> = Vec::new();
+            for (num, p) in self.xref.iter().enumerate() {
+                if let Loc::InStream(s, _) = p.loc() {
+                    in_streams.push((s, num as u32));
+                }
+            }
+            in_streams.sort_unstable();
+            for (_, num) in in_streams {
                 if let Ok(o) = self.get(num) {
-                    if o.get("Type").and_then(|t| t.name()) == Some("ObjStm") {
-                        if let Ok((table, _)) = self.load_objstm(num) {
-                            for (idx, (onum, _)) in table.iter().enumerate() {
-                                let on = *onum as usize;
-                                if on < 5_000_000 {
-                                    if self.xref.len() <= on {
-                                        self.xref.resize(on + 1, Loc::Free);
-                                    }
-                                    if self.xref[on] == Loc::Free {
-                                        self.xref[on] = Loc::InStream(num, idx as u32);
-                                    }
-                                }
-                            }
-                        }
+                    if o.get("Type").and_then(|t| t.name()) == Some("Catalog") {
+                        self.trailer.push(("Root".into(), Obj::Ref(num, 0)));
+                        found_root = true;
+                        break;
+                    }
+                    if o.get("Type").and_then(|t| t.name()) == Some("Page") && self.page_candidates.len() < PAGE_LIMIT {
+                        self.page_candidates.push(num);
                     }
                 }
             }
@@ -808,61 +987,144 @@ impl<'a, R: ReadAt> Document<'a, R> {
         Ok(())
     }
 
-    /// Parse "n g obj ... endobj" at an offset.
-    fn parse_indirect_at(&mut self, off: u64) -> Result<Obj, DocError> {
+    /// Parse "n g obj ... endobj" at an offset: a small read first, grown ×4 up to
+    /// `OBJ_LIMIT` while the buffer ends inside the object.
+    fn parse_indirect_at(&mut self, off: u64) -> Result<(u32, Obj), DocError> {
         if off >= self.src.len() {
             return Err(DocError::Malformed("pdf: object offset"));
         }
-        let n = (self.src.len() - off).min(OBJ_LIMIT as u64) as usize;
-        let buf = self.src.read_range(off, n)?;
-        let mut lx = Lexer::new(&buf, off);
-        // n g obj
-        match (lx.next_tok(), lx.next_tok(), lx.next_tok()) {
-            (Tok::Obj(Obj::Int(_)), Tok::Obj(Obj::Int(_)), Tok::Kw(k)) if k == "obj" => {}
-            _ => return Err(DocError::Malformed("pdf: expected obj")),
+        let avail = (self.src.len() - off).min(OBJ_LIMIT as u64) as usize;
+        let mut n = OBJ_FIRST_READ.min(avail);
+        loop {
+            let buf = self.src.read_range(off, n)?;
+            let whole = n >= avail;
+            match Self::parse_indirect_in(&buf, off)? {
+                Parsed::Obj(num, o, done) if done || whole => return Ok((num, self.fix_stream_len(num, o)?)),
+                Parsed::Truncated if whole => return Err(DocError::Malformed("pdf: unexpected end")),
+                _ => {}
+            }
+            n = (n * 4).min(avail);
         }
-        let mut o = lx.parse_obj(0)?;
+    }
+
+    /// Parse an indirect object from a buffer.
+    fn parse_indirect_in(buf: &[u8], off: u64) -> Result<Parsed, DocError> {
+        let mut lx = Lexer::new(buf, off);
+        let num = match (lx.next_tok(), lx.next_tok(), lx.next_tok()) {
+            (Tok::Obj(Obj::Int(n)), Tok::Obj(Obj::Int(_)), Tok::Kw("obj")) if n >= 0 => n as u32,
+            (Tok::Eof, _, _) | (_, Tok::Eof, _) | (_, _, Tok::Eof) => return Ok(Parsed::Truncated),
+            _ => return Err(DocError::Malformed("pdf: expected obj")),
+        };
+        let Ok(o) = lx.parse_obj(0) else { return Ok(Parsed::Truncated) };
+        let done = match &o {
+            Obj::Stream { .. } => true,
+            _ => {
+                lx.skip_ws();
+                let rest = &buf[lx.pos.min(buf.len())..];
+                // Nothing after the object, or the start of a keyword cut short, means
+                // the buffer may have ended inside it.
+                !rest.is_empty() && !(rest.len() < 6 && (b"stream".starts_with(rest) || b"endobj".starts_with(rest)))
+            }
+        };
+        Ok(Parsed::Obj(num, o, done))
+    }
+
+    /// Resolve an indirect /Length, else scan the file for `endstream`. The object being
+    /// parsed (`num`) and its parents are never re-entered: a /Length that points back at
+    /// one of them (a known hostile pattern) falls back to the scan.
+    fn fix_stream_len(&mut self, num: u32, mut o: Obj) -> Result<Obj, DocError> {
         if let Obj::Stream { dict, offset, len } = &mut o {
             if *len == u64::MAX {
-                // Indirect /Length: resolve, else scan for "endstream".
                 let l = dict.iter().find(|(k, _)| k == "Length").map(|(_, v)| v.clone());
                 let resolved = match l {
-                    Some(Obj::Ref(n, _)) => self.get(n).ok().and_then(|o| o.int()).map(|x| x as u64),
+                    Some(Obj::Ref(n, _)) if n != num && !self.resolving.contains(&n) && self.resolving.len() < 4 => {
+                        self.resolving.push(num);
+                        let r = self.get(n).ok().and_then(|o| o.int()).filter(|x| *x >= 0).map(|x| x as u64);
+                        self.resolving.pop();
+                        r
+                    }
                     _ => None,
                 };
                 *len = match resolved {
                     Some(v) => v,
-                    None => {
-                        let start = (*offset - off) as usize;
-                        find(&buf[start..], b"endstream").map(|e| e as u64).unwrap_or((buf.len() - start) as u64)
-                    }
+                    None => self.scan_endstream(*offset)?,
                 };
-                // Trim a trailing EOL before endstream when the length overshoots.
             }
         }
         Ok(o)
     }
 
-    fn load_objstm(&mut self, num: u32) -> Result<ObjStmData, DocError> {
-        if let Some((_, t, d)) = self.objstm_cache.iter().find(|(n, _, _)| *n == num) {
-            return Ok((t.clone(), d.clone()));
+    /// Distance from `start` to the `endstream` keyword (less a trailing EOL), read in
+    /// small chunks and bounded by `STREAM_LIMIT`.
+    fn scan_endstream(&self, start: u64) -> Result<u64, DocError> {
+        const CHUNK: usize = 4096;
+        const NEEDLE: &[u8] = b"endstream";
+        let mut buf = alloc::vec![0u8; CHUNK + NEEDLE.len()];
+        let mut pos = start;
+        let mut carry = 0usize;
+        let end = start.saturating_add(STREAM_LIMIT as u64).min(self.src.len());
+        while pos < end {
+            let want = ((end - pos) as usize).min(CHUNK);
+            let n = self.src.read_at(pos, &mut buf[carry..carry + want])?;
+            if n == 0 {
+                break;
+            }
+            let total = carry + n;
+            let data = &buf[..total];
+            if let Some(i) = find(data, NEEDLE) {
+                let mut e = pos - carry as u64 + i as u64;
+                // Trim the EOL that precedes the keyword when the data is shorter.
+                let mut k = i;
+                if k > 0 && data[k - 1] == b'\n' {
+                    k -= 1;
+                    e -= 1;
+                }
+                if k > 0 && data[k - 1] == b'\r' {
+                    e -= 1;
+                }
+                return Ok(e - start);
+            }
+            pos += n as u64;
+            carry = total.min(NEEDLE.len() - 1);
+            buf.copy_within(total - carry..total, 0);
         }
+        Ok(end - start)
+    }
+
+    /// Index into `objstm_cache` of a parsed object stream, loading it if needed.
+    fn objstm_index(&mut self, num: u32) -> Result<usize, DocError> {
+        if let Some(i) = self.objstm_cache.iter().position(|e| e.0 == num) {
+            return Ok(i);
+        }
+        if self.resolving.contains(&num) || self.resolving.len() >= 4 {
+            return Err(DocError::Malformed("pdf: nested object streams"));
+        }
+        self.resolving.push(num);
+        let loaded = self.load_objstm(num);
+        self.resolving.pop();
+        let (table, data) = loaded?;
+        if self.objstm_cache.len() >= OBJSTM_CACHE {
+            self.objstm_cache.remove(0);
+        }
+        self.objstm_cache.push((num, table, data));
+        Ok(self.objstm_cache.len() - 1)
+    }
+
+    fn load_objstm(&mut self, num: u32) -> Result<ObjStmData, DocError> {
         let s = self.get(num)?;
-        let n = s.get("N").and_then(|v| v.int()).unwrap_or(0) as usize;
-        let first = s.get("First").and_then(|v| v.int()).unwrap_or(0) as usize;
+        let n = s.get("N").and_then(|v| v.int()).unwrap_or(0).clamp(0, 10_000) as usize;
+        let first = s.get("First").and_then(|v| v.int()).unwrap_or(0).max(0) as usize;
         let data = self.stream_data(&s)?;
         let mut lx = Lexer::new(&data[..first.min(data.len())], 0);
-        let mut table = Vec::with_capacity(n.min(10_000));
+        let mut table = Vec::with_capacity(n);
         for _ in 0..n {
             match (lx.next_tok(), lx.next_tok()) {
-                (Tok::Obj(Obj::Int(on)), Tok::Obj(Obj::Int(off))) => table.push((on as u32, first + off as usize)),
+                (Tok::Obj(Obj::Int(on)), Tok::Obj(Obj::Int(off))) if on >= 0 && off >= 0 => {
+                    table.push((on as u32, first.saturating_add(off as usize)))
+                }
                 _ => break,
             }
         }
-        if self.objstm_cache.len() >= 4 {
-            self.objstm_cache.remove(0);
-        }
-        self.objstm_cache.push((num, table.clone(), data.clone()));
         Ok((table, data))
     }
 
@@ -871,30 +1133,53 @@ impl<'a, R: ReadAt> Document<'a, R> {
         self.src
     }
 
-    /// Fetch an object by number, resolving object streams.
+    /// Fetch an object by number, resolving object streams. Small objects are served
+    /// from a cache so page nodes, resources and font dictionaries are parsed once.
     pub fn get(&mut self, num: u32) -> Result<Obj, DocError> {
-        let loc = self.xref.get(num as usize).copied().unwrap_or(Loc::Free);
-        match loc {
-            Loc::Free => {
-                if !self.reconstructed {
-                    self.reconstruct()?;
-                    return self.get(num);
-                }
-                Ok(Obj::Null)
+        if let Some(i) = self.obj_cache.iter().position(|(n, _)| *n == num) {
+            let e = self.obj_cache.remove(i);
+            let o = e.1.clone();
+            self.obj_cache.push(e);
+            return Ok(o);
+        }
+        let o = self.get_uncached(num)?;
+        let mut budget = OBJ_CACHE_WEIGHT;
+        if o != Obj::Null && o.weigh(&mut budget) {
+            if self.obj_cache.len() >= OBJ_CACHE {
+                self.obj_cache.remove(0);
             }
-            Loc::Offset(off) => match self.parse_indirect_at(off) {
-                Ok(o) => Ok(o),
-                Err(e) => {
-                    if !self.reconstructed {
-                        self.reconstruct()?;
-                        self.get(num)
-                    } else {
-                        Err(e)
+            self.obj_cache.push((num, o.clone()));
+        }
+        Ok(o)
+    }
+
+    fn get_uncached(&mut self, num: u32) -> Result<Obj, DocError> {
+        if self.resolving.contains(&num) {
+            return Err(DocError::Malformed("pdf: object refers to itself"));
+        }
+        match self.loc(num) {
+            // A reference to a free entry is a dangling reference, not a broken file.
+            Loc::Free => Ok(Obj::Null),
+            Loc::Offset(off) => {
+                let parsed = match self.parse_indirect_at(off) {
+                    Ok((n, _)) if n != num => Err(DocError::Malformed("pdf: object number")),
+                    other => other,
+                };
+                match parsed {
+                    Ok((_, o)) => Ok(o),
+                    Err(e) => {
+                        if !self.reconstructed {
+                            self.reconstruct()?;
+                            self.get(num)
+                        } else {
+                            Err(e)
+                        }
                     }
                 }
-            },
+            }
             Loc::InStream(snum, idx) => {
-                let (table, data) = self.load_objstm(snum)?;
+                let i = self.objstm_index(snum)?;
+                let (_, table, data) = &self.objstm_cache[i];
                 let Some(&(_, off)) = table.get(idx as usize) else { return Ok(Obj::Null) };
                 let mut lx = Lexer::new(&data[off.min(data.len())..], 0);
                 lx.parse_obj(0)
@@ -902,9 +1187,10 @@ impl<'a, R: ReadAt> Document<'a, R> {
         }
     }
 
-    /// Follow references until a direct object.
+    /// Follow references until a direct object; a direct object is returned as is.
     pub fn resolve(&mut self, o: &Obj) -> Result<Obj, DocError> {
-        let mut cur = o.clone();
+        let Obj::Ref(n, _) = o else { return Ok(o.clone()) };
+        let mut cur = self.get(*n)?;
         for _ in 0..32 {
             match cur {
                 Obj::Ref(n, _) => cur = self.get(n)?,
@@ -912,6 +1198,15 @@ impl<'a, R: ReadAt> Document<'a, R> {
             }
         }
         Ok(Obj::Null)
+    }
+
+    /// `resolve` without a copy when the object is already direct.
+    pub fn resolve_cow<'o>(&mut self, o: &'o Obj) -> Result<Cow<'o, Obj>, DocError> {
+        if matches!(o, Obj::Ref(..)) {
+            self.resolve(o).map(Cow::Owned)
+        } else {
+            Ok(Cow::Borrowed(o))
+        }
     }
 
     /// `dict[key]`, resolved.
@@ -924,14 +1219,16 @@ impl<'a, R: ReadAt> Document<'a, R> {
 
     /// Decode a stream fully (bounded), applying its filters.
     pub fn stream_data(&mut self, s: &Obj) -> Result<Vec<u8>, DocError> {
-        let Obj::Stream { dict, offset, len } = s else { return Err(DocError::Malformed("pdf: not a stream")) };
-        let dict_obj = Obj::Dict(dict.clone());
-        let filters = self.filters_of(&dict_obj)?;
+        let Obj::Stream { offset, len, .. } = s else { return Err(DocError::Malformed("pdf: not a stream")) };
+        let filters = self.filters_of(s)?;
         let raw_len = (*len).min(self.src.len().saturating_sub(*offset));
+        // Raw bytes are never read past STREAM_LIMIT; Flate streams inflate straight
+        // from the file.
+        let capped = raw_len.min(STREAM_LIMIT as u64) as usize;
         let mut data: Vec<u8> = Vec::new();
         let mut first = true;
         if filters.is_empty() {
-            data = quire_fs::Slice::new(self.src, *offset, raw_len).read_range(0, raw_len.min(STREAM_LIMIT as u64) as usize)?;
+            data = self.src.read_range(*offset, capped)?;
         }
         for (name, parms) in &filters {
             let out = match name.as_str() {
@@ -943,33 +1240,34 @@ impl<'a, R: ReadAt> Document<'a, R> {
                     }
                 }
                 "ASCIIHexDecode" | "AHx" => {
-                    let input = if first { self.src.read_range(*offset, raw_len as usize)? } else { core::mem::take(&mut data) };
+                    let input = if first { self.src.read_range(*offset, capped)? } else { core::mem::take(&mut data) };
                     ascii_hex(&input)
                 }
                 "ASCII85Decode" | "A85" => {
-                    let input = if first { self.src.read_range(*offset, raw_len as usize)? } else { core::mem::take(&mut data) };
+                    let input = if first { self.src.read_range(*offset, capped)? } else { core::mem::take(&mut data) };
                     ascii85(&input)
                 }
                 "RunLengthDecode" | "RL" => {
-                    let input = if first { self.src.read_range(*offset, raw_len as usize)? } else { core::mem::take(&mut data) };
+                    let input = if first { self.src.read_range(*offset, capped)? } else { core::mem::take(&mut data) };
                     runlength(&input)
                 }
                 "DCTDecode" | "DCT" | "JPXDecode" | "CCITTFaxDecode" | "CCF" | "JBIG2Decode" => {
-                    // Image filters: leave the bytes encoded; the image path handles them.
+                    // Image filters: leave the bytes encoded; the image path handles them
+                    // (a JPEG that is the raw stream is decoded straight from the file).
                     if first {
-                        self.src.read_range(*offset, raw_len.min(STREAM_LIMIT as u64 * 8) as usize)?
+                        self.src.read_range(*offset, capped)?
                     } else {
                         core::mem::take(&mut data)
                     }
                 }
                 "LZWDecode" | "LZW" => {
-                    let input = if first { self.src.read_range(*offset, raw_len as usize)? } else { core::mem::take(&mut data) };
+                    let input = if first { self.src.read_range(*offset, capped)? } else { core::mem::take(&mut data) };
                     let early = parms.as_ref().and_then(|p| p.get("EarlyChange")).and_then(|v| v.int()).unwrap_or(1) != 0;
                     lzw(&input, early)
                 }
                 "Crypt" => {
                     if first {
-                        self.src.read_range(*offset, raw_len as usize)?
+                        self.src.read_range(*offset, capped)?
                     } else {
                         core::mem::take(&mut data)
                     }
@@ -1004,17 +1302,16 @@ impl<'a, R: ReadAt> Document<'a, R> {
         match f {
             Obj::Name(n) => out.push((n, if p == Obj::Null { None } else { Some(p) })),
             Obj::Array(a) => {
-                let parms: Vec<Obj> = match &p {
-                    Obj::Array(pa) => pa.clone(),
+                let parms: Vec<Obj> = match p {
+                    Obj::Array(pa) => pa,
                     Obj::Null => Vec::new(),
-                    other => alloc::vec![other.clone()],
+                    other => alloc::vec![other],
                 };
                 for (i, x) in a.iter().enumerate() {
                     let n = self.resolve(x)?;
                     if let Obj::Name(n) = n {
-                        let pp = parms.get(i).cloned();
-                        let pp = match pp {
-                            Some(o) => Some(self.resolve(&o)?).filter(|o| *o != Obj::Null),
+                        let pp = match parms.get(i) {
+                            Some(o) => Some(self.resolve(o)?).filter(|o| *o != Obj::Null),
                             None => None,
                         };
                         out.push((n, pp));
@@ -1029,8 +1326,8 @@ impl<'a, R: ReadAt> Document<'a, R> {
     /// Whether the first filter of a stream is an image codec, and which.
     pub fn image_filter(&mut self, dict: &Obj) -> Result<Option<String>, DocError> {
         let f = self.filters_of(dict)?;
-        Ok(f.iter()
-            .map(|(n, _)| n.clone())
+        Ok(f.into_iter()
+            .map(|(n, _)| n)
             .find(|n| matches!(n.as_str(), "DCTDecode" | "DCT" | "JPXDecode" | "CCITTFaxDecode" | "CCF" | "JBIG2Decode")))
     }
 
@@ -1040,73 +1337,147 @@ impl<'a, R: ReadAt> Document<'a, R> {
         self.resolve(&r)
     }
 
-    /// All pages in order, each with inherited attributes merged in.
+    /// All pages in order. Inherited attributes are not copied in: `page_attr` follows
+    /// the ancestor chain when they are needed.
     pub fn pages(&mut self) -> Result<Vec<Page>, DocError> {
-        let cat = self.catalog()?;
-        let root_ref = cat.get("Pages").cloned().unwrap_or(Obj::Null);
-        let root = self.resolve(&root_ref)?;
-        let mut out = Vec::new();
-        let inherited: Vec<(String, Obj)> = Vec::new();
-        let root_num = if let Obj::Ref(n, _) = root_ref { Some(n) } else { None };
-        self.walk_pages(root_num, &root, &inherited, &mut out, 0)?;
+        let mut out = self.walk_page_tree()?;
+        if out.is_empty() && !self.reconstructed {
+            self.reconstruct()?;
+            out = self.walk_page_tree()?;
+        }
         if out.is_empty() {
-            // Reconstruct: any object of /Type /Page.
-            let n = self.xref.len();
-            for num in 0..n as u32 {
+            // Fallback: the objects the reconstruction scan saw a /Page in.
+            let candidates = core::mem::take(&mut self.page_candidates);
+            for &num in &candidates {
                 if let Ok(o) = self.get(num) {
                     if o.get("Type").and_then(|t| t.name()) == Some("Page") {
-                        out.push(Page { num: Some(num), dict: o });
+                        out.push(Page { num: Some(num), dict: None, ancestors: alloc::rc::Rc::from(&[][..]) });
                     }
                 }
-                if out.len() > 5000 {
+                if out.len() >= PAGE_LIMIT {
                     break;
                 }
             }
+            self.page_candidates = candidates;
         }
         Ok(out)
     }
 
+    fn walk_page_tree(&mut self) -> Result<Vec<Page>, DocError> {
+        let cat = self.catalog()?;
+        let root_ref = cat.get("Pages").cloned().unwrap_or(Obj::Null);
+        let root = self.resolve(&root_ref)?;
+        let mut out = Vec::new();
+        let root_num = if let Obj::Ref(n, _) = root_ref { Some(n) } else { None };
+        let mut seen: Vec<u32> = Vec::new();
+        self.walk_pages(root_num, &root, &[], &[], &mut out, &mut seen, 0)?;
+        Ok(out)
+    }
+
+    /// The page's own dictionary.
+    pub fn page_dict(&mut self, page: &Page) -> Result<Obj, DocError> {
+        match (&page.dict, page.num) {
+            (Some(d), _) => Ok(d.clone()),
+            (None, Some(n)) => self.get(n),
+            (None, None) => Ok(Obj::Null),
+        }
+    }
+
+    /// A page attribute, resolved, following the inheritance chain up the page tree.
+    pub fn page_attr(&mut self, page: &Page, key: &str) -> Result<Obj, DocError> {
+        let own = self.page_dict(page)?;
+        if let Some(v) = own.get(key) {
+            return self.resolve(v);
+        }
+        for &a in page.ancestors.iter() {
+            let node = self.get(a)?;
+            if let Some(v) = node.get(key) {
+                return self.resolve(v);
+            }
+        }
+        Ok(Obj::Null)
+    }
+
+    #[allow(clippy::too_many_arguments)]
     fn walk_pages(
         &mut self,
         num: Option<u32>,
         node: &Obj,
-        inherited: &[(String, Obj)],
+        ancestors: &[u32],
+        direct_inh: &[(String, Obj)],
         out: &mut Vec<Page>,
+        seen: &mut Vec<u32>,
         depth: u32,
     ) -> Result<(), DocError> {
-        if depth > 32 || out.len() > 5000 {
+        if depth > 32 || out.len() >= PAGE_LIMIT {
             return Ok(());
         }
         let ty = node.get("Type").and_then(|t| t.name()).unwrap_or("");
-        let mut inh: Vec<(String, Obj)> = inherited.to_vec();
-        for key in ["Resources", "MediaBox", "CropBox", "Rotate"] {
-            if let Some(v) = node.get(key) {
-                inh.retain(|(k, _)| k != key);
-                inh.push((key.into(), v.clone()));
-            }
-        }
         let kids = self.get_key(node, "Kids")?;
         if ty == "Page" || (kids == Obj::Null && ty != "Pages") {
-            let mut d: Vec<(String, Obj)> = node.dict().map(|x| x.to_vec()).unwrap_or_default();
-            for (k, v) in inh {
-                if !d.iter().any(|(kk, _)| *kk == k) {
-                    d.push((k, v));
+            // Attributes of ancestors without an object number (rare) are copied in;
+            // everything else is reached lazily through the chain.
+            let dict = if num.is_some() && direct_inh.is_empty() {
+                None
+            } else {
+                let mut d: Vec<(String, Obj)> = node.dict().map(|x| x.to_vec()).unwrap_or_default();
+                for (k, v) in direct_inh {
+                    if !d.iter().any(|(kk, _)| kk == k) {
+                        d.push((k.clone(), v.clone()));
+                    }
+                }
+                Some(Obj::Dict(d))
+            };
+            out.push(Page { num, dict, ancestors: alloc::rc::Rc::from(ancestors) });
+            return Ok(());
+        }
+        let mut chain: Vec<u32> = Vec::with_capacity(ancestors.len() + 1);
+        let mut inh: Vec<(String, Obj)> = direct_inh.to_vec();
+        match num {
+            Some(n) => {
+                chain.push(n);
+                chain.extend_from_slice(ancestors);
+            }
+            None => {
+                chain.extend_from_slice(ancestors);
+                for key in ["Resources", "MediaBox", "CropBox", "Rotate"] {
+                    if let Some(v) = node.get(key) {
+                        inh.retain(|(k, _)| k != key);
+                        inh.push((key.into(), v.clone()));
+                    }
                 }
             }
-            out.push(Page { num, dict: Obj::Dict(d) });
-            return Ok(());
         }
         if let Obj::Array(a) = kids {
             for k in a {
-                let child = self.resolve(&k)?;
                 let knum = if let Obj::Ref(n, _) = k { Some(n) } else { None };
+                if let Some(n) = knum {
+                    if seen.contains(&n) {
+                        continue;
+                    }
+                    seen.push(n);
+                }
+                let child = self.resolve(&k)?;
                 if child != Obj::Null {
-                    self.walk_pages(knum, &child, &inh, out, depth + 1)?;
+                    self.walk_pages(knum, &child, &chain, &inh, out, seen, depth + 1)?;
                 }
             }
         }
         Ok(())
     }
+}
+
+/// Whether a peek window after `obj` names a `/Type /Page` (not `/Pages`).
+fn has_page_type(w: &[u8]) -> bool {
+    let mut i = 0;
+    while let Some(p) = find(&w[i..], b"/Page") {
+        let after = w.get(i + p + 5).copied();
+        if after.map(|c| !c.is_ascii_alphanumeric()).unwrap_or(true) {
+            return true;
+        }
+        i += p + 5;
+    }
+    false
 }
 
 fn find(h: &[u8], n: &[u8]) -> Option<usize> {
@@ -1397,6 +1768,78 @@ mod tests {
         }
         let mut doc = Document::open(&bytes).expect("reconstructed");
         assert_eq!(doc.pages().unwrap().len(), 3);
+    }
+
+    #[test]
+    fn self_referencing_length_falls_back_to_scanning() {
+        // /Length pointing at the stream's own object (or through a cycle) must not
+        // recurse; the data length comes from the `endstream` scan instead.
+        let pdf = b"%PDF-1.4\n\
+1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n\
+2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n\
+3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] /Contents 4 0 R >> endobj\n\
+4 0 obj << /Length 4 0 R >>\nstream\nBT (hi) Tj ET\nendstream endobj\n\
+5 0 obj << /Length 6 0 R >>\nstream\nabc\nendstream endobj\n\
+6 0 obj << /Length 5 0 R >>\nstream\nxy\nendstream endobj\n\
+trailer << /Root 1 0 R >>\nstartxref\n0\n%%EOF";
+        let src: &[u8] = &pdf[..];
+        let mut doc = Document::open(&src).expect("open");
+        assert_eq!(doc.pages().unwrap().len(), 1);
+        let s = doc.get(4).unwrap();
+        assert!(matches!(s, Obj::Stream { len: 13, .. }), "{s:?}");
+        assert_eq!(doc.stream_data(&s).unwrap(), b"BT (hi) Tj ET");
+        let s5 = doc.get(5).unwrap();
+        assert!(matches!(s5, Obj::Stream { len: 3, .. }), "{s5:?}");
+        let s6 = doc.get(6).unwrap();
+        assert!(matches!(s6, Obj::Stream { len: 2, .. }), "{s6:?}");
+    }
+
+    #[test]
+    fn objects_longer_than_the_first_read_are_grown() {
+        // A 20 KB string object (far past the 2 KB first read) parses whole, and a
+        // dangling reference resolves to null without triggering reconstruction.
+        let big: String = core::iter::repeat_n("abcdefghij", 2000).collect();
+        let pdf = alloc::format!(
+            "%PDF-1.4\n1 0 obj << /Type /Catalog /Pages 2 0 R /Big 4 0 R /Gone 9 0 R >> endobj\n\
+             2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n\
+             3 0 obj << /Type /Page /Parent 2 0 R >> endobj\n\
+             4 0 obj [ ({big}) /After ] endobj\n\
+             trailer << /Root 1 0 R >>\n%%EOF"
+        );
+        let src: &[u8] = pdf.as_bytes();
+        let mut doc = Document::open(&src).expect("open");
+        let cat = doc.catalog().unwrap();
+        let b = doc.get_key(&cat, "Big").unwrap();
+        let a = b.array().expect("array");
+        assert_eq!(a.len(), 2);
+        assert_eq!(a[0], Obj::Str(big.into_bytes()));
+        assert_eq!(a[1], Obj::Name("After".into()));
+        assert_eq!(doc.get_key(&cat, "Gone").unwrap(), Obj::Null);
+        // The catalog is small enough to be cached: fetching it again costs no read.
+        let before = doc.obj_cache.len();
+        let _ = doc.catalog().unwrap();
+        assert_eq!(doc.obj_cache.len(), before);
+        assert!(doc.obj_cache.iter().any(|(n, _)| *n == 1));
+    }
+
+    #[test]
+    fn inherited_page_attributes_follow_the_chain() {
+        let pdf = b"%PDF-1.4\n1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n\
+2 0 obj << /Type /Pages /Kids [5 0 R] /Count 1 /MediaBox [0 0 300 400] /Rotate 90 >> endobj\n\
+5 0 obj << /Type /Pages /Parent 2 0 R /Kids [3 0 R] /Count 1 /Rotate 180 >> endobj\n\
+3 0 obj << /Type /Page /Parent 5 0 R >> endobj\n\
+trailer << /Root 1 0 R >>\n%%EOF";
+        let src: &[u8] = &pdf[..];
+        let mut doc = Document::open(&src).expect("open");
+        let pages = doc.pages().unwrap();
+        assert_eq!(pages.len(), 1);
+        assert_eq!(pages[0].num, Some(3));
+        assert!(pages[0].dict.is_none(), "page reached by reference keeps no copy of its dictionary");
+        assert_eq!(&pages[0].ancestors[..], &[5, 2]);
+        assert_eq!(doc.page_attr(&pages[0], "Rotate").unwrap(), Obj::Int(180), "nearest ancestor wins");
+        let mb = doc.page_attr(&pages[0], "MediaBox").unwrap();
+        assert_eq!(mb.array().map(|a| a.len()), Some(4));
+        assert_eq!(doc.page_attr(&pages[0], "Resources").unwrap(), Obj::Null);
     }
 
     #[test]

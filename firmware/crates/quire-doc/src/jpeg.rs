@@ -5,6 +5,11 @@
 //! scaling and dithering. Working memory is one MCU row of luma (width × 16 bytes) plus
 //! the Huffman tables, so a 4000 × 3000 photo costs about 64 KB, not 12 MB.
 //! Progressive JPEGs are refused with a clear message (the converter handles them).
+//!
+//! The source is read strictly forward (APPn/COM segments are skipped by seeking, never
+//! read), so a deflated ZIP entry served by [`crate::inflate::InflatedRead`] is decoded
+//! in a single pass. [`decode_multi`] fans one decode out to several fits, which is how
+//! a cover and its thumbnail are made from one pass over the pixels.
 
 use alloc::vec;
 use alloc::vec::Vec;
@@ -19,6 +24,18 @@ const ZIGZAG: [usize; 64] = [
     57, 50, 43, 36, 29, 22, 15, 23, 30, 37, 44, 51, 58, 59, 52, 45, 38, 31, 39, 46, 53, 60, 61, 54, 47, 55, 62, 63,
 ];
 
+/// Bits of lookahead in the fast Huffman table. Nearly every DC/AC symbol in a real file
+/// has a code of at most 9 bits, so almost all decodes are one table read.
+const LOOKUP_BITS: u32 = 9;
+/// A DQT segment holds at most four 16-bit tables.
+const DQT_MAX: usize = 4 * 129;
+/// A DHT segment holds at most eight tables of 17 + 256 bytes.
+const DHT_MAX: usize = 8 * (17 + 256);
+/// SOF: precision, size, and up to four components.
+const SOF_MAX: usize = 6 + 3 * 4;
+/// SOS: component count, up to four selectors, and three spectral bytes.
+const SOS_MAX: usize = 1 + 2 * 4 + 3;
+
 #[derive(Clone)]
 struct Huffman {
     /// (code length, code) → symbol, stored as lookup by length: for each length 1..=16, the
@@ -27,6 +44,9 @@ struct Huffman {
     maxcode: [i32; 18],
     valptr: [i32; 17],
     symbols: Vec<u8>,
+    /// Indexed by the next `LOOKUP_BITS` bits of input: `(code length << 8) | symbol`,
+    /// or 0 when the code is longer than the lookahead (fall back to the bit-serial walk).
+    lookup: Vec<u16>,
 }
 
 impl Huffman {
@@ -34,19 +54,32 @@ impl Huffman {
         let mut mincode = [0i32; 17];
         let mut maxcode = [-1i32; 18];
         let mut valptr = [0i32; 17];
+        let mut lookup = vec![0u16; 1 << LOOKUP_BITS];
         let mut code = 0i32;
         let mut k = 0i32;
         for l in 1..=16usize {
             let n = counts[l - 1] as i32;
             valptr[l] = k;
             mincode[l] = code;
+            if l as u32 <= LOOKUP_BITS {
+                let shift = LOOKUP_BITS - l as u32;
+                for j in 0..n {
+                    let Some(&sym) = symbols.get((k + j) as usize) else { break };
+                    let base = ((code + j) as usize) << shift;
+                    let span = 1usize << shift;
+                    // Over-subscribed (corrupt) tables can run past the end: clamp.
+                    for e in lookup.iter_mut().skip(base).take(span) {
+                        *e = ((l as u16) << 8) | sym as u16;
+                    }
+                }
+            }
             code += n;
             k += n;
             maxcode[l] = if n > 0 { code - 1 } else { -1 };
             code <<= 1;
         }
         maxcode[17] = i32::MAX;
-        Huffman { mincode, maxcode, valptr, symbols }
+        Huffman { mincode, maxcode, valptr, symbols, lookup }
     }
 }
 
@@ -69,12 +102,15 @@ struct Bits<'a, R: ReadAt> {
     idx: usize,
     acc: u32,
     nbits: u32,
+    /// A marker was reached; zeros are fed until [`Bits::restart`] consumes it.
     marker_hit: bool,
+    /// The marker's second byte.
+    marker: u8,
 }
 
 impl<'a, R: ReadAt> Bits<'a, R> {
     fn new(src: &'a R, pos: u64) -> Self {
-        Bits { src, pos, buf: vec![0; 4096], len: 0, idx: 0, acc: 0, nbits: 0, marker_hit: false }
+        Bits { src, pos, buf: vec![0; 4096], len: 0, idx: 0, acc: 0, nbits: 0, marker_hit: false, marker: 0 }
     }
     fn next_byte(&mut self) -> Result<u8, DocError> {
         if self.idx >= self.len {
@@ -89,33 +125,30 @@ impl<'a, R: ReadAt> Bits<'a, R> {
         self.idx += 1;
         Ok(b)
     }
-    /// Position of the next unread byte in the source.
-    fn position(&self) -> u64 {
-        self.pos - (self.len - self.idx) as u64
-    }
     fn fill(&mut self) -> Result<(), DocError> {
         while self.nbits <= 24 {
-            if self.marker_hit {
-                self.acc |= 0 << (24 - self.nbits);
-                self.nbits += 8;
-                continue;
-            }
-            let mut b = self.next_byte()?;
-            if b == 0xFF {
-                let b2 = self.next_byte()?;
-                if b2 == 0x00 {
-                    b = 0xFF;
-                } else if (0xD0..=0xD7).contains(&b2) || b2 == 0xFF {
-                    // RST marker inside data: the caller handles restarts; feed zeros.
-                    self.marker_hit = true;
-                    self.idx -= 2;
-                    b = 0;
-                } else {
-                    self.marker_hit = true;
-                    self.idx -= 2;
-                    b = 0;
+            let b = if self.marker_hit {
+                0
+            } else {
+                let mut b = self.next_byte()?;
+                if b == 0xFF {
+                    let b2 = self.next_byte()?;
+                    if b2 == 0x00 {
+                        b = 0xFF;
+                    } else if b2 == 0xFF {
+                        // Fill byte: the marker starts at the second 0xFF. `b2` was read from
+                        // the buffer just now, so stepping back one byte is always in range.
+                        self.idx -= 1;
+                        continue;
+                    } else {
+                        // RST (the caller handles restarts) or EOI: feed zeros from here on.
+                        self.marker_hit = true;
+                        self.marker = b2;
+                        b = 0;
+                    }
                 }
-            }
+                b
+            };
             self.acc |= (b as u32) << (24 - self.nbits);
             self.nbits += 8;
         }
@@ -130,9 +163,14 @@ impl<'a, R: ReadAt> Bits<'a, R> {
         self.nbits -= 1;
         Ok(b)
     }
+    /// Read `n` (0..=16) bits. Larger requests are refused rather than shifting by more
+    /// than the accumulator holds (corrupt tables can ask for anything).
     fn bits(&mut self, n: u32) -> Result<u32, DocError> {
         if n == 0 {
             return Ok(0);
+        }
+        if n > 16 {
+            return Err(DocError::Malformed("jpeg: bit count"));
         }
         if self.nbits < n {
             self.fill()?;
@@ -143,6 +181,17 @@ impl<'a, R: ReadAt> Bits<'a, R> {
         Ok(v)
     }
     fn decode(&mut self, h: &Huffman) -> Result<u8, DocError> {
+        if self.nbits < LOOKUP_BITS {
+            self.fill()?;
+        }
+        let e = h.lookup[(self.acc >> (32 - LOOKUP_BITS)) as usize];
+        if e != 0 {
+            let l = (e >> 8) as u32;
+            self.acc <<= l;
+            self.nbits -= l;
+            return Ok(e as u8);
+        }
+        // Long code (or an invalid prefix): walk it bit by bit.
         let mut code = 0i32;
         for l in 1..=16usize {
             code = (code << 1) | self.bit()? as i32;
@@ -157,6 +206,9 @@ impl<'a, R: ReadAt> Bits<'a, R> {
         if s == 0 {
             return Ok(0);
         }
+        if s > 16 {
+            return Err(DocError::Malformed("jpeg: magnitude category"));
+        }
         let v = self.bits(s)? as i32;
         Ok(if v < (1 << (s - 1)) { v - (1 << s) + 1 } else { v })
     }
@@ -164,7 +216,11 @@ impl<'a, R: ReadAt> Bits<'a, R> {
     fn restart(&mut self) -> Result<(), DocError> {
         self.acc = 0;
         self.nbits = 0;
-        self.marker_hit = false;
+        if self.marker_hit {
+            // The bit reader already reached (and consumed) the marker.
+            self.marker_hit = false;
+            return if (0xD0..=0xD7).contains(&self.marker) { Ok(()) } else { Err(DocError::Malformed("jpeg: unexpected marker")) };
+        }
         // Find 0xFF 0xDn.
         loop {
             let b = self.next_byte()?;
@@ -182,6 +238,7 @@ impl<'a, R: ReadAt> Bits<'a, R> {
 }
 
 /// Integer 8×8 inverse DCT (separable, 13-bit fixed point), output clamped to 0..=255.
+/// Arithmetic wraps: corrupt coefficients must produce garbage pixels, not a panic.
 fn idct8x8(coef: &[i32; 64], out: &mut [u8; 64]) {
     // cos table: C[u][x] = c(u) * cos((2x+1) u pi / 16) * 8192 / 2
     const C: [[i32; 8]; 8] = [
@@ -199,7 +256,7 @@ fn idct8x8(coef: &[i32; 64], out: &mut [u8; 64]) {
     for y in 0..8 {
         let row = &coef[y * 8..y * 8 + 8];
         if row[1..].iter().all(|&c| c == 0) {
-            let v = (row[0] * C[0][0]) >> 3;
+            let v = row[0].wrapping_mul(C[0][0]) >> 3;
             for x in 0..8 {
                 tmp[y * 8 + x] = v;
             }
@@ -208,7 +265,7 @@ fn idct8x8(coef: &[i32; 64], out: &mut [u8; 64]) {
         for x in 0..8 {
             let mut s = 0i32;
             for u in 0..8 {
-                s += C[u][x] * row[u];
+                s = s.wrapping_add(C[u][x].wrapping_mul(row[u]));
             }
             tmp[y * 8 + x] = s >> 3;
         }
@@ -218,7 +275,7 @@ fn idct8x8(coef: &[i32; 64], out: &mut [u8; 64]) {
         for y in 0..8 {
             let mut s = 0i32;
             for v in 0..8 {
-                s += C[v][y] * tmp[v * 8 + x];
+                s = s.wrapping_add(C[v][y].wrapping_mul(tmp[v * 8 + x]));
             }
             // Two passes of 1/2 * 8192/... net scale: divide by 2^24 / 8... empirically 2^21
             let val = (s >> 21) + 128;
@@ -229,6 +286,16 @@ fn idct8x8(coef: &[i32; 64], out: &mut [u8; 64]) {
 
 /// Decode a JPEG into a fitted 1-bit bitmap.
 pub fn decode<R: ReadAt>(src: &R, fit: Fit) -> Result<Bitmap, DocError> {
+    decode_multi(src, &[fit])?.pop().ok_or(DocError::Malformed("jpeg"))
+}
+
+/// Decode a JPEG once, producing one fitted bitmap per entry of `fits`. Each result is
+/// identical to a separate [`decode`] with that fit. The DC-only fast path is used when
+/// every fit is at most 1/8 of the source in both axes.
+pub fn decode_multi<R: ReadAt>(src: &R, fits: &[Fit]) -> Result<Vec<Bitmap>, DocError> {
+    if fits.is_empty() {
+        return Ok(Vec::new());
+    }
     let mut pos = 0u64;
     let mut hdr = [0u8; 2];
     src.read_exact_at(0, &mut hdr)?;
@@ -270,7 +337,7 @@ pub fn decode<R: ReadAt>(src: &R, fit: Fit) -> Result<Bitmap, DocError> {
         let body_len = (seg_len - 2) as usize;
         match marker {
             0xDB => {
-                let b = src.read_range(body_off, body_len)?;
+                let b = src.read_range(body_off, body_len.min(DQT_MAX))?;
                 let mut i = 0;
                 while i < b.len() {
                     let pq = b[i] >> 4;
@@ -294,7 +361,7 @@ pub fn decode<R: ReadAt>(src: &R, fit: Fit) -> Result<Bitmap, DocError> {
                 }
             }
             0xC4 => {
-                let b = src.read_range(body_off, body_len)?;
+                let b = src.read_range(body_off, body_len.min(DHT_MAX))?;
                 let mut i = 0;
                 while i + 17 <= b.len() {
                     let tc = b[i] >> 4;
@@ -317,7 +384,7 @@ pub fn decode<R: ReadAt>(src: &R, fit: Fit) -> Result<Bitmap, DocError> {
                 }
             }
             0xC0 | 0xC1 => {
-                let b = src.read_range(body_off, body_len)?;
+                let b = src.read_range(body_off, body_len.min(SOF_MAX))?;
                 if b.len() < 6 {
                     return Err(DocError::Malformed("jpeg: sof"));
                 }
@@ -330,6 +397,9 @@ pub fn decode<R: ReadAt>(src: &R, fit: Fit) -> Result<Bitmap, DocError> {
                 if nc != 1 && nc != 3 {
                     return Err(DocError::Unsupported("jpeg: component count"));
                 }
+                if b.len() < 6 + 3 * nc {
+                    return Err(DocError::Malformed("jpeg: sof"));
+                }
                 comps.clear();
                 for c in 0..nc {
                     let o = 6 + c * 3;
@@ -340,17 +410,23 @@ pub fn decode<R: ReadAt>(src: &R, fit: Fit) -> Result<Bitmap, DocError> {
                 progressive = true;
             }
             0xDD => {
-                let b = src.read_range(body_off, body_len)?;
+                let b = src.read_range(body_off, body_len.min(2))?;
+                if b.len() < 2 {
+                    return Err(DocError::Malformed("jpeg: dri"));
+                }
                 restart_interval = u16::from_be_bytes([b[0], b[1]]) as u32;
             }
             0xDA => {
                 if progressive {
                     return Err(DocError::Unsupported("progressive JPEG (the converter can fix this)"));
                 }
-                let b = src.read_range(body_off, body_len)?;
-                let ns = b[0] as usize;
+                let b = src.read_range(body_off, body_len.min(SOS_MAX))?;
+                let ns = *b.first().ok_or(DocError::Malformed("jpeg: sos"))? as usize;
                 if ns != comps.len() {
                     return Err(DocError::Unsupported("jpeg: non-interleaved scan"));
+                }
+                if b.len() < 1 + 2 * ns {
+                    return Err(DocError::Malformed("jpeg: sos"));
                 }
                 for s in 0..ns {
                     let cid = b[1 + s * 2];
@@ -361,8 +437,9 @@ pub fn decode<R: ReadAt>(src: &R, fit: Fit) -> Result<Bitmap, DocError> {
                     }
                 }
                 let data_start = body_off + body_len as u64;
-                return decode_scan(src, data_start, width, height, &mut comps, &qt, &dc, &ac, restart_interval, fit);
+                return decode_scan(src, data_start, width, height, &mut comps, &qt, &dc, &ac, restart_interval, fits);
             }
+            // APPn, COM and anything else: skipped by seeking, never read.
             _ => {}
         }
         pos = body_off + body_len as u64;
@@ -380,8 +457,8 @@ fn decode_scan<R: ReadAt>(
     dc: &[Option<Huffman>],
     ac: &[Option<Huffman>],
     restart_interval: u32,
-    fit: Fit,
-) -> Result<Bitmap, DocError> {
+    fits: &[Fit],
+) -> Result<Vec<Bitmap>, DocError> {
     if width == 0 || height == 0 || comps.is_empty() {
         return Err(DocError::Malformed("jpeg: size"));
     }
@@ -391,10 +468,12 @@ fn decode_scan<R: ReadAt>(
     let mcu_h = 8 * vmax;
     let mcus_x = width.div_ceil(mcu_w);
     let mcus_y = height.div_ceil(mcu_h);
-    let mut sink = RowSink::new(width, height, fit)?;
-    // DC-only fast path when the output is at most 1/8 of the source in both axes.
-    let (ow, oh) = sink.size();
-    let dc_only = ow * 8 <= width && oh * 8 <= height;
+    let mut sinks = fits.iter().map(|f| RowSink::new(width, height, *f)).collect::<Result<Vec<_>, _>>()?;
+    // DC-only fast path when every output is at most 1/8 of the source in both axes.
+    let dc_only = sinks.iter().all(|s| {
+        let (ow, oh) = s.size();
+        ow * 8 <= width && oh * 8 <= height
+    });
     // Luma component (first, or the one with id 1).
     let luma_idx = comps.iter().position(|c| c.id == 1).unwrap_or(0);
     let (lh, lv) = (comps[luma_idx].h.max(1) as u32, comps[luma_idx].v.max(1) as u32);
@@ -408,7 +487,6 @@ fn decode_scan<R: ReadAt>(
     let mut block = [0u8; 64];
     let mut mcu_count = 0u32;
     let mut grey_row: Vec<u8> = vec![255; width as usize];
-    let dc_x_scale = if dc_only { hmax / lh } else { 1 };
 
     for my in 0..mcus_y {
         for mx in 0..mcus_x {
@@ -429,8 +507,8 @@ fn decode_scan<R: ReadAt>(
                         coef.iter_mut().for_each(|c| *c = 0);
                         let t = bits.decode(dct)?;
                         let diff = bits.receive_extend(t as u32)?;
-                        comp.dc_pred += diff;
-                        coef[0] = comp.dc_pred * q[0] as i32;
+                        comp.dc_pred = comp.dc_pred.wrapping_add(diff);
+                        coef[0] = comp.dc_pred.wrapping_mul(q[0] as i32);
                         let mut k = 1usize;
                         while k < 64 {
                             let rs = bits.decode(act)?;
@@ -448,7 +526,7 @@ fn decode_scan<R: ReadAt>(
                                 break;
                             }
                             let v = bits.receive_extend(s)?;
-                            coef[ZIGZAG[k]] = v * q[ZIGZAG[k]] as i32;
+                            coef[ZIGZAG[k]] = v.wrapping_mul(q[ZIGZAG[k]] as i32);
                             k += 1;
                         }
                         if ci != luma_idx {
@@ -485,11 +563,12 @@ fn decode_scan<R: ReadAt>(
                 for _ in 0..px_per_sample_y {
                     let y_abs = my * mcu_h + sy * px_per_sample_y;
                     if y_abs < height {
-                        sink.push_row(&grey_row);
+                        for s in sinks.iter_mut() {
+                            s.push_row(&grey_row);
+                        }
                     }
                 }
             }
-            let _ = dc_x_scale;
         } else {
             // Luma may be subsampled relative to the MCU (rare: luma is usually the densest).
             let sx = hmax / lh;
@@ -508,17 +587,18 @@ fn decode_scan<R: ReadAt>(
                         grey_row[x] = src_row[x / sx as usize];
                     }
                 }
-                sink.push_row(&grey_row);
+                for s in sinks.iter_mut() {
+                    s.push_row(&grey_row);
+                }
             }
         }
         rows.iter_mut().for_each(|v| *v = 255);
     }
-    let _ = bits.position();
-    Ok(sink.finish())
+    Ok(sinks.into_iter().map(RowSink::finish).collect())
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     /// A tiny baseline JPEG encoder for tests: grey only, quality-free (all-ones quant),
@@ -711,6 +791,86 @@ mod tests {
         assert!(ink > 2000 && ink < 30000, "cover has structure: {ink} ink px");
         let full = decode(&jpg, Fit::fill(528, 792)).expect("full cover");
         assert_eq!((full.w, full.h), (528, 792));
+        // Streamed straight from the archive entry, decoded once for both fits: identical,
+        // and the source was never rewound.
+        let r = z.entry_reader(&e).unwrap();
+        let fits = [Fit::fill(528, 792), Fit { fs: false, ..Fit::fill(152, 228) }];
+        let pair = decode_multi(&r, &fits).expect("streamed cover pair");
+        assert_eq!(pair[0], full);
+        assert_eq!(pair[1], decode(&jpg, fits[1]).unwrap());
+        if let crate::zip::EntryReader::Deflated(d) = &r {
+            assert_eq!(d.restarts(), 0, "jpeg decode reads forward only");
+        }
+    }
+
+    #[test]
+    fn multi_decode_matches_separate_decodes_on_both_paths() {
+        // Full IDCT path (page-sized fit) and DC-only path (all fits ≤ 1/8) alike.
+        let jpg = encode_grey(256, 192, &|x, y| ((x * 3 + y * 5) % 256) as u8);
+        let big = [Fit::inside(256, 192), Fit::fill(64, 96), Fit { fs: false, ..Fit::fill(24, 36) }];
+        let out = decode_multi(&jpg, &big).unwrap();
+        for (bm, fit) in out.iter().zip(big) {
+            assert_eq!(*bm, decode(&jpg, fit).unwrap());
+        }
+        let small = [Fit::inside(32, 24), Fit { fs: false, ..Fit::fill(16, 24) }];
+        let out = decode_multi(&jpg, &small).unwrap();
+        for (bm, fit) in out.iter().zip(small) {
+            assert_eq!(*bm, decode(&jpg, fit).unwrap());
+        }
+        assert!(decode_multi(&jpg, &[]).unwrap().is_empty());
+    }
+
+    #[test]
+    fn unknown_segments_are_skipped_without_reading_them() {
+        /// A source that records every byte range read.
+        struct Spy<'a>(&'a [u8], core::cell::RefCell<Vec<(u64, usize)>>);
+        impl ReadAt for Spy<'_> {
+            fn len(&self) -> u64 {
+                self.0.len() as u64
+            }
+            fn read_at(&self, off: u64, buf: &mut [u8]) -> quire_fs::FsResult<usize> {
+                self.1.borrow_mut().push((off, buf.len()));
+                self.0.read_at(off, buf)
+            }
+        }
+        let mut jpg = encode_grey(16, 16, &|x, _| (x * 16) as u8);
+        // Insert a 30 KB APP1 segment right after SOI.
+        let mut app = vec![0xFF, 0xE1];
+        app.extend_from_slice(&(30_002u16).to_be_bytes());
+        app.extend_from_slice(&[0xAB; 30_000]);
+        let tail = jpg.split_off(2);
+        jpg.extend_from_slice(&app);
+        jpg.extend_from_slice(&tail);
+        let spy = Spy(&jpg, core::cell::RefCell::new(Vec::new()));
+        let bm = decode(&spy, Fit::inside(16, 16)).expect("decode");
+        assert_eq!((bm.w, bm.h), (16, 16));
+        let reads = spy.1.borrow();
+        assert!(reads.iter().all(|(_, n)| *n < 8192), "no read touched the APP1 body: {reads:?}");
+        assert!(!reads.iter().any(|(off, n)| *off >= 6 && *off + (*n as u64) <= 30_004), "APP1 body never read");
+    }
+
+    #[test]
+    fn corrupt_scan_data_is_an_error_not_a_panic() {
+        // Flip every byte of the entropy-coded data in a few patterns; the decoder must
+        // return (Ok or Err) without arithmetic overflow.
+        let jpg = encode_grey(64, 64, &|x, y| ((x ^ y) * 4) as u8);
+        let sos = jpg.windows(2).position(|w| w == [0xFF, 0xDA]).unwrap() + 10;
+        for seed in 1..=6u8 {
+            let mut bad = jpg.clone();
+            for (i, b) in bad[sos..].iter_mut().enumerate() {
+                *b = b.wrapping_mul(seed).wrapping_add(i as u8) | 0x80;
+                if *b == 0xFF {
+                    *b = 0x7F;
+                }
+            }
+            let _ = decode(&bad, Fit::inside(64, 64));
+            let _ = decode(&bad, Fit::inside(8, 8));
+        }
+        // A DC table whose symbols demand a magnitude category over 16.
+        let mut bad = jpg.clone();
+        let dht = bad.windows(2).position(|w| w == [0xFF, 0xC4]).unwrap();
+        bad[dht + 4 + 17] = 40; // first DC symbol → category 40
+        assert!(decode(&bad, Fit::inside(64, 64)).is_err());
     }
 
     #[test]

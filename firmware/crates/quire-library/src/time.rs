@@ -97,6 +97,41 @@ pub fn fmt_duration(secs: u32) -> alloc::string::String {
     }
 }
 
+/// "21:04" or "9:04 pm".
+pub fn fmt_clock(ts: u32, h24: bool) -> alloc::string::String {
+    let m = minute_of_day(ts);
+    let (h, mm) = (m / 60, m % 60);
+    if h24 {
+        alloc::format!("{h:02}:{mm:02}")
+    } else {
+        let (h12, suffix) = match h {
+            0 => (12, "am"),
+            1..=11 => (h, "am"),
+            12 => (12, "pm"),
+            _ => (h - 12, "pm"),
+        };
+        alloc::format!("{h12}:{mm:02} {suffix}")
+    }
+}
+
+/// "2 Sep".
+pub fn fmt_date(day: u16) -> alloc::string::String {
+    let (_, m, d) = civil(day);
+    alloc::format!("{d} {}", month_name(m))
+}
+
+/// "2 Sep 2026".
+pub fn fmt_date_year(day: u16) -> alloc::string::String {
+    let (y, m, d) = civil(day);
+    alloc::format!("{d} {} {y}", month_name(m))
+}
+
+/// "Sunday 7 Sep".
+pub fn fmt_weekday_date(day: u16) -> alloc::string::String {
+    let (_, m, d) = civil(day);
+    alloc::format!("{} {d} {}", weekday_name_long(weekday(day)), month_name(m))
+}
+
 /// "9 pm" / "noon" / "midnight" style hour label.
 pub fn fmt_hour(h: u8) -> alloc::string::String {
     match h % 24 {
@@ -123,5 +158,10 @@ mod tests {
         assert_eq!(fmt_duration(6120), "1 h 42");
         assert_eq!(fmt_duration(2520), "42 min");
         assert_eq!(fmt_hour(21), "9 pm");
+        let ts = from_civil(2026, 9, 7) as u32 * DAY + 21 * 3600 + 4 * 60;
+        assert_eq!(fmt_clock(ts, true), "21:04");
+        assert_eq!(fmt_clock(ts, false), "9:04 pm");
+        assert_eq!(fmt_date(from_civil(2026, 9, 2)), "2 Sep");
+        assert_eq!(fmt_weekday_date(from_civil(2026, 9, 7)), "Monday 7 Sep");
     }
 }

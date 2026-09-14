@@ -26,3 +26,4 @@ quire-doc = { path = ".", features = ["std"] }
 quire-gfx = { path = "../quire-gfx", features = ["std"] }
 quire-layout = { path = "../quire-layout" }
 quire-fonts = { path = "../quire-fonts" }
+miniz_oxide = { workspace = true }

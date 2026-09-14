@@ -1,11 +1,23 @@
 //! The image pipeline: decode (JPEG/PNG/BMP) → scale to a target box → dither to 1 bit,
 //! all row-streamed so a full-page cover costs about 16 KB of working memory.
+//!
+//! Decoders read their source through `ReadAt`, so an image inside a ZIP is decoded
+//! straight from the archive (see [`crate::zip::Zip::entry_reader`]) and never held
+//! whole. [`decode_multi`] fans one decode out to several [`RowSink`]s, which is how a
+//! cover and its thumbnail are produced from a single pass over the pixels.
 
 use alloc::vec::Vec;
 use quire_fs::ReadAt;
 use quire_gfx::Bitmap;
 
 use crate::DocError;
+
+/// Largest BMP we decode on the device: bottom-up rows read backwards, which forces a
+/// restart per row when the source is a forward-only inflated stream.
+#[cfg(target_os = "none")]
+const BMP_DEVICE_MAX: u64 = 512 * 1024;
+/// Widest BMP row we will buffer.
+const BMP_ROW_MAX: u64 = 4 * 1024 * 1024;
 
 /// What the bytes are.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -69,6 +81,14 @@ impl Fit {
     /// Fill a box (crop), Floyd–Steinberg.
     pub const fn fill(max_w: u32, max_h: u32) -> Fit {
         Fit { max_w, max_h, cover: true, fs: true }
+    }
+    /// The two fits a cover needs: the full sleep-screen page and the library thumbnail
+    /// (ordered dither, which is faster and reads better at that size).
+    pub const fn cover_pair() -> [Fit; 2] {
+        [
+            Fit::fill(crate::limits::COVER_W, crate::limits::COVER_H),
+            Fit { fs: false, ..Fit::fill(crate::limits::THUMB_W, crate::limits::THUMB_H) },
+        ]
     }
 }
 
@@ -250,6 +270,16 @@ impl RowSink {
 
 /// Decode any supported image into a fitted 1-bit bitmap.
 pub fn decode<R: ReadAt>(src: &R, kind: ImageKind, fit: Fit) -> Result<Bitmap, DocError> {
+    decode_multi(src, kind, &[fit])?.pop().ok_or(DocError::Malformed("image"))
+}
+
+/// Decode any supported image once into one bitmap per fit (same order as `fits`).
+/// Each result is identical to a separate [`decode`] with that fit; the pixels are just
+/// decoded a single time.
+pub fn decode_multi<R: ReadAt>(src: &R, kind: ImageKind, fits: &[Fit]) -> Result<Vec<Bitmap>, DocError> {
+    if fits.is_empty() {
+        return Ok(Vec::new());
+    }
     let mut head = [0u8; 16];
     let n = src.read_at(0, &mut head)?;
     let kind = match kind {
@@ -265,15 +295,27 @@ pub fn decode<R: ReadAt>(src: &R, kind: ImageKind, fit: Fit) -> Result<Bitmap, D
         }
     };
     match kind {
-        ImageKind::Jpeg => crate::jpeg::decode(src, fit),
-        ImageKind::Png => crate::png::decode(src, fit),
-        ImageKind::Bmp => decode_bmp(src, fit),
+        ImageKind::Jpeg => crate::jpeg::decode_multi(src, fits),
+        ImageKind::Png => crate::png::decode_multi(src, fits),
+        ImageKind::Bmp => decode_bmp_multi(src, fits),
         ImageKind::Unknown => Err(DocError::Unsupported("image format")),
     }
 }
 
 /// Uncompressed BMP (1, 8, 24, 32 bpp), bottom-up or top-down.
 pub fn decode_bmp<R: ReadAt>(src: &R, fit: Fit) -> Result<Bitmap, DocError> {
+    decode_bmp_multi(src, &[fit])?.pop().ok_or(DocError::Malformed("bmp"))
+}
+
+/// Uncompressed BMP decoded once into one bitmap per fit.
+///
+/// Bottom-up files (the common case) are read back to front; over a forward-only
+/// source that means one restart per row, so on the device BMPs over 512 KB are refused.
+pub fn decode_bmp_multi<R: ReadAt>(src: &R, fits: &[Fit]) -> Result<Vec<Bitmap>, DocError> {
+    #[cfg(target_os = "none")]
+    if src.len() > BMP_DEVICE_MAX {
+        return Err(DocError::Unsupported("bmp over 512 KB (the converter can fix this)"));
+    }
     let mut h = [0u8; 54];
     src.read_exact_at(0, &mut h)?;
     if &h[..2] != b"BM" {
@@ -287,10 +329,16 @@ pub fn decode_bmp<R: ReadAt>(src: &R, fit: Fit) -> Result<Bitmap, DocError> {
     if compression != 0 && !(compression == 3 && bpp == 32) {
         return Err(DocError::Unsupported("compressed bmp"));
     }
+    if !matches!(bpp, 1 | 8 | 24 | 32) {
+        return Err(DocError::Unsupported("bmp depth"));
+    }
     let top_down = hgt < 0;
     let (w, hgt) = (w.unsigned_abs(), hgt.unsigned_abs());
-    let mut sink = RowSink::new(w, hgt, fit)?;
-    let stride = ((w * bpp).div_ceil(32) * 4) as u64;
+    let mut sinks = fits.iter().map(|f| RowSink::new(w, hgt, *f)).collect::<Result<Vec<_>, _>>()?;
+    let stride = (w as u64 * bpp as u64).div_ceil(32) * 4;
+    if stride > BMP_ROW_MAX {
+        return Err(DocError::TooLarge("bmp row"));
+    }
     let mut palette = Vec::new();
     if bpp <= 8 {
         let hdr_size = u32::from_le_bytes([h[14], h[15], h[16], h[17]]) as u64;
@@ -308,13 +356,14 @@ pub fn decode_bmp<R: ReadAt>(src: &R, fit: Fit) -> Result<Bitmap, DocError> {
                 1 => palette[((rowbuf[x / 8] >> (7 - (x & 7))) & 1) as usize],
                 8 => palette[rowbuf[x] as usize],
                 24 => ((rowbuf[x * 3 + 2] as u32 * 299 + rowbuf[x * 3 + 1] as u32 * 587 + rowbuf[x * 3] as u32 * 114) / 1000) as u8,
-                32 => ((rowbuf[x * 4 + 2] as u32 * 299 + rowbuf[x * 4 + 1] as u32 * 587 + rowbuf[x * 4] as u32 * 114) / 1000) as u8,
-                _ => return Err(DocError::Unsupported("bmp depth")),
+                _ => ((rowbuf[x * 4 + 2] as u32 * 299 + rowbuf[x * 4 + 1] as u32 * 587 + rowbuf[x * 4] as u32 * 114) / 1000) as u8,
             };
         }
-        sink.push_row(&grey);
+        for s in sinks.iter_mut() {
+            s.push_row(&grey);
+        }
     }
-    Ok(sink.finish())
+    Ok(sinks.into_iter().map(RowSink::finish).collect())
 }
 
 #[cfg(test)]
@@ -342,5 +391,54 @@ mod tests {
         assert_eq!(s.size(), (152, 228));
         let s2 = RowSink::new(300, 100, Fit::inside(480, 640)).unwrap();
         assert_eq!(s2.size(), (300, 100), "small images are not upscaled");
+    }
+
+    /// A 24-bit bottom-up BMP for tests.
+    pub(crate) fn encode_bmp24(w: u32, h: u32, px: &dyn Fn(u32, u32) -> u8) -> Vec<u8> {
+        let stride = (w * 3).div_ceil(4) * 4;
+        let size = 54 + stride * h;
+        let mut out = Vec::with_capacity(size as usize);
+        out.extend_from_slice(b"BM");
+        out.extend_from_slice(&size.to_le_bytes());
+        out.extend_from_slice(&[0; 4]);
+        out.extend_from_slice(&54u32.to_le_bytes());
+        out.extend_from_slice(&40u32.to_le_bytes());
+        out.extend_from_slice(&(w as i32).to_le_bytes());
+        out.extend_from_slice(&(h as i32).to_le_bytes());
+        out.extend_from_slice(&1u16.to_le_bytes());
+        out.extend_from_slice(&24u16.to_le_bytes());
+        out.extend_from_slice(&[0; 24]);
+        for y in (0..h).rev() {
+            let mut row = Vec::with_capacity(stride as usize);
+            for x in 0..w {
+                let v = px(x, y);
+                row.extend_from_slice(&[v, v, v]);
+            }
+            row.resize(stride as usize, 0);
+            out.extend_from_slice(&row);
+        }
+        out
+    }
+
+    #[test]
+    fn bmp_decodes_from_a_forward_only_source_and_fans_out() {
+        // 200 × 120 × 3 B ≈ 72 KB: far more than the inflated stream's 8 KB window, so
+        // reading rows bottom-up must rewind the stream.
+        let bmp = encode_bmp24(200, 120, &|x, _| (x * 255 / 199) as u8);
+        let fits = [Fit::inside(200, 120), Fit::fill(16, 24)];
+        let direct = decode_multi(&bmp, ImageKind::Unknown, &fits).unwrap();
+        assert_eq!(direct.len(), 2);
+        let left: u32 = (0..120).map(|y| direct[0].get(2, y) as u32).sum();
+        let right: u32 = (0..120).map(|y| direct[0].get(197, y) as u32).sum();
+        assert!(left > 100 && right < 20, "left ink {left}, right ink {right}");
+        // Through a deflated stream: bottom-up rows restart the inflater, result identical.
+        let z = miniz_oxide::deflate::compress_to_vec(&bmp, 6);
+        let r = crate::inflate::InflatedRead::new(&z[..], crate::inflate::Framing::Raw, bmp.len() as u64);
+        let streamed = decode_multi(&r, ImageKind::Bmp, &fits).unwrap();
+        assert_eq!(streamed, direct);
+        assert!(r.restarts() > 0, "bottom-up rows read backwards");
+        for (bm, fit) in direct.iter().zip(fits) {
+            assert_eq!(*bm, decode(&bmp, ImageKind::Bmp, fit).unwrap());
+        }
     }
 }

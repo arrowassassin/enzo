@@ -14,9 +14,13 @@ use crate::{BookId, LibError, LibResult, INDEX_FILE, ROOT};
 const VERSION: u16 = 1;
 /// Upper bound on entries (a card with more files than this is still fine; the rest are
 /// reachable through the folder browser). The device keeps the index in RAM at roughly
-/// 220 bytes a book, so it stops at a few hundred.
+/// 300 bytes and six allocations a book, so it stops at a modest number.
 #[cfg(target_os = "none")]
-pub const MAX_BOOKS: usize = 400;
+pub const MAX_BOOKS: usize = 150;
+/// The positions file: tiny, rewritten on position changes instead of the whole index.
+pub const POSITIONS_FILE: &str = "/.quire/positions.bin";
+/// Longest error message kept in an entry.
+const ERROR_BYTES: usize = 48;
 /// Upper bound on entries on the host.
 #[cfg(not(target_os = "none"))]
 pub const MAX_BOOKS: usize = 4000;
@@ -98,8 +102,6 @@ pub struct BookEntry {
     pub year: Option<u16>,
     /// Language code.
     pub language: String,
-    /// Subjects / tags.
-    pub subjects: Vec<String>,
     /// Number of cache sections.
     pub sections: u16,
     /// Total characters.
@@ -124,6 +126,19 @@ pub struct BookEntry {
     pub stats: BookStats,
     /// True when the source file is no longer on the card.
     pub missing: bool,
+    /// Total pages for a typography profile key, once its page index is complete.
+    pub pages_total: Option<(u32, u32)>,
+}
+
+/// The per-book part of the index that changes while reading.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+struct PosRecord {
+    id: BookId,
+    loc: Loc,
+    status: Status,
+    last_opened: u32,
+    started: Option<u16>,
+    finished: Option<u16>,
 }
 
 impl BookEntry {
@@ -149,6 +164,10 @@ impl BookEntry {
             2 => alloc::format!("{} & {}", self.authors[0], self.authors[1]),
             n => alloc::format!("{} +{}", self.authors[0], n - 1),
         }
+    }
+    /// Virtual entries (news articles, wiki pages) stay off the shelves.
+    pub fn hidden(&self) -> bool {
+        self.missing || self.path.starts_with("news:") || self.path.starts_with("wiki:")
     }
     /// Sort key for the shelf: last opened, then added.
     pub fn recency(&self) -> u32 {
@@ -182,6 +201,8 @@ pub struct Library {
     next_collection: u16,
     #[serde(skip)]
     dirty: bool,
+    #[serde(skip)]
+    dirty_pos: bool,
 }
 
 impl Library {
@@ -198,40 +219,88 @@ impl Library {
         if lib.sources.is_empty() {
             lib.sources = crate::DEFAULT_SOURCES.iter().map(|s| String::from(*s)).collect();
         }
+        // Positions are written separately and more often; they win over the index copy.
+        if let Ok(bytes) = fs.read_to_vec(POSITIONS_FILE) {
+            if let Ok(recs) = postcard::from_bytes::<Vec<PosRecord>>(&bytes) {
+                for r in recs {
+                    if let Some(b) = lib.books.iter_mut().find(|b| b.id == r.id) {
+                        b.loc = r.loc;
+                        b.status = r.status;
+                        b.last_opened = b.last_opened.max(r.last_opened);
+                        b.stats.started = b.stats.started.or(r.started);
+                        b.stats.finished = r.finished.or(b.stats.finished);
+                    }
+                }
+            }
+        }
         lib.dirty = false;
+        lib.dirty_pos = false;
         lib
     }
 
-    /// Write the index if anything changed.
+    /// Write whatever changed: the positions file (small, frequent) and the index
+    /// (larger, only on structural changes).
     pub fn save<F: Fs>(&mut self, fs: &F) -> LibResult<()> {
-        if !self.dirty {
+        if !self.dirty && !self.dirty_pos {
             return Ok(());
         }
         if !fs.exists(ROOT) {
             fs.mkdir_all(ROOT)?;
         }
-        let bytes = postcard::to_allocvec(self).map_err(|_| LibError::Corrupt("index encode"))?;
-        fs.write_atomic(INDEX_FILE, &bytes)?;
-        self.dirty = false;
+        if self.dirty {
+            let bytes = postcard::to_allocvec(self).map_err(|_| LibError::Corrupt("index encode"))?;
+            fs.write_atomic(INDEX_FILE, &bytes)?;
+            self.dirty = false;
+        }
+        if self.dirty_pos {
+            self.save_positions(fs)?;
+        }
+        Ok(())
+    }
+
+    /// Write only the positions file (called on page turns' periodic save and before sleep).
+    pub fn save_positions<F: Fs>(&mut self, fs: &F) -> LibResult<()> {
+        let recs: Vec<PosRecord> = self
+            .books
+            .iter()
+            .filter(|b| b.status != Status::Unread || b.last_opened > 0)
+            .map(|b| PosRecord {
+                id: b.id,
+                loc: b.loc,
+                status: b.status,
+                last_opened: b.last_opened,
+                started: b.stats.started,
+                finished: b.stats.finished,
+            })
+            .collect();
+        let bytes = postcard::to_allocvec(&recs).map_err(|_| LibError::Corrupt("positions encode"))?;
+        if !fs.exists(ROOT) {
+            fs.mkdir_all(ROOT)?;
+        }
+        fs.write_atomic(POSITIONS_FILE, &bytes)?;
+        self.dirty_pos = false;
         Ok(())
     }
 
     /// Whether there are unsaved changes.
     pub fn is_dirty(&self) -> bool {
-        self.dirty
+        self.dirty || self.dirty_pos
     }
-    /// Mark changed.
+    /// Mark the index changed (structure or metadata).
     pub fn touch(&mut self) {
         self.dirty = true;
+    }
+    /// Mark positions changed.
+    pub fn touch_positions(&mut self) {
+        self.dirty_pos = true;
     }
 
     /// Find a book.
     pub fn get(&self, id: BookId) -> Option<&BookEntry> {
         self.books.iter().find(|b| b.id == id)
     }
-    /// Find a book mutably (marks the index dirty).
+    /// Find a book mutably. Call [`Library::touch`] (or `touch_positions`) after changing it.
     pub fn get_mut(&mut self, id: BookId) -> Option<&mut BookEntry> {
-        self.dirty = true;
         self.books.iter_mut().find(|b| b.id == id)
     }
     /// Find by path.
@@ -240,8 +309,17 @@ impl Library {
     }
 
     /// Add or update an entry.
-    pub fn upsert(&mut self, entry: BookEntry) {
+    pub fn upsert(&mut self, mut entry: BookEntry) {
         self.dirty = true;
+        if let Some(e) = entry.error.as_mut() {
+            if e.len() > ERROR_BYTES {
+                let mut cut = ERROR_BYTES;
+                while !e.is_char_boundary(cut) {
+                    cut -= 1;
+                }
+                e.truncate(cut);
+            }
+        }
         if let Some(e) = self.books.iter_mut().find(|b| b.id == entry.id) {
             *e = entry;
         } else if self.books.len() < MAX_BOOKS {
@@ -261,7 +339,7 @@ impl Library {
 
     /// Books ordered for the shelf: current first, then by recency.
     pub fn shelf(&self) -> Vec<&BookEntry> {
-        let mut v: Vec<&BookEntry> = self.books.iter().filter(|b| !b.missing).collect();
+        let mut v: Vec<&BookEntry> = self.books.iter().filter(|b| !b.hidden()).collect();
         v.sort_by(|a, b| b.recency().cmp(&a.recency()).then_with(|| a.title.cmp(&b.title)));
         if let Some(cur) = self.current {
             if let Some(i) = v.iter().position(|b| b.id == cur) {
@@ -274,14 +352,14 @@ impl Library {
 
     /// Books by title.
     pub fn by_title(&self) -> Vec<&BookEntry> {
-        let mut v: Vec<&BookEntry> = self.books.iter().filter(|b| !b.missing).collect();
+        let mut v: Vec<&BookEntry> = self.books.iter().filter(|b| !b.hidden()).collect();
         v.sort_by_key(|b| sort_title(&b.title));
         v
     }
 
     /// Books by author, then series index, then title.
     pub fn by_author(&self) -> Vec<&BookEntry> {
-        let mut v: Vec<&BookEntry> = self.books.iter().filter(|b| !b.missing).collect();
+        let mut v: Vec<&BookEntry> = self.books.iter().filter(|b| !b.hidden()).collect();
         v.sort_by(|a, b| {
             let ka = a.authors.first().map(|s| s.to_lowercase()).unwrap_or_default();
             let kb = b.authors.first().map(|s| s.to_lowercase()).unwrap_or_default();
@@ -294,7 +372,7 @@ impl Library {
 
     /// Books in a collection, by title.
     pub fn in_collection(&self, id: u16) -> Vec<&BookEntry> {
-        let mut v: Vec<&BookEntry> = self.books.iter().filter(|b| !b.missing && b.collections.contains(&id)).collect();
+        let mut v: Vec<&BookEntry> = self.books.iter().filter(|b| !b.hidden() && b.collections.contains(&id)).collect();
         v.sort_by_key(|b| sort_title(&b.title));
         v
     }
@@ -348,9 +426,62 @@ impl Library {
         false
     }
 
+    /// Books grouped by author (first author), groups sorted by author, books by series then title.
+    pub fn authors(&self) -> Vec<(String, Vec<&BookEntry>)> {
+        let mut out: Vec<(String, Vec<&BookEntry>)> = Vec::new();
+        for b in self.by_author() {
+            let name = b.authors.first().cloned().unwrap_or_else(|| String::from("Unknown author"));
+            match out.last_mut() {
+                Some((n, v)) if n.eq_ignore_ascii_case(&name) => v.push(b),
+                _ => out.push((name, alloc::vec![b])),
+            }
+        }
+        out
+    }
+
+    /// Books grouped by series, groups sorted by name, books by series index.
+    pub fn series(&self) -> Vec<(String, Vec<&BookEntry>)> {
+        let mut out: Vec<(String, Vec<&BookEntry>)> = Vec::new();
+        let mut v: Vec<&BookEntry> = self.books.iter().filter(|b| !b.hidden() && b.series.is_some()).collect();
+        v.sort_by(|a, b| {
+            let (sa, ia) = a.series.as_ref().map(|s| (s.0.to_lowercase(), s.1)).unwrap_or_default();
+            let (sb, ib) = b.series.as_ref().map(|s| (s.0.to_lowercase(), s.1)).unwrap_or_default();
+            sa.cmp(&sb).then(ia.cmp(&ib)).then_with(|| sort_title(&a.title).cmp(&sort_title(&b.title)))
+        });
+        for b in v {
+            let name = b.series.as_ref().map(|s| s.0.clone()).unwrap_or_default();
+            match out.last_mut() {
+                Some((n, list)) if *n == name => list.push(b),
+                _ => out.push((name, alloc::vec![b])),
+            }
+        }
+        out
+    }
+
+    /// Books finished in a day range (inclusive).
+    pub fn finished_between(&self, from: u16, to: u16) -> Vec<&BookEntry> {
+        let mut v: Vec<&BookEntry> =
+            self.books.iter().filter(|b| b.stats.finished.map(|d| d >= from && d <= to).unwrap_or(false)).collect();
+        v.sort_by_key(|b| b.stats.finished);
+        v
+    }
+
+    /// Record the total pages of a book for a typography profile.
+    pub fn set_pages_total(&mut self, id: BookId, key: u32, pages: u32) {
+        if let Some(b) = self.books.iter_mut().find(|b| b.id == id) {
+            if b.pages_total != Some((key, pages)) {
+                b.pages_total = Some((key, pages));
+                self.dirty = true;
+            }
+        }
+    }
+
     /// Record that a book was opened now.
     pub fn opened(&mut self, id: BookId, now: u32) {
-        self.dirty = true;
+        self.dirty_pos = true;
+        if self.current != Some(id) {
+            self.dirty = true;
+        }
         self.current = Some(id);
         if let Some(b) = self.books.iter_mut().find(|b| b.id == id) {
             b.last_opened = now;
@@ -360,20 +491,39 @@ impl Library {
         }
     }
 
-    /// Update the reading position; flips to Finished at the last characters.
+    /// Update the reading position (Unread becomes Reading; finishing is explicit, see
+    /// [`Library::reached_end`]).
     pub fn set_loc(&mut self, id: BookId, loc: Loc) {
-        self.dirty = true;
         if let Some(b) = self.books.iter_mut().find(|b| b.id == id) {
-            b.loc = loc;
-            if b.status == Status::Unread {
-                b.status = Status::Reading;
+            if b.loc != loc || b.status == Status::Unread {
+                b.loc = loc;
+                if b.status == Status::Unread {
+                    b.status = Status::Reading;
+                }
+                self.dirty_pos = true;
             }
         }
     }
 
+    /// The reader showed the last page: mark finished today unless already finished.
+    pub fn reached_end(&mut self, id: BookId, today: u16) -> bool {
+        if let Some(b) = self.books.iter_mut().find(|b| b.id == id) {
+            if b.status != Status::Finished {
+                b.status = Status::Finished;
+                b.stats.finished = Some(today);
+                if b.stats.started.is_none() {
+                    b.stats.started = Some(today);
+                }
+                self.dirty_pos = true;
+                return true;
+            }
+        }
+        false
+    }
+
     /// Mark finished (or not) today.
     pub fn set_finished(&mut self, id: BookId, finished: bool, today: u16) {
-        self.dirty = true;
+        self.dirty_pos = true;
         if let Some(b) = self.books.iter_mut().find(|b| b.id == id) {
             if finished {
                 b.status = Status::Finished;
@@ -393,7 +543,7 @@ impl Library {
         }
         self.books
             .iter()
-            .filter(|b| !b.missing)
+            .filter(|b| !b.hidden())
             .filter(|b| {
                 let hay = alloc::format!("{} {} {}", b.title, b.authors.join(" "), b.series.as_ref().map(|s| s.0.as_str()).unwrap_or(""))
                     .to_lowercase();
@@ -441,7 +591,6 @@ mod tests {
             series: None,
             year: None,
             language: "en".into(),
-            subjects: Vec::new(),
             sections: 0,
             chars: 1000,
             has_cover: false,
@@ -454,6 +603,7 @@ mod tests {
             collections: Vec::new(),
             stats: BookStats::default(),
             missing: false,
+            pages_total: None,
         }
     }
 
@@ -480,6 +630,18 @@ mod tests {
         assert_eq!(lib2.in_collection(c).len(), 1);
         assert_eq!(lib2.search("mid eli").len(), 1);
         assert_eq!(lib2.pending().len(), 3);
+        // A position change alone rewrites only the positions file.
+        let mut lib3 = Library::load(&fs);
+        let before = fs.open(INDEX_FILE).map(|f| quire_fs::ReadAt::len(&f)).unwrap();
+        lib3.set_loc(BookId(2), Loc { section: 2, pos: Pos::START, chars: 500 });
+        assert!(!lib3.dirty && lib3.dirty_pos);
+        lib3.save(&fs).unwrap();
+        assert_eq!(fs.open(INDEX_FILE).map(|f| quire_fs::ReadAt::len(&f)).unwrap(), before);
+        assert_eq!(Library::load(&fs).get(BookId(2)).unwrap().loc.chars, 500);
+        assert!(lib3.reached_end(BookId(2), 20_000));
+        assert_eq!(lib3.get(BookId(2)).unwrap().status, Status::Finished);
+        assert_eq!(lib3.finished_between(19_000, 21_000).len(), 1);
+        assert_eq!(lib3.authors().len(), 3);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

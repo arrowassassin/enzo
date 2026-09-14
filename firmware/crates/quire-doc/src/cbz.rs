@@ -1,5 +1,9 @@
 //! Comic archives and single images: every image becomes a page-sized picture block,
 //! in natural sort order, grouped into chapters of twenty pages.
+//!
+//! Pages are decoded straight from the archive through [`Zip::entry_reader`]; nothing
+//! is read whole. The first page is decoded once for the page, the cover and the
+//! thumbnail together.
 
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -8,7 +12,7 @@ use quire_qtx::{Token, Writer};
 
 use crate::image::{Fit, ImageKind};
 use crate::zip::Zip;
-use crate::{limits, DocError, Metadata, Sink, TocEntry};
+use crate::{DocError, Metadata, Sink, TocEntry};
 
 /// Pages per chapter.
 const PAGES_PER_CHAPTER: usize = 20;
@@ -56,6 +60,26 @@ fn is_image_name(n: &str) -> bool {
     !quire_fs::file_name(&l).starts_with('.') && (l.ends_with(".jpg") || l.ends_with(".jpeg") || l.ends_with(".png") || l.ends_with(".bmp"))
 }
 
+/// Decode a page, and — for the first page — the cover pair in the same pass.
+/// Returns the page bitmap and, when asked, the (full, thumb) cover.
+fn decode_page<R: ReadAt>(
+    src: &R,
+    kind: ImageKind,
+    with_cover: bool,
+) -> Result<(quire_gfx::Bitmap, Option<(quire_gfx::Bitmap, quire_gfx::Bitmap)>), DocError> {
+    let page = Fit::inside(PAGE_W, PAGE_H);
+    if with_cover {
+        let [full, thumb] = Fit::cover_pair();
+        let mut v = crate::image::decode_multi(src, kind, &[page, full, thumb])?;
+        let thumb = v.pop().ok_or(DocError::Malformed("image"))?;
+        let full = v.pop().ok_or(DocError::Malformed("image"))?;
+        let page = v.pop().ok_or(DocError::Malformed("image"))?;
+        Ok((page, Some((full, thumb))))
+    } else {
+        Ok((crate::image::decode(src, kind, page)?, None))
+    }
+}
+
 /// Ingest a CBZ.
 pub fn ingest<R: ReadAt>(file: &R, name: &str, sink: &mut dyn Sink) -> Result<(), DocError> {
     let zip = Zip::open(file)?;
@@ -84,23 +108,15 @@ pub fn ingest<R: ReadAt>(file: &R, name: &str, sink: &mut dyn Sink) -> Result<()
             toc.push(TocEntry { title, chapter, anchor: None, depth: 0 });
             in_chapter = true;
         }
-        let bytes = zip.read(e, 32 * 1024 * 1024)?;
-        match crate::image::decode(&bytes, ImageKind::from_hint(&e.name), Fit::inside(PAGE_W, PAGE_H)) {
-            Ok(bm) => {
+        let kind = ImageKind::from_hint(&e.name);
+        let decoded = zip.entry_reader(e).and_then(|r| decode_page(&r, kind, i == 0));
+        match decoded {
+            Ok((bm, cover)) => {
                 let id = sink.image(&bm)?;
                 w.push(&Token::Image { id, w: bm.w as u16, h: bm.h as u16 });
-                if i == 0 {
+                if let Some((full, thumb)) = cover {
                     // First page doubles as the cover.
-                    if let (Ok(full), Ok(thumb)) = (
-                        crate::image::decode(&bytes, ImageKind::from_hint(&e.name), Fit::fill(limits::COVER_W, limits::COVER_H)),
-                        crate::image::decode(
-                            &bytes,
-                            ImageKind::from_hint(&e.name),
-                            Fit { fs: false, ..Fit::fill(limits::THUMB_W, limits::THUMB_H) },
-                        ),
-                    ) {
-                        sink.cover(&full, &thumb)?;
-                    }
+                    sink.cover(&full, &thumb)?;
                 }
             }
             Err(_) => {
@@ -117,21 +133,18 @@ pub fn ingest<R: ReadAt>(file: &R, name: &str, sink: &mut dyn Sink) -> Result<()
     Ok(())
 }
 
-/// A lone image file becomes a one-page book.
+/// A lone image file becomes a one-page book. Decoded straight from the file.
 pub fn ingest_single_image<R: ReadAt>(file: &R, name: &str, sink: &mut dyn Sink) -> Result<(), DocError> {
-    let len = file.len() as usize;
-    if len > 32 * 1024 * 1024 {
-        return Err(DocError::TooLarge("image over 32 MB"));
-    }
-    let bytes = file.read_range(0, len)?;
     let kind = ImageKind::from_hint(name);
-    let bm = crate::image::decode(&bytes, kind, Fit::inside(PAGE_W, PAGE_H))?;
     let title = crate::title_from_name(name);
+    // The page must decode; the cover pair is best-effort, so try all three together
+    // first and fall back to the page alone if a cover fit is refused.
+    let (bm, cover) = match decode_page(file, kind, true) {
+        Ok(x) => x,
+        Err(_) => decode_page(file, kind, false)?,
+    };
     sink.metadata(&Metadata { title: title.clone(), ..Default::default() })?;
-    if let (Ok(full), Ok(thumb)) = (
-        crate::image::decode(&bytes, kind, Fit::fill(limits::COVER_W, limits::COVER_H)),
-        crate::image::decode(&bytes, kind, Fit { fs: false, ..Fit::fill(limits::THUMB_W, limits::THUMB_H) }),
-    ) {
+    if let Some((full, thumb)) = cover {
         sink.cover(&full, &thumb)?;
     }
     sink.begin_chapter(0, Some(&title))?;
@@ -171,8 +184,28 @@ mod tests {
         assert_eq!(sink.meta.title, "My Comic");
         assert_eq!(sink.chapters.len(), 2);
         assert_eq!(sink.images.len(), 23);
-        assert!(sink.cover.is_some());
         assert_eq!(sink.toc[0].title, "Pages 1–20");
         assert_eq!(sink.toc[1].title, "Pages 21–23");
+        // The single-pass cover equals separate decodes of page 1.
+        let page1 = crate::png::tests::encode(300, 400, 0, &|x, y| [((x + y + 7) % 256) as u8, 0, 0, 255], 0, false);
+        let [ff, ft] = Fit::cover_pair();
+        let (full, thumb) = sink.cover.as_ref().expect("cover");
+        assert_eq!(*full, crate::image::decode(&page1, ImageKind::Png, ff).unwrap());
+        assert_eq!(*thumb, crate::image::decode(&page1, ImageKind::Png, ft).unwrap());
+        assert_eq!(sink.images[0], crate::image::decode(&page1, ImageKind::Png, Fit::inside(PAGE_W, PAGE_H)).unwrap());
+    }
+
+    #[test]
+    fn single_image_is_a_one_page_book_with_a_cover() {
+        let jpg = crate::jpeg::tests::encode_grey(200, 300, &|x, y| ((x + y) % 256) as u8);
+        let mut sink = MemSink::default();
+        ingest_single_image(&jpg, "holiday.jpg", &mut sink).expect("ingest");
+        assert_eq!(sink.meta.title, "Holiday");
+        assert_eq!(sink.chapters.len(), 1);
+        assert_eq!(sink.images.len(), 1);
+        assert_eq!((sink.images[0].w, sink.images[0].h), (200, 300));
+        let (full, thumb) = sink.cover.as_ref().expect("cover");
+        assert_eq!((full.w, full.h), (crate::limits::COVER_W, crate::limits::COVER_H));
+        assert_eq!((thumb.w, thumb.h), (crate::limits::THUMB_W, crate::limits::THUMB_H));
     }
 }

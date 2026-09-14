@@ -6,8 +6,24 @@ use alloc::string::String;
 use alloc::vec::Vec;
 use quire_fs::{ReadAt, Slice};
 
-use crate::inflate::{ByteStream, Framing, Inflater};
+use crate::inflate::{ByteStream, Framing, InflatedRead, Inflater};
 use crate::DocError;
+
+/// Largest central directory we will hold in RAM.
+#[cfg(target_os = "none")]
+const CD_LIMIT: u64 = 256 * 1024;
+/// Largest central directory we will hold in RAM.
+#[cfg(not(target_os = "none"))]
+const CD_LIMIT: u64 = 8 * 1024 * 1024;
+/// First, cheap tail read when looking for the end-of-central-directory record: almost
+/// every archive has no comment, so the record sits in the last 22 bytes.
+const EOCD_TAIL_SMALL: u64 = 1024 + 22;
+/// Full scan: the comment can be up to 64 KB.
+const EOCD_TAIL_FULL: u64 = 65_535 + 22;
+/// Deflated entries up to this size are loaded whole by [`Zip::entry_reader`]: below it
+/// the bytes cost less than a second inflate state plus window (~70 KB) would, and
+/// decoding from memory is faster.
+const SMALL_ENTRY: u64 = 64 * 1024;
 
 /// One entry from the central directory.
 #[derive(Clone, Debug)]
@@ -47,27 +63,30 @@ impl<R: ReadAt> Zip<R> {
         if len < 22 {
             return Err(DocError::Malformed("zip too small"));
         }
-        // Find the end-of-central-directory record in the last 64 KB + 22.
-        let tail_len = len.min(65_557) as usize;
-        let tail = src.read_range(len - tail_len as u64, tail_len)?;
-        let mut eocd = None;
-        let mut i = tail_len.saturating_sub(22);
-        loop {
-            if &tail[i..i + 4] == b"PK\x05\x06" {
-                eocd = Some(i);
+        // Find the end-of-central-directory record: try the last 1 KB first, then the
+        // full 64 KB + 22 the comment could push it back to.
+        let mut found: Option<(Vec<u8>, usize)> = None;
+        for want in [EOCD_TAIL_SMALL, EOCD_TAIL_FULL] {
+            let tail_len = len.min(want) as usize;
+            let tail = src.read_range(len - tail_len as u64, tail_len)?;
+            // The record is 22 bytes, so the signature can start no later than len - 22.
+            if let Some(i) = tail[..tail_len - 18].windows(4).rposition(|w| w == b"PK\x05\x06") {
+                found = Some((tail, i));
                 break;
             }
-            if i == 0 {
+            if tail_len as u64 == len {
                 break;
             }
-            i -= 1;
         }
-        let e = eocd.ok_or(DocError::Malformed("zip: no end of central directory"))?;
+        let (tail, e) = found.ok_or(DocError::Malformed("zip: no end of central directory"))?;
         let count = u16le(&tail, e + 10) as usize;
         let cd_size = u32le(&tail, e + 12) as u64;
         let cd_off = u32le(&tail, e + 16) as u64;
-        if cd_off + cd_size > len || cd_size > 8 * 1024 * 1024 {
+        if cd_off + cd_size > len {
             return Err(DocError::Malformed("zip: central directory out of range"));
+        }
+        if cd_size > CD_LIMIT {
+            return Err(DocError::TooLarge("zip central directory"));
         }
         let cd = src.read_range(cd_off, cd_size as usize)?;
         let mut entries = Vec::with_capacity(count.min(4096));
@@ -98,9 +117,9 @@ impl<R: ReadAt> Zip<R> {
         self.entries.iter().find(|e| e.name == name).or_else(|| self.entries.iter().find(|e| e.name.eq_ignore_ascii_case(name)))
     }
 
-    /// Open an entry as a byte stream.
-    pub fn stream(&self, entry: &Entry) -> Result<ByteStream<&R>, DocError> {
-        // Local header: 30 bytes + name + extra (the central directory's lengths may differ).
+    /// Offset of an entry's data, from its local header (whose name/extra lengths may
+    /// differ from the central directory's). Refuses encrypted entries.
+    fn data_offset(&self, entry: &Entry) -> Result<u64, DocError> {
         let mut hdr = [0u8; 30];
         self.src.read_exact_at(entry.local_off, &mut hdr)?;
         if &hdr[..4] != b"PK\x03\x04" {
@@ -108,15 +127,37 @@ impl<R: ReadAt> Zip<R> {
         }
         let nlen = u16le(&hdr, 26) as u64;
         let xlen = u16le(&hdr, 28) as u64;
-        let data = entry.local_off + 30 + nlen + xlen;
         let flags = u16le(&hdr, 6);
         if flags & 1 != 0 {
             return Err(DocError::Drm);
         }
         match entry.method {
-            0 => Ok(ByteStream::Stored { src: Slice::new(&self.src, data, entry.csize), pos: 0, buf: alloc::vec![0; 8192] }),
-            8 => Ok(ByteStream::Deflated(Inflater::new(Slice::new(&self.src, data, entry.csize), Framing::Raw))),
+            0 | 8 => Ok(entry.local_off + 30 + nlen + xlen),
             _ => Err(DocError::Unsupported("zip compression method")),
+        }
+    }
+
+    /// Open an entry as a byte stream.
+    pub fn stream(&self, entry: &Entry) -> Result<ByteStream<&R>, DocError> {
+        let data = self.data_offset(entry)?;
+        match entry.method {
+            0 => Ok(ByteStream::Stored { src: Slice::new(&self.src, data, entry.csize), pos: 0, buf: alloc::vec![0; 8192] }),
+            _ => Ok(ByteStream::Deflated(Inflater::new(Slice::new(&self.src, data, entry.csize), Framing::Raw))),
+        }
+    }
+
+    /// Open an entry as a random-access reader without loading it: a plain slice of the
+    /// archive for stored entries, a windowed [`InflatedRead`] for deflated ones. This is
+    /// what the image decoders consume, so a 3 MB cover costs its decode buffers, not
+    /// 3 MB of heap. Deflated entries under [`SMALL_ENTRY`] are simply inflated into
+    /// memory, which is cheaper than a second inflate state.
+    pub fn entry_reader(&self, entry: &Entry) -> Result<EntryReader<&R>, DocError> {
+        let data = self.data_offset(entry)?;
+        let raw = Slice::new(&self.src, data, entry.csize);
+        match entry.method {
+            0 => Ok(EntryReader::Stored(raw)),
+            _ if entry.usize_ <= SMALL_ENTRY => Ok(EntryReader::Loaded(Inflater::new(raw, Framing::Raw).read_all(SMALL_ENTRY as usize)?)),
+            _ => Ok(EntryReader::Deflated(InflatedRead::new(raw, Framing::Raw, entry.usize_))),
         }
     }
 
@@ -134,6 +175,33 @@ impl<R: ReadAt> Zip<R> {
     /// The reader.
     pub fn source(&self) -> &R {
         &self.src
+    }
+}
+
+/// A random-access view of one entry's uncompressed bytes (see [`Zip::entry_reader`]).
+pub enum EntryReader<R: ReadAt + Clone> {
+    /// Stored entry: a slice of the archive.
+    Stored(Slice<R>),
+    /// Small deflated entry, inflated up front.
+    Loaded(Vec<u8>),
+    /// Large deflated entry: inflated on demand.
+    Deflated(InflatedRead<Slice<R>>),
+}
+
+impl<R: ReadAt + Clone> ReadAt for EntryReader<R> {
+    fn len(&self) -> u64 {
+        match self {
+            EntryReader::Stored(s) => s.len(),
+            EntryReader::Loaded(v) => v.len() as u64,
+            EntryReader::Deflated(d) => d.len(),
+        }
+    }
+    fn read_at(&self, offset: u64, buf: &mut [u8]) -> quire_fs::FsResult<usize> {
+        match self {
+            EntryReader::Stored(s) => s.read_at(offset, buf),
+            EntryReader::Loaded(v) => v.read_at(offset, buf),
+            EntryReader::Deflated(d) => d.read_at(offset, buf),
+        }
     }
 }
 
@@ -233,6 +301,47 @@ mod tests {
         assert_eq!(z.read_name("big.bin", 200_000).unwrap(), big);
         assert!(z.read_name("big.bin", 1000).is_err(), "limit enforced");
         assert!(z.find("ops/CH1.XHTML").is_some(), "case-insensitive fallback");
+    }
+
+    #[test]
+    fn entry_reader_streams_stored_and_deflated_entries() {
+        let big: Vec<u8> = (0..100_000u32).map(|i| (i % 251) as u8).collect();
+        let mut b = testzip::Builder::new();
+        b.add("stored.bin", &big, false).add("deflated.bin", &big, true).add("small.bin", &big[..1000], true);
+        let bytes = b.finish();
+        let z = Zip::open(&bytes).unwrap();
+        let small = z.entry_reader(z.find("small.bin").unwrap()).unwrap();
+        assert!(matches!(small, EntryReader::Loaded(_)), "small deflated entries are loaded whole");
+        assert_eq!(small.read_range(0, 1000).unwrap(), big[..1000]);
+        for name in ["stored.bin", "deflated.bin"] {
+            let e = z.find(name).unwrap().clone();
+            let r = z.entry_reader(&e).unwrap();
+            if name == "deflated.bin" {
+                assert!(matches!(r, EntryReader::Deflated(_)), "large deflated entries stream");
+            }
+            assert_eq!(r.len(), 100_000);
+            assert_eq!(r.read_range(0, 100_000).unwrap(), big, "{name}");
+            let mut mid = [0u8; 10];
+            r.read_exact_at(50_000, &mut mid).unwrap();
+            assert_eq!(mid, big[50_000..50_010], "{name}");
+            let mut head = [0u8; 10];
+            r.read_exact_at(3, &mut head).unwrap();
+            assert_eq!(head, big[3..13], "{name} backward read");
+        }
+    }
+
+    #[test]
+    fn eocd_behind_a_long_comment_is_found_by_the_fallback_scan() {
+        let mut b = testzip::Builder::new();
+        b.add("a.txt", b"hello", false);
+        let mut bytes = b.finish();
+        // Append a 20 KB comment and record its length in the EOCD.
+        let comment = alloc::vec![b'x'; 20_000];
+        let n = bytes.len();
+        bytes[n - 2..].copy_from_slice(&(comment.len() as u16).to_le_bytes());
+        bytes.extend_from_slice(&comment);
+        let z = Zip::open(&bytes).unwrap();
+        assert_eq!(z.read_name("a.txt", 16).unwrap(), b"hello");
     }
 
     #[test]

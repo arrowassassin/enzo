@@ -9,6 +9,7 @@
 //! cover.pbm       full-page cover, thumb.pbm the shelf thumbnail
 //! pages/HHHHHHHH/NNNN.idx   page starts per typography profile (see `pages`)
 //! marks.bin       bookmarks, highlights, notes
+//! anchors.bin     postcard(Vec<AnchorRec>)  where every `Anchor` token sits (TOC, notes, links)
 //! ```
 //!
 //! [`CacheSink`] is the [`quire_doc::Sink`] that fills it during ingest. Long chapters
@@ -33,6 +34,31 @@ const MIN_SPLIT: usize = 8 * 1024;
 const MAX_IMAGES: u16 = 2000;
 /// Sections per book.
 const MAX_SECTIONS: usize = 4000;
+/// Anchors recorded per book.
+#[cfg(target_os = "none")]
+const MAX_ANCHORS: usize = 600;
+/// Anchors recorded per book.
+#[cfg(not(target_os = "none"))]
+const MAX_ANCHORS: usize = 4000;
+
+/// Where an `Anchor` token sits.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AnchorRec {
+    /// FNV-1a hash of the anchor id.
+    pub hash: u32,
+    /// Section holding it.
+    pub section: u16,
+    /// Byte offset of the token in the section.
+    pub offset: u32,
+    /// Characters before it in the section.
+    pub chars: u32,
+}
+
+/// Hash used for anchor ids.
+pub fn anchor_hash(id: &str) -> u32 {
+    let h = crate::id::fnv1a(0xcbf29ce484222325, id.as_bytes());
+    (h ^ (h >> 32)) as u32
+}
 
 /// One section (chapter file).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -41,7 +67,7 @@ pub struct SectionInfo {
     pub source: u16,
     /// Part number within that chapter (0 for the first).
     pub part: u8,
-    /// Chapter title, if any.
+    /// Chapter title (only on the first part of a chapter; parts inherit it).
     pub title: Option<String>,
     /// Characters in this section.
     pub chars: u32,
@@ -62,6 +88,8 @@ pub struct CacheSummary {
     pub has_cover: bool,
     /// Images stored.
     pub images: u16,
+    /// Anchors recorded.
+    pub anchors: Vec<AnchorRec>,
 }
 
 impl CacheSummary {
@@ -81,6 +109,7 @@ pub struct CacheSink<'a, F: Fs> {
     meta: Metadata,
     toc: Vec<TocEntry>,
     has_cover: bool,
+    anchors: Vec<AnchorRec>,
     /// Progress callback data: (done, total) from the parser.
     pub progress: (u32, u32),
 }
@@ -102,24 +131,53 @@ impl<'a, F: Fs> CacheSink<'a, F> {
             meta: Metadata::default(),
             toc: Vec::new(),
             has_cover: false,
+            anchors: Vec::new(),
             progress: (0, 0),
         })
     }
 
+    /// Write one section file (directly: the whole cache is discarded on a failed ingest, so
+    /// per-file atomicity would only cost FAT operations), recording its anchors and chars.
     fn write_section(&mut self, source: u16, title: Option<String>, part: u8, data: &[u8]) -> Result<(), DocError> {
         if self.sections.len() >= MAX_SECTIONS {
             return Err(DocError::TooLarge("sections"));
         }
         let n = self.sections.len();
         let path = section_path(&self.dir, n);
-        let tmp = alloc::format!("{path}.tmp");
         {
-            let mut w = self.fs.create(&tmp)?;
+            let mut w = self.fs.create(&path)?;
             w.write_all(data)?;
             w.flush()?;
         }
-        self.fs.rename(&tmp, &path)?;
-        self.sections.push(SectionInfo { source, part, title, chars: quire_qtx::char_count(data), bytes: data.len() as u32 });
+        // One pass over the tokens: character count and anchor positions.
+        let mut chars = 0u32;
+        let mut r = Reader::new(data);
+        while let Some(tag) = r.peek_tag() {
+            let off = r.offset();
+            match tag {
+                quire_qtx::Tag::Text => {
+                    if let Some(b) = r.text_bytes() {
+                        chars += b.iter().filter(|x| (**x & 0xC0) != 0x80).count() as u32;
+                    }
+                }
+                quire_qtx::Tag::Anchor => {
+                    if let Some((_, id)) = r.string_bytes() {
+                        if self.anchors.len() < MAX_ANCHORS {
+                            if let Ok(id) = core::str::from_utf8(id) {
+                                self.anchors.push(AnchorRec { hash: anchor_hash(id), section: n as u16, offset: off, chars });
+                            }
+                        }
+                    }
+                }
+                _ => {
+                    if r.skip_token().is_none() {
+                        break;
+                    }
+                }
+            }
+        }
+        let title = if part == 0 { title } else { None };
+        self.sections.push(SectionInfo { source, part, title, chars, bytes: data.len() as u32 });
         Ok(())
     }
 
@@ -164,12 +222,15 @@ impl<'a, F: Fs> CacheSink<'a, F> {
             if cut == 0 {
                 return Ok(());
             }
-            let head: Vec<u8> = buf[..cut].to_vec();
-            let rest: Vec<u8> = buf[cut..].to_vec();
-            *buf = rest;
             let (source, title, part_no) = (*source, title.clone(), *part);
             *part = part.saturating_add(1);
-            self.write_section(source, title, part_no, &head)?;
+            // Take the buffer out so the section can be written without copying its head.
+            let mut whole = core::mem::take(buf);
+            self.write_section(source, title, part_no, &whole[..cut])?;
+            whole.drain(..cut);
+            if let Some((_, _, b, _)) = self.cur.as_mut() {
+                *b = whole;
+            }
         }
     }
 
@@ -187,7 +248,17 @@ impl<'a, F: Fs> CacheSink<'a, F> {
         self.fs.write_atomic(&quire_fs::join(&self.dir, "meta.bin"), &meta)?;
         let toc = postcard::to_allocvec(&self.toc).map_err(|_| LibError::Corrupt("toc encode"))?;
         self.fs.write_atomic(&quire_fs::join(&self.dir, "toc.bin"), &toc)?;
-        Ok(CacheSummary { sections: self.sections, meta: self.meta, toc: self.toc, has_cover: self.has_cover, images: self.images })
+        self.anchors.sort_by_key(|a| (a.hash, a.section, a.offset));
+        let anchors = postcard::to_allocvec(&self.anchors).map_err(|_| LibError::Corrupt("anchors encode"))?;
+        self.fs.write_atomic(&quire_fs::join(&self.dir, "anchors.bin"), &anchors)?;
+        Ok(CacheSummary {
+            sections: self.sections,
+            meta: self.meta,
+            toc: self.toc,
+            has_cover: self.has_cover,
+            images: self.images,
+            anchors: self.anchors,
+        })
     }
 }
 
@@ -255,15 +326,21 @@ pub fn image_path(dir: &str, id: u16) -> String {
 
 /// Write a bitmap as binary PBM (P4, 1 = ink).
 pub fn write_pbm<F: Fs>(fs: &F, path: &str, bm: &Bitmap) -> Result<(), DocError> {
-    let tmp = alloc::format!("{path}.tmp");
-    {
-        let mut w = fs.create(&tmp)?;
-        w.write_all(alloc::format!("P4\n{} {}\n", bm.w, bm.h).as_bytes())?;
-        w.write_all(&bm.bits)?;
-        w.flush()?;
-    }
-    fs.rename(&tmp, path)?;
+    let mut w = fs.create(path)?;
+    w.write_all(alloc::format!("P4\n{} {}\n", bm.w, bm.h).as_bytes())?;
+    w.write_all(&bm.bits)?;
+    w.flush()?;
     Ok(())
+}
+
+/// Load a book's shelf thumbnail without opening the book.
+pub fn load_thumb<F: Fs>(fs: &F, id: crate::BookId) -> Option<Bitmap> {
+    load_pbm(fs, &quire_fs::join(&crate::book_dir(id), "thumb.pbm"))
+}
+
+/// Load a book's full-page cover without opening the book.
+pub fn load_cover<F: Fs>(fs: &F, id: crate::BookId) -> Option<Bitmap> {
+    load_pbm(fs, &quire_fs::join(&crate::book_dir(id), "cover.pbm"))
 }
 
 /// Read a P4 PBM into a bitmap.

@@ -39,7 +39,14 @@ pub struct Mark {
 }
 
 /// Bound on marks per book.
+#[cfg(target_os = "none")]
+pub const MAX_MARKS: usize = 200;
+/// Bound on marks per book.
+#[cfg(not(target_os = "none"))]
 pub const MAX_MARKS: usize = 1000;
+#[cfg(target_os = "none")]
+const EXCERPT_BYTES: usize = 120;
+#[cfg(not(target_os = "none"))]
 const EXCERPT_BYTES: usize = 240;
 
 /// A book's marks.

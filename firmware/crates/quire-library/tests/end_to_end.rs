@@ -44,8 +44,12 @@ fn scan_ingest_read_resume() {
     // Open, resolve a TOC entry, lay out pages with the default profile.
     let book = Book::open(&fs, moby.id).unwrap();
     assert_eq!(book.total_chars(), moby.chars);
-    let chapter1 = book.toc.iter().find(|t| t.title.contains("Loomings")).expect("toc has Loomings");
-    let loc = book.toc_target(&fs, chapter1).unwrap();
+    let ch_index = book.toc.iter().position(|t| t.title.contains("Loomings")).expect("toc has Loomings");
+    let loc = book.toc_target(ch_index).unwrap();
+    assert_eq!(book.toc_index_at(&loc), Some(ch_index), "TOC lookup by chars");
+    let (from, to, idx) = book.chapter_bounds(loc.chars);
+    assert_eq!(idx, Some(ch_index));
+    assert!(to > from && to - from > 5_000, "chapter 1 spans {} chars", to - from);
     let data = book.section(&fs, loc.section).unwrap();
     let text = quire_qtx::plain_text(&data);
     assert!(text.contains("Call me Ishmael"), "section {} starts: {}", loc.section, &text[..text.len().min(120)]);
@@ -77,6 +81,7 @@ fn scan_ingest_read_resume() {
     lib.set_loc(moby.id, Loc { section: loc.section, pos: starts[2], chars });
     lib.opened(moby.id, 2_000);
     lib.save(&fs).unwrap();
+    assert!(quire_library::cache::load_thumb(&fs, moby.id).is_some(), "thumbnail without opening the book");
     let lib2 = Library::load(&fs);
     let e = lib2.get(moby.id).unwrap();
     assert_eq!(e.status, Status::Reading);
@@ -85,12 +90,16 @@ fn scan_ingest_read_resume() {
     assert!(e.percent() < 5);
 
     // Idle-time index fill makes page counts available.
+    let mut todo = pages::missing(&fs, &book, key);
+    assert_eq!(todo.len() + 1, book.sections.len(), "one section already indexed");
     let mut steps = 0;
-    while pages::build_next(&fs, &book, key, profile, geom) {
+    while pages::build_next(&fs, &book, key, profile, geom, &mut todo).is_some() {
         steps += 1;
         assert!(steps < 10_000);
     }
     let counts = pages::page_counts(&fs, &book, key).unwrap();
+    assert_eq!(pages::page_number(&book, &counts, 900, 0, 0), 1);
+    assert_eq!(pages::total_pages(&book, &counts, 900), counts.iter().map(|c| *c as u32).sum::<u32>());
     assert_eq!(counts.len(), book.sections.len());
     let total_pages: u32 = counts.iter().map(|c| *c as u32).sum();
     assert!(total_pages > 800 && total_pages < 4000, "{total_pages} pages");

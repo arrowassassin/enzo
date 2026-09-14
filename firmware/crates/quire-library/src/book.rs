@@ -8,7 +8,7 @@ use quire_gfx::{Bitmap, BitmapRef};
 use quire_layout::{ImageSource, Pos};
 use quire_qtx::{Reader, Token};
 
-use crate::cache::{self, SectionInfo};
+use crate::cache::{self, anchor_hash, AnchorRec, SectionInfo};
 use crate::index::Loc;
 use crate::{book_dir, BookId, LibError, LibResult};
 
@@ -20,7 +20,7 @@ const IMAGE_SLOTS: usize = 6;
 const IMAGE_BYTES: usize = 160 * 1024;
 
 /// An open book.
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct Book {
     /// Id.
     pub id: BookId,
@@ -34,6 +34,12 @@ pub struct Book {
     pub sections: Vec<SectionInfo>,
     /// Characters before each section (len = sections + 1; last = total).
     cum: Vec<u32>,
+    /// Anchor table, sorted by hash.
+    anchors: Vec<AnchorRec>,
+    /// First section of each ingest chapter (index = chapter).
+    chapter_first: Vec<u16>,
+    /// Every TOC entry resolved to a location (parallel to `toc`).
+    pub toc_locs: Vec<Loc>,
 }
 
 impl Book {
@@ -53,7 +59,133 @@ impl Book {
             n = n.saturating_add(s.chars);
         }
         cum.push(n);
-        Ok(Book { id, dir, meta, toc, sections, cum })
+        let anchors: Vec<AnchorRec> =
+            fs.read_to_vec(&quire_fs::join(&dir, "anchors.bin")).ok().and_then(|b| postcard::from_bytes(&b).ok()).unwrap_or_default();
+        let max_chapter = sections.iter().map(|s| s.source as usize + 1).max().unwrap_or(0);
+        let mut chapter_first = alloc::vec![u16::MAX; max_chapter];
+        for (i, s) in sections.iter().enumerate() {
+            let slot = &mut chapter_first[s.source as usize];
+            if *slot == u16::MAX || (s.part == 0 && sections[*slot as usize].part != 0) {
+                *slot = i as u16;
+            }
+        }
+        let mut book = Book { id, dir, meta, toc, sections, cum, anchors, chapter_first, toc_locs: Vec::new() };
+        book.toc_locs = book.toc.iter().map(|e| book.resolve_toc_entry(e)).collect();
+        Ok(book)
+    }
+
+    fn resolve_toc_entry(&self, entry: &TocEntry) -> Loc {
+        let first = self.section_of_chapter(entry.chapter).unwrap_or(0);
+        let fallback = Loc { section: first, pos: Pos::START, chars: self.chars_before_section(first) };
+        match entry.anchor.as_deref() {
+            Some(a) => self.resolve_anchor_in_chapter(Some(entry.chapter), a).unwrap_or(fallback),
+            None => fallback,
+        }
+    }
+
+    /// Resolve an anchor id, optionally within an ingest chapter, from the anchor table.
+    fn resolve_anchor_in_chapter(&self, chapter: Option<u16>, id: &str) -> Option<Loc> {
+        let h = anchor_hash(id);
+        let start = self.anchors.partition_point(|a| a.hash < h);
+        for rec in self.anchors[start..].iter().take_while(|a| a.hash == h) {
+            let sec = self.sections.get(rec.section as usize)?;
+            if chapter.map(|c| sec.source == c).unwrap_or(true) {
+                return Some(Loc {
+                    section: rec.section,
+                    pos: Pos { para: rec.offset, word: 0, part: 0 },
+                    chars: self.cum[rec.section as usize] + rec.chars,
+                });
+            }
+        }
+        None
+    }
+
+    /// Resolve a link or footnote target: `"12#note-3"`, `"12"` (a chapter) or `"note-3"`.
+    pub fn resolve_anchor(&self, target: &str) -> Option<Loc> {
+        let (chapter, id) = match target.split_once('#') {
+            Some((c, id)) => (c.parse::<u16>().ok(), id),
+            None => match target.parse::<u16>() {
+                Ok(c) => {
+                    let s = self.section_of_chapter(c)?;
+                    return Some(Loc { section: s, pos: Pos::START, chars: self.chars_before_section(s) });
+                }
+                Err(_) => (None, target),
+            },
+        };
+        if id.is_empty() {
+            let s = self.section_of_chapter(chapter?)?;
+            return Some(Loc { section: s, pos: Pos::START, chars: self.chars_before_section(s) });
+        }
+        self.resolve_anchor_in_chapter(chapter, id).or_else(|| self.resolve_anchor_in_chapter(None, id))
+    }
+
+    /// The text that follows an anchor (a footnote body): the first paragraph after it.
+    pub fn note_text<F: Fs>(&self, fs: &F, target: &str) -> Option<String> {
+        let loc = self.resolve_anchor(target)?;
+        let data = self.section(fs, loc.section).ok()?;
+        let mut r = Reader::at(&data, loc.pos.para);
+        let mut out = String::new();
+        let mut started = false;
+        while let Some(tag) = r.peek_tag() {
+            match tag {
+                quire_qtx::Tag::Text => {
+                    if let Some(b) = r.text_bytes() {
+                        if let Ok(t) = core::str::from_utf8(b) {
+                            if started && !out.is_empty() && !out.ends_with(' ') && !t.starts_with(' ') {
+                                out.push(' ');
+                            }
+                            out.push_str(t);
+                            started = true;
+                        }
+                    }
+                }
+                quire_qtx::Tag::Para | quire_qtx::Tag::End | quire_qtx::Tag::ChapterTitle => {
+                    if started {
+                        break;
+                    }
+                    r.skip_token()?;
+                }
+                _ => {
+                    r.skip_token()?;
+                }
+            }
+            if out.len() > 2000 {
+                break;
+            }
+        }
+        let t = out.trim();
+        (!t.is_empty()).then(|| String::from(t))
+    }
+
+    /// The chapter (TOC entry) containing `chars`, with its character bounds: (from, to, toc index).
+    /// Without a TOC, ingest chapters are the bounds.
+    pub fn chapter_bounds(&self, chars: u32) -> (u32, u32, Option<usize>) {
+        let total = self.total_chars();
+        if let Some(i) = self.toc_index_at_chars(chars) {
+            let from = self.toc_locs[i].chars;
+            let to = self.toc_locs.iter().map(|l| l.chars).filter(|c| *c > from).min().unwrap_or(total);
+            return (from, to.max(from), Some(i));
+        }
+        let (section, _) = self.section_at_chars(chars);
+        let chapter = self.sections.get(section as usize).map(|s| s.source).unwrap_or(0);
+        let first = self.section_of_chapter(chapter).unwrap_or(section);
+        let mut last = first;
+        while (last as usize + 1) < self.sections.len() && self.sections[last as usize + 1].source == chapter {
+            last += 1;
+        }
+        (self.chars_before_section(first), self.chars_before_section(last + 1), None)
+    }
+
+    /// The TOC entry at a global character offset: the entry with the greatest start at or
+    /// before it (later entries win ties).
+    pub fn toc_index_at_chars(&self, chars: u32) -> Option<usize> {
+        let mut best: Option<(usize, u32)> = None;
+        for (i, l) in self.toc_locs.iter().enumerate() {
+            if l.chars <= chars && best.map(|b| l.chars >= b.1).unwrap_or(true) {
+                best = Some((i, l.chars));
+            }
+        }
+        best.map(|b| b.0)
     }
 
     /// Total characters.
@@ -78,9 +210,14 @@ impl Book {
         Ok(quire_fs::ReadAt::read_range(&f, 0, len)?)
     }
 
-    /// Title shown for a section (its own, or the chapter's for continuation parts).
+    /// Title shown for a section: its own, or its chapter's first part's.
     pub fn section_title(&self, n: u16) -> Option<&str> {
-        self.sections.get(n as usize).and_then(|s| s.title.as_deref())
+        let s = self.sections.get(n as usize)?;
+        if let Some(t) = s.title.as_deref() {
+            return Some(t);
+        }
+        let first = self.section_of_chapter(s.source)?;
+        self.sections.get(first as usize)?.title.as_deref()
     }
 
     /// The section holding a global character offset, and the offset within it.
@@ -109,41 +246,17 @@ impl Book {
 
     /// First section of an ingest chapter.
     pub fn section_of_chapter(&self, chapter: u16) -> Option<u16> {
-        self.sections.iter().position(|s| s.source == chapter && s.part == 0).map(|i| i as u16)
+        self.chapter_first.get(chapter as usize).copied().filter(|s| *s != u16::MAX)
     }
 
-    /// Resolve a TOC entry to a location, scanning the chapter's parts for its anchor.
-    pub fn toc_target<F: Fs>(&self, fs: &F, entry: &TocEntry) -> LibResult<Loc> {
-        let first = self.section_of_chapter(entry.chapter).ok_or(LibError::NotFound)?;
-        let Some(anchor) = entry.anchor.as_deref() else {
-            return Ok(Loc { section: first, pos: Pos::START, chars: self.chars_before_section(first) });
-        };
-        let mut n = first;
-        while (n as usize) < self.sections.len() && self.sections[n as usize].source == entry.chapter {
-            let data = self.section(fs, n)?;
-            if let Some(off) = find_anchor(&data, anchor) {
-                let pos = quire_layout::para::blocks(&data)
-                    .find(|b| b.next > off)
-                    .map(|b| Pos { para: b.off, word: 0, part: 0 })
-                    .unwrap_or(Pos::START);
-                let chars = self.chars_at(n, &data, pos);
-                return Ok(Loc { section: n, pos, chars });
-            }
-            n += 1;
-        }
-        Ok(Loc { section: first, pos: Pos::START, chars: self.chars_before_section(first) })
+    /// Resolve a TOC entry to a location (from the anchor table; no card access).
+    pub fn toc_target(&self, index: usize) -> Option<Loc> {
+        self.toc_locs.get(index).copied()
     }
 
-    /// The TOC entry the reader is in (the last entry at or before `loc`).
+    /// The TOC entry the reader is in (the last entry starting at or before `loc`).
     pub fn toc_index_at(&self, loc: &Loc) -> Option<usize> {
-        let mut best: Option<(usize, u16)> = None;
-        for (i, e) in self.toc.iter().enumerate() {
-            let Some(s) = self.section_of_chapter(e.chapter) else { continue };
-            if s <= loc.section && best.map(|b| s >= b.1).unwrap_or(true) {
-                best = Some((i, s));
-            }
-        }
-        best.map(|b| b.0)
+        self.toc_index_at_chars(loc.chars)
     }
 
     /// Load the cover thumbnail.

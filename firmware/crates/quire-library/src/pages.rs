@@ -55,7 +55,10 @@ pub fn save<F: Fs>(fs: &F, book: &Book, key: u32, section: u16, starts: &[Pos]) 
     let bytes = book.sections.get(section as usize).map(|s| s.bytes).unwrap_or(0);
     let f = IndexFile { bytes, starts: starts.to_vec() };
     let enc = postcard::to_allocvec(&f).map_err(|_| LibError::Corrupt("index encode"))?;
-    fs.write_atomic(&index_path(&book.dir, key, section), &enc)?;
+    // A regenerable cache file: written directly (a torn write fails the stale check).
+    let mut w = fs.create(&index_path(&book.dir, key, section))?;
+    quire_fs::WriteFile::write_all(&mut w, &enc)?;
+    quire_fs::WriteFile::flush(&mut w)?;
     Ok(())
 }
 
@@ -67,34 +70,110 @@ pub fn get_or_build<F: Fs>(fs: &F, book: &Book, key: u32, section: u16, data: &[
     let starts = quire_layout::build_index(data, profile, geom);
     let starts = if starts.is_empty() { alloc::vec![Pos::START] } else { starts };
     let _ = save(fs, book, key, section, &starts);
+    record_count(fs, book, key, section, starts.len().min(u16::MAX as usize - 1) as u16);
     starts
+}
+
+/// Path of the per-profile page-count table.
+fn counts_path(dir: &str, key: u32) -> alloc::string::String {
+    alloc::format!("{dir}/pages/{key:08x}/counts.bin")
+}
+
+/// Page counts per section for a profile (u16::MAX = not built yet). One small read.
+pub fn counts<F: Fs>(fs: &F, book: &Book, key: u32) -> Vec<u16> {
+    let n = book.sections.len();
+    let mut out = alloc::vec![u16::MAX; n];
+    if let Ok(bytes) = fs.read_to_vec(&counts_path(&book.dir, key)) {
+        for (i, c) in bytes.as_chunks::<2>().0.iter().enumerate().take(n) {
+            out[i] = u16::from_le_bytes(*c);
+        }
+    }
+    out
+}
+
+fn write_counts<F: Fs>(fs: &F, book: &Book, key: u32, counts: &[u16]) {
+    let dir = index_dir(&book.dir, key);
+    if !fs.exists(&dir) {
+        let _ = fs.mkdir_all(&dir);
+    }
+    let mut bytes = Vec::with_capacity(counts.len() * 2);
+    for c in counts {
+        bytes.extend_from_slice(&c.to_le_bytes());
+    }
+    if let Ok(mut w) = fs.create(&counts_path(&book.dir, key)) {
+        let _ = quire_fs::WriteFile::write_all(&mut w, &bytes);
+        let _ = quire_fs::WriteFile::flush(&mut w);
+    }
+}
+
+/// Record a section's page count in the table.
+pub fn record_count<F: Fs>(fs: &F, book: &Book, key: u32, section: u16, pages: u16) {
+    let mut c = counts(fs, book, key);
+    if let Some(slot) = c.get_mut(section as usize) {
+        if *slot != pages {
+            *slot = pages;
+            write_counts(fs, book, key, &c);
+        }
+    }
 }
 
 /// Sections without a cached index for this profile.
 pub fn missing<F: Fs>(fs: &F, book: &Book, key: u32) -> Vec<u16> {
-    (0..book.section_count()).filter(|s| !fs.exists(&index_path(&book.dir, key, *s))).collect()
+    counts(fs, book, key).iter().enumerate().filter(|(_, c)| **c == u16::MAX).map(|(i, _)| i as u16).collect()
 }
 
-/// Build one missing section's index (an idle-time step). Returns false when complete.
-pub fn build_next<F: Fs>(fs: &F, book: &Book, key: u32, profile: Profile, geom: Geometry) -> bool {
-    let Some(section) = missing(fs, book, key).into_iter().next() else { return false };
-    if let Ok(data) = book.section(fs, section) {
-        let _ = get_or_build(fs, book, key, section, &data, profile, geom);
-    } else {
-        let _ = save(fs, book, key, section, &[Pos::START]);
-    }
-    true
+/// Build the index of the first section listed in `todo` (an idle-time step). Returns the
+/// section built, or None when the list is empty. Callers keep `todo` from [`missing`].
+pub fn build_next<F: Fs>(fs: &F, book: &Book, key: u32, profile: Profile, geom: Geometry, todo: &mut Vec<u16>) -> Option<u16> {
+    let section = todo.first().copied()?;
+    todo.remove(0);
+    let starts = match book.section(fs, section) {
+        Ok(data) => get_or_build(fs, book, key, section, &data, profile, geom),
+        Err(_) => {
+            let _ = save(fs, book, key, section, &[Pos::START]);
+            alloc::vec![Pos::START]
+        }
+    };
+    record_count(fs, book, key, section, starts.len().min(u16::MAX as usize - 1) as u16);
+    Some(section)
 }
 
 /// Page counts per section for a complete index, or None if any is missing.
 pub fn page_counts<F: Fs>(fs: &F, book: &Book, key: u32) -> Option<Vec<u16>> {
-    let mut out = Vec::with_capacity(book.sections.len());
-    for s in 0..book.section_count() {
-        let bytes = fs.read_to_vec(&index_path(&book.dir, key, s)).ok()?;
-        let f: IndexFile = postcard::from_bytes(&bytes).ok()?;
-        out.push(f.starts.len().min(u16::MAX as usize) as u16);
+    let c = counts(fs, book, key);
+    if c.contains(&u16::MAX) {
+        None
+    } else {
+        Some(c)
     }
-    Some(out)
+}
+
+/// Total pages from a counts table (estimating unbuilt sections from their characters).
+pub fn total_pages(book: &Book, counts: &[u16], chars_per_page: u32) -> u32 {
+    book.sections
+        .iter()
+        .enumerate()
+        .map(|(i, s)| match counts.get(i) {
+            Some(c) if *c != u16::MAX => *c as u32,
+            _ => (s.chars / chars_per_page.max(1)).max(1),
+        })
+        .sum::<u32>()
+        .max(1)
+}
+
+/// 1-based page number in the book for (section, page within section).
+pub fn page_number(book: &Book, counts: &[u16], chars_per_page: u32, section: u16, page: usize) -> u32 {
+    let before: u32 = book
+        .sections
+        .iter()
+        .enumerate()
+        .take(section as usize)
+        .map(|(i, s)| match counts.get(i) {
+            Some(c) if *c != u16::MAX => *c as u32,
+            _ => (s.chars / chars_per_page.max(1)).max(1),
+        })
+        .sum();
+    before + page as u32 + 1
 }
 
 /// Remove every cached index except `keep` (called when the profile changes twice, so a

@@ -33,7 +33,6 @@ pub fn ingest_book<F: Fs>(fs: &F, lib: &mut Library, id: BookId, progress: &mut 
                 if !summary.meta.language.is_empty() {
                     e.language = summary.meta.language.clone();
                 }
-                e.subjects = summary.meta.subjects.clone();
                 e.sections = summary.sections.len() as u16;
                 e.chars = summary.chars();
                 e.has_cover = summary.has_cover;
@@ -43,6 +42,7 @@ pub fn ingest_book<F: Fs>(fs: &F, lib: &mut Library, id: BookId, progress: &mut 
                     e.loc = Default::default();
                 }
             }
+            lib.touch();
             Ok(())
         }
         Err(err) => {
@@ -50,8 +50,11 @@ pub fn ingest_book<F: Fs>(fs: &F, lib: &mut Library, id: BookId, progress: &mut 
             let _ = fs.remove(&dir);
             if let Some(e) = lib.get_mut(id) {
                 e.ingest = IngestState::Failed;
-                e.error = Some(alloc::format!("{err}"));
+                let mut msg = alloc::format!("{err}");
+                msg.truncate(msg.floor_char_boundary(48));
+                e.error = Some(msg);
             }
+            lib.touch();
             Err(err)
         }
     }

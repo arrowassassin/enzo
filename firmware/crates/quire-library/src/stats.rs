@@ -33,6 +33,10 @@ const KEEP_DAYS: usize = 400;
 const KEEP_DAYS: usize = 800;
 /// Session length buckets of 5 minutes.
 const LEN_BUCKETS: usize = 48;
+/// Recent session lengths kept for the median ("typical session").
+const RECENT_LENGTHS: usize = 32;
+/// A day counts toward a streak only with this much reading.
+pub const STREAK_MIN_SECS: u32 = 300;
 
 /// One reading session.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -71,12 +75,14 @@ impl Session {
         r[31] = self.flags | 0x80;
         r
     }
+    /// Decode a record, rejecting anything a real session could not have produced (a
+    /// corrupt log must not be able to hang or overflow the aggregate).
     fn from_record(r: &[u8]) -> Option<Session> {
         if r.len() < RECORD || r[31] & 0x80 == 0 {
             return None;
         }
         let u32le = |i: usize| u32::from_le_bytes([r[i], r[i + 1], r[i + 2], r[i + 3]]);
-        Some(Session {
+        let s = Session {
             book: BookId(u64::from_le_bytes(r[0..8].try_into().ok()?)),
             start: u32le(8),
             end: u32le(12),
@@ -86,11 +92,21 @@ impl Session {
             pace_chars: u32::from_le_bytes([r[26], r[27], r[28], 0]),
             pace_secs: u16::from_le_bytes([r[29], r[30]]) as u32,
             flags: r[31] & 0x7f,
-        })
+        };
+        let span = s.end.checked_sub(s.start)?;
+        // A session spans at most a day; active time cannot exceed the span (plus one page cap).
+        if span > 2 * DAY || s.active > span + PAGE_CAP_SECS || s.start < 946_684_800 || s.start > 4_102_444_800 {
+            return None;
+        }
+        Some(s)
     }
-    /// Duration in seconds.
-    pub fn secs(&self) -> u32 {
+    /// Seconds actively reading (page-time capped).
+    pub fn active_secs(&self) -> u32 {
         self.active
+    }
+    /// Wall-clock span in seconds.
+    pub fn span_secs(&self) -> u32 {
+        self.end.saturating_sub(self.start)
     }
 }
 
@@ -187,8 +203,6 @@ pub struct DayStat {
     pub chars: u32,
     /// Sessions.
     pub sessions: u8,
-    /// Distinct books (up to 8 tracked).
-    pub books: Vec<BookId>,
 }
 
 /// The aggregate.
@@ -221,8 +235,14 @@ pub struct Stats {
     pub night_sessions: u16,
     /// Daily goal in minutes.
     pub goal_minutes: u16,
+    /// Daily goal in pages (used when `goal_pages` is set).
+    pub goal_page_count: u16,
+    /// Count the daily goal in pages instead of minutes.
+    pub goal_pages: bool,
     /// Yearly goal in books.
     pub goal_books: u16,
+    /// Recent session lengths in seconds (ring, newest last).
+    pub recent_lengths: Vec<u16>,
 }
 
 impl Default for Stats {
@@ -242,7 +262,10 @@ impl Default for Stats {
             pace_secs: 0,
             night_sessions: 0,
             goal_minutes: 30,
+            goal_page_count: 30,
+            goal_pages: false,
             goal_books: 24,
+            recent_lengths: Vec::new(),
         }
     }
 }
@@ -306,8 +329,8 @@ impl Stats {
         let log_len = fs.open(LOG_FILE).map(|f| f.len()).unwrap_or(0);
         if log_len < s.log_len {
             // The log was truncated or replaced: rebuild from scratch, keeping goals.
-            let (gm, gb) = (s.goal_minutes, s.goal_books);
-            s = Stats { goal_minutes: gm, goal_books: gb, ..Stats::default() };
+            let (gm, gp, gpg, gb) = (s.goal_minutes, s.goal_page_count, s.goal_pages, s.goal_books);
+            s = Stats { goal_minutes: gm, goal_page_count: gp, goal_pages: gpg, goal_books: gb, ..Stats::default() };
         }
         if log_len > s.log_len {
             let _ = s.fold_log(fs);
@@ -361,7 +384,7 @@ impl Stats {
             w.flush()?;
         }
         self.apply(s);
-        self.log_len = fs.open(LOG_FILE).map(|f| f.len()).unwrap_or(self.log_len + RECORD as u64);
+        self.log_len += RECORD as u64;
         self.save(fs)?;
         if let Some(b) = lib.get_mut(s.book) {
             b.stats.seconds = b.stats.seconds.saturating_add(s.active);
@@ -394,17 +417,21 @@ impl Stats {
             d.pages = d.pages.saturating_add(s.pages);
             d.chars = d.chars.saturating_add(s.chars);
             d.sessions = d.sessions.saturating_add(1);
-            if !d.books.contains(&s.book) && d.books.len() < 8 {
-                d.books.push(s.book);
-            }
         }
-        // Spread active seconds over the hours the session spanned.
+        if self.recent_lengths.len() >= RECENT_LENGTHS {
+            self.recent_lengths.remove(0);
+        }
+        self.recent_lengths.push(s.active.min(u16::MAX as u32) as u16);
+        // Spread active seconds over the hours the session spanned (bounded: sessions are
+        // validated to a day or two, so this loop runs at most ~50 times).
         let span = s.end.saturating_sub(s.start).max(1);
         let mut t = s.start;
         let mut left = s.active;
-        while t < s.end && left > 0 {
-            let next = (t / 3600 + 1) * 3600;
-            let seg = next.min(s.end) - t;
+        let mut steps = 0;
+        while t < s.end && left > 0 && steps < 64 {
+            steps += 1;
+            let next = ((t as u64 / 3600 + 1) * 3600).min(u32::MAX as u64) as u32;
+            let seg = next.min(s.end).saturating_sub(t);
             let share = ((s.active as u64 * seg as u64) / span as u64) as u32;
             let share = share.min(left);
             self.hours[hour_of(t) as usize] = self.hours[hour_of(t) as usize].saturating_add(share);
@@ -437,8 +464,8 @@ impl Stats {
         self.days.iter().find(|d| d.day == day)
     }
 
-    /// Totals over a range ending today.
-    pub fn totals(&self, range: Range, today: u16) -> Totals {
+    /// The day range a tab covers, ending today.
+    pub fn range_days(range: Range, today: u16) -> (u16, u16) {
         let (y, m, _) = time::civil(today);
         let from = match range {
             Range::Today => today,
@@ -447,8 +474,26 @@ impl Stats {
             Range::Year => time::from_civil(y, 1, 1),
             Range::All => 0,
         };
+        (from, today)
+    }
+
+    /// Totals over a range ending today.
+    pub fn totals(&self, range: Range, today: u16) -> Totals {
+        let (from, to) = Self::range_days(range, today);
+        let mut t = self.totals_between(from, to);
+        if range == Range::All {
+            // Days beyond the kept window still count in the running totals.
+            t.secs = t.secs.max(self.secs);
+            t.pages = t.pages.max(self.pages);
+            t.sessions = t.sessions.max(self.sessions);
+        }
+        t
+    }
+
+    /// Totals over an inclusive day range.
+    pub fn totals_between(&self, from: u16, to: u16) -> Totals {
         let mut t = Totals::default();
-        for d in self.days.iter().filter(|d| d.day >= from && d.day <= today) {
+        for d in self.days.iter().filter(|d| d.day >= from && d.day <= to) {
             t.secs = t.secs.saturating_add(d.secs);
             t.pages = t.pages.saturating_add(d.pages as u32);
             t.sessions = t.sessions.saturating_add(d.sessions as u32);
@@ -457,13 +502,22 @@ impl Stats {
                 t.days += 1;
             }
         }
-        if range == Range::All {
-            // Days beyond the kept window still count in the running totals.
-            t.secs = t.secs.max(self.secs);
-            t.pages = t.pages.max(self.pages);
-            t.sessions = t.sessions.max(self.sessions);
-        }
         t
+    }
+
+    /// Totals per calendar month of a year (the Year tab's ink line).
+    pub fn month_totals(&self, y: u16) -> Vec<Totals> {
+        (1..=12u8)
+            .map(|m| {
+                let a = time::from_civil(y, m, 1);
+                self.totals_between(a, a + time::days_in_month(y, m) as u16 - 1)
+            })
+            .collect()
+    }
+
+    /// Per-day seconds over an inclusive range (the Week/Month ink lines).
+    pub fn day_secs_between(&self, from: u16, to: u16) -> Vec<u32> {
+        (from..=to).map(|d| self.day(d).map(|x| x.secs).unwrap_or(0)).collect()
     }
 
     /// Minutes read per hour of `day` — the overview's ink line — approximated from
@@ -479,9 +533,11 @@ impl Stats {
         for s in self.sessions_between(fs, day as u32 * DAY, (day as u32 + 1) * DAY, 400) {
             let span = s.end.saturating_sub(s.start).max(1);
             let mut t = s.start;
-            while t < s.end {
-                let next = (t / 3600 + 1) * 3600;
-                let seg = next.min(s.end) - t;
+            let mut steps = 0;
+            while t < s.end && steps < 64 {
+                steps += 1;
+                let next = ((t as u64 / 3600 + 1) * 3600).min(u32::MAX as u64) as u32;
+                let seg = next.min(s.end).saturating_sub(t);
                 let share = (s.active as u64 * seg as u64 / span as u64) as u32;
                 let h = hour_of(t) as usize;
                 out[h] = out[h].saturating_add((share / 60) as u16);
@@ -491,12 +547,17 @@ impl Stats {
         out
     }
 
-    /// Current and longest streaks of days with any reading, as of `today`.
+    /// Whether a day counts toward a streak (at least [`STREAK_MIN_SECS`] of reading).
+    fn counts_for_streak(d: &DayStat) -> bool {
+        d.secs >= STREAK_MIN_SECS
+    }
+
+    /// Current and longest streaks of days with real reading, as of `today`.
     pub fn streaks(&self, today: u16) -> (u32, u32) {
         let mut longest = 0u32;
         let mut run = 0u32;
         let mut prev: Option<u16> = None;
-        for d in self.days.iter().filter(|d| d.secs > 0) {
+        for d in self.days.iter().filter(|d| Self::counts_for_streak(d)) {
             run = match prev {
                 Some(p) if d.day == p + 1 => run + 1,
                 _ => 1,
@@ -511,10 +572,16 @@ impl Stats {
         (current, longest)
     }
 
-    /// Whether the daily goal is met for a day.
+    /// Percent of the daily goal reached on a day (minutes or pages, per the goal kind).
     pub fn goal_fraction(&self, day: u16) -> u8 {
+        let d = self.day(day);
+        if self.goal_pages {
+            let goal = (self.goal_page_count as u32).max(1);
+            let pages = d.map(|d| d.pages as u32).unwrap_or(0);
+            return ((pages as u64 * 100) / goal as u64).min(100) as u8;
+        }
         let goal = (self.goal_minutes as u32 * 60).max(60);
-        let secs = self.day(day).map(|d| d.secs).unwrap_or(0);
+        let secs = d.map(|d| d.secs).unwrap_or(0);
         ((secs as u64 * 100) / goal as u64).min(100) as u8
     }
 
@@ -528,20 +595,26 @@ impl Stats {
         let (d, v) = self.weekdays.iter().enumerate().max_by_key(|(_, v)| **v)?;
         (*v > 0).then_some(d as u8)
     }
-    /// Typical (median) session length in seconds.
+    /// Typical (median) session length in seconds, from the recent sessions.
     pub fn typical_session_secs(&self) -> u32 {
-        let total: u32 = self.lengths.iter().map(|n| *n as u32).sum();
-        if total == 0 {
+        if self.recent_lengths.is_empty() {
+            // Only the buckets survive from before the ring existed.
+            let total: u32 = self.lengths.iter().map(|n| *n as u32).sum();
+            if total == 0 {
+                return 0;
+            }
+            let mut acc = 0u32;
+            for (i, n) in self.lengths.iter().enumerate() {
+                acc += *n as u32;
+                if acc * 2 >= total {
+                    return (i as u32 * 300) + 150;
+                }
+            }
             return 0;
         }
-        let mut acc = 0u32;
-        for (i, n) in self.lengths.iter().enumerate() {
-            acc += *n as u32;
-            if acc * 2 >= total {
-                return (i as u32 * 300) + 150;
-            }
-        }
-        0
+        let mut v = self.recent_lengths.clone();
+        v.sort_unstable();
+        v[v.len() / 2] as u32
     }
 
     /// Global reading pace in characters per second × 1000 (0 when unknown).
@@ -552,9 +625,9 @@ impl Stats {
         ((self.pace_chars * 1000) / self.pace_secs).min(u32::MAX as u64) as u32
     }
 
-    /// Seconds left in a book from its recent pace, falling back to the global pace and
-    /// then to a default of 900 characters per minute.
-    pub fn time_left_secs(&self, book: &BookEntry) -> u32 {
+    /// Reading pace for a book in characters per second × 1000: its last seven sessions,
+    /// else the global pace, else 900 characters a minute.
+    pub fn pace_milli_cps_for(&self, book: &BookEntry) -> u32 {
         let (c, s): (u64, u64) = book.stats.recent.iter().fold((0, 0), |(c, s), (rc, rs)| (c + *rc as u64, s + *rs as u64));
         let milli_cps = if s >= 60 && c > 0 {
             (c * 1000 / s) as u32
@@ -566,8 +639,18 @@ impl Stats {
                 15_000
             }
         };
-        let milli_cps = milli_cps.max(500);
-        ((book.chars_left() as u64 * 1000) / milli_cps as u64).min(u32::MAX as u64) as u32
+        milli_cps.max(500)
+    }
+
+    /// Seconds to read `chars` characters of a book at its pace.
+    pub fn secs_for_chars(&self, book: &BookEntry, chars: u32) -> u32 {
+        let milli_cps = self.pace_milli_cps_for(book);
+        ((chars as u64 * 1000) / milli_cps as u64).min(u32::MAX as u64) as u32
+    }
+
+    /// Seconds left in a book from its pace.
+    pub fn time_left_secs(&self, book: &BookEntry) -> u32 {
+        self.secs_for_chars(book, book.chars_left())
     }
 
     /// Average seconds per day over the last seven days (at least ten minutes).
@@ -598,7 +681,7 @@ impl Stats {
         // 7-day streak: the day a run of seven was completed.
         let mut run = 0u32;
         let mut prev: Option<u16> = None;
-        for d in self.days.iter().filter(|d| d.secs > 0) {
+        for d in self.days.iter().filter(|d| Self::counts_for_streak(d)) {
             run = match prev {
                 Some(p) if d.day == p + 1 => run + 1,
                 _ => 1,
@@ -631,6 +714,11 @@ impl Stats {
         out
     }
 
+    /// Books finished in an inclusive day range.
+    pub fn books_finished_between(lib: &Library, from: u16, to: u16) -> u32 {
+        lib.books.iter().filter(|bk| bk.stats.finished.map(|d| d >= from && d <= to).unwrap_or(false)).count() as u32
+    }
+
     /// Books finished in a calendar year.
     pub fn books_finished_in_year(lib: &Library, y: u16) -> u32 {
         let (a, b) = (time::from_civil(y, 1, 1), time::from_civil(y, 12, 31));
@@ -650,7 +738,7 @@ impl Stats {
         let mut longest = 0u32;
         let mut run = 0u32;
         let mut prev: Option<u16> = None;
-        for d in self.days.iter().filter(|d| d.secs > 0 && d.day >= a && d.day <= b) {
+        for d in self.days.iter().filter(|d| Self::counts_for_streak(d) && d.day >= a && d.day <= b) {
             run = match prev {
                 Some(p) if d.day == p + 1 => run + 1,
                 _ => 1,
@@ -716,11 +804,12 @@ mod tests {
 
     #[test]
     fn tracker_caps_page_time_and_ignores_idle() {
-        let mut t = SessionTracker::start(BookId(7), 1000, 0, false);
-        t.page(1030, 400); // 30 s, counts for pace
-        t.page(1032, 800); // 2 s, too quick for pace
-        t.page(1500, 1200); // 468 s, ends the active stretch; capped, but still within idle? 468 > 300 → ignored
-        let s = t.finish(1510);
+        let t0 = 1_700_000_000u32;
+        let mut t = SessionTracker::start(BookId(7), t0, 0, false);
+        t.page(t0 + 30, 400); // 30 s, counts for pace
+        t.page(t0 + 32, 800); // 2 s, too quick for pace
+        t.page(t0 + 500, 1200); // 468 s gap: longer than the idle limit, ignored
+        let s = t.finish(t0 + 510);
         assert_eq!(s.pages, 3);
         assert_eq!(s.active, 30 + 2 + 10);
         assert_eq!(s.pace_chars, 400);
@@ -745,7 +834,6 @@ mod tests {
             series: None,
             year: None,
             language: "en".into(),
-            subjects: Vec::new(),
             sections: 1,
             chars: 100_000,
             has_cover: false,
@@ -758,6 +846,7 @@ mod tests {
             collections: Vec::new(),
             stats: BookStats::default(),
             missing: false,
+            pages_total: None,
         });
         let mut st = Stats::load(&fs);
         // Three days in a row, 21:00 sessions, then a gap.
@@ -783,7 +872,9 @@ mod tests {
         assert_eq!(st.totals(Range::Month, today).pages, 90);
         assert_eq!(st.favourite_hour(), Some(21));
         assert_eq!(st.favourite_weekday(), Some(weekday(time::from_civil(2026, 9, 12))));
-        assert_eq!(st.typical_session_secs(), 1950);
+        assert_eq!(st.typical_session_secs(), 1800);
+        assert_eq!(st.month_totals(2026)[8].pages, 90);
+        assert_eq!(st.totals_between(time::from_civil(2026, 9, 11), time::from_civil(2026, 9, 11)).secs, 1800);
         assert_eq!(st.totals(Range::All, today).pages_per_hour(), 60);
         // Pace: 6 chars/s → 60 000 chars left = 10 000 s.
         let b = lib.get(BookId(1)).unwrap();

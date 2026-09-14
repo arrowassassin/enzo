@@ -27,6 +27,10 @@ pub fn to_qtx(src: &str) -> MdOutput {
     let mut image_ids = 0u16;
     let mut quote_depth = 0u32;
     let mut code_block = false;
+    // A leading `#`/`##` heading is the chapter opening: captured, not written as a
+    // heading paragraph, and emitted as `ChapterTitle` when it ends.
+    let mut opening: Option<(u8, String)> = None;
+    let mut any_block = false;
 
     let start = |w: &mut Writer, k: ParaKind, in_para: &mut bool, styleflags: u8| {
         if *in_para {
@@ -40,30 +44,61 @@ pub fn to_qtx(src: &str) -> MdOutput {
     };
 
     for ev in parser {
+        if let Some((level, buf)) = opening.as_mut() {
+            // Inside the opening heading: collect its text only.
+            match ev {
+                Event::Text(t) | Event::Code(t) => buf.push_str(&t),
+                Event::SoftBreak | Event::HardBreak => buf.push(' '),
+                Event::End(TagEnd::Heading(_)) => {
+                    let text = crate::html::collapse_ws(buf);
+                    let level = *level;
+                    opening = None;
+                    any_block = true;
+                    if first_heading.is_none() {
+                        first_heading = Some(text.clone());
+                    }
+                    toc.push((text.clone(), level));
+                    let (number, title) = crate::html::split_chapter_heading(&text);
+                    w.push(&Token::ChapterTitle { number, title });
+                }
+                _ => {}
+            }
+            continue;
+        }
         match ev {
             Event::Start(tag) => match tag {
-                Tag::Paragraph => start(&mut w, if quote_depth > 0 { ParaKind::Quote } else { ParaKind::Body }, &mut in_para, styleflags),
+                Tag::Paragraph => {
+                    any_block = true;
+                    start(&mut w, if quote_depth > 0 { ParaKind::Quote } else { ParaKind::Body }, &mut in_para, styleflags)
+                }
                 Tag::Heading { level, .. } => {
                     let l = match level {
                         HeadingLevel::H1 => 1,
                         HeadingLevel::H2 => 2,
                         _ => 3,
                     };
+                    if !any_block && l <= 2 {
+                        opening = Some((l, String::new()));
+                        continue;
+                    }
+                    any_block = true;
                     start(&mut w, ParaKind::Heading(l), &mut in_para, styleflags);
                     heading_buf = Some((l, String::new()));
                 }
                 Tag::BlockQuote(_) => quote_depth += 1,
                 Tag::CodeBlock(_) => {
+                    any_block = true;
                     start(&mut w, ParaKind::Code, &mut in_para, styleflags);
                     code_block = true;
                 }
                 Tag::List(first) => list_stack.push((first.is_some(), first.unwrap_or(1) as u16)),
                 Tag::Item => {
+                    any_block = true;
                     let level = list_stack.len().saturating_sub(1) as u8;
                     let (ordered, idx) = list_stack.last().copied().unwrap_or((false, 1));
                     start(&mut w, ParaKind::ListItem { ordered, level, index: idx }, &mut in_para, styleflags);
                     if let Some(t) = list_stack.last_mut() {
-                        t.1 += 1;
+                        t.1 = t.1.saturating_add(1);
                     }
                 }
                 Tag::Emphasis => {
@@ -90,6 +125,7 @@ pub fn to_qtx(src: &str) -> MdOutput {
                     }
                 }
                 Tag::Image { dest_url, .. } => {
+                    any_block = true;
                     if in_para {
                         w.push(&Token::End);
                         in_para = false;
@@ -99,9 +135,16 @@ pub fn to_qtx(src: &str) -> MdOutput {
                     image_ids += 1;
                 }
                 Tag::Table(_) => {}
-                Tag::TableHead | Tag::TableRow => start(&mut w, ParaKind::TableRow, &mut in_para, styleflags),
+                Tag::TableHead | Tag::TableRow => {
+                    any_block = true;
+                    start(&mut w, ParaKind::TableRow, &mut in_para, styleflags)
+                }
                 Tag::TableCell => {}
-                Tag::FootnoteDefinition(_) => start(&mut w, ParaKind::Body, &mut in_para, styleflags),
+                Tag::FootnoteDefinition(id) => {
+                    any_block = true;
+                    start(&mut w, ParaKind::Body, &mut in_para, styleflags);
+                    w.push(&Token::Anchor(String::from(&*id)));
+                }
                 _ => {}
             },
             Event::End(tag) => match tag {
@@ -157,6 +200,7 @@ pub fn to_qtx(src: &str) -> MdOutput {
             },
             Event::Text(t) => {
                 if !in_para {
+                    any_block = true;
                     start(&mut w, ParaKind::Body, &mut in_para, styleflags);
                 }
                 if code_block {
@@ -194,6 +238,7 @@ pub fn to_qtx(src: &str) -> MdOutput {
                 }
             }
             Event::Rule => {
+                any_block = true;
                 if in_para {
                     w.push(&Token::End);
                     in_para = false;
@@ -202,7 +247,8 @@ pub fn to_qtx(src: &str) -> MdOutput {
             }
             Event::FootnoteReference(id) => {
                 if in_para {
-                    w.push(&Token::Footnote(String::from(&*id)));
+                    // Targets take the `chapter#anchor` form; Markdown is one chapter.
+                    w.push(&Token::Footnote(alloc::format!("0#{id}")));
                 }
             }
             Event::Html(h) | Event::InlineHtml(h) => {
@@ -234,7 +280,7 @@ pub fn ingest<R: ReadAt>(file: &R, name: &str, sink: &mut dyn Sink) -> Result<()
         return Err(DocError::TooLarge("markdown over 4 MB"));
     }
     let data = file.read_range(0, len)?;
-    let text = crate::txt::decode_bytes(&data);
+    let text = crate::txt::decode_text(&data);
     let (bytes, chars, heading, toc) = to_qtx(&text);
     let title = heading.unwrap_or_else(|| crate::title_from_name(name));
     sink.metadata(&Metadata { title: title.clone(), ..Default::default() })?;
@@ -257,12 +303,14 @@ mod tests {
 
     #[test]
     fn markdown_maps_to_qtx() {
-        let md = "# Title\n\nSome *italic* and **bold** with `code`.\n\n- a\n- b\n\n1. one\n\n> quote\n\n```\nlet x = 1;\nlet y = 2;\n```\n\n---\n";
+        let md = "# Chapter 1: Title\n\nSome *italic* and **bold** with `code`.\n\n## Sub\n\n- a\n- b\n\n1. one\n\n> quote\n\n```\nlet x = 1;\nlet y = 2;\n```\n\n---\n";
         let (bytes, _, h, toc) = to_qtx(md);
-        assert_eq!(h.as_deref(), Some("Title"));
-        assert_eq!(toc.len(), 1);
+        assert_eq!(h.as_deref(), Some("Chapter 1: Title"));
+        assert_eq!(toc.len(), 2);
         let toks: alloc::vec::Vec<Token> = Reader::new(&bytes).collect();
-        assert!(toks.contains(&Token::Para(ParaKind::Heading(1))));
+        assert_eq!(toks[0], Token::ChapterTitle { number: Some("1".into()), title: Some("Title".into()) });
+        assert!(toks.contains(&Token::Para(ParaKind::Heading(2))));
+        assert!(!toks.contains(&Token::Para(ParaKind::Heading(1))));
         assert!(toks.contains(&Token::Style(style::ITALIC)));
         assert!(toks.contains(&Token::Style(style::BOLD)));
         assert!(toks.contains(&Token::Style(style::MONO)));
