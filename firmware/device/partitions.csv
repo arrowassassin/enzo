@@ -1,11 +1,16 @@
-# Quire X3 partition table (16 MB flash). Offsets are absolute.
-# recovery is the factory slot: an erased otadata boots it, so a bad OTA never bricks a USB-locked unit.
+# Quire X3 partition table (16 MB flash). Offsets are absolute and 64 KB aligned.
+#
+# recovery is the factory slot: an erased otadata boots it, so a failed OTA never bricks a
+# USB-locked unit. Two 6 MB OTA slots carry the firmware, which includes the baked font
+# strikes (~2.5 MB). Books and covers live on the SD card, so assets only holds the sample
+# book, the compact dictionary and sleep images.
+#
 # Name,     Type, SubType,  Offset,   Size,     Flags
 nvs,        data, nvs,      0x9000,   0x6000,
 otadata,    data, ota,      0xf000,   0x2000,
 phy_init,   data, phy,      0x11000,  0x1000,
 recovery,   app,  factory,  0x20000,  0x80000,
-ota_0,      app,  ota_0,    0xa0000,  0x400000,
-ota_1,      app,  ota_1,    0x4a0000, 0x400000,
-assets,     data, spiffs,   0x8a0000, 0x740000,
+ota_0,      app,  ota_0,    0xa0000,  0x600000,
+ota_1,      app,  ota_1,    0x6a0000, 0x600000,
+assets,     data, spiffs,   0xca0000, 0x340000,
 coredump,   data, coredump, 0xfe0000, 0x20000,

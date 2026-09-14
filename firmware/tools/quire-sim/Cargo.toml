@@ -1,0 +1,16 @@
+[package]
+name = "quire-sim"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Headless simulator: renders the real Quire UI to PNG and drives it with scripted keys"
+
+[dependencies]
+quire-gfx = { path = "../../crates/quire-gfx", features = ["std"] }
+quire-fonts = { path = "../../crates/quire-fonts" }
+quire-layout = { path = "../../crates/quire-layout" }
+quire-qtx = { path = "../../crates/quire-qtx" }
+image = { workspace = true }
+anyhow = { workspace = true }
+clap = { workspace = true }

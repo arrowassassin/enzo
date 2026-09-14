@@ -1,0 +1,17 @@
+[package]
+name = "quire-fonts"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "MIT OR Apache-2.0"
+description = "Bitmap font strikes for Quire, baked at build time from OFL fonts"
+build = "build.rs"
+
+[dependencies]
+quire-gfx = { path = "../quire-gfx", default-features = false }
+serde = { workspace = true }
+
+[build-dependencies]
+ab_glyph = "0.2"
+ttf-parser = "0.25"
+quire-gfx = { path = "../quire-gfx", default-features = false, features = ["std"] }

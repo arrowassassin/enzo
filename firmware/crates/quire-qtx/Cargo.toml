@@ -1,0 +1,11 @@
+[package]
+name = "quire-qtx"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "QTX: the compact chapter token stream every document format compiles to"
+
+[dependencies]
+serde = { workspace = true }
+postcard = { workspace = true }
