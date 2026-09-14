@@ -1,8 +1,11 @@
 //! 73 clock and timer: 56 px time, date in small caps, a pomodoro ring, visual alarms.
+//!
+//! The panel is refreshed only when something on it changes: once a minute while the
+//! clock is idle, once a second while the timer runs.
 
 use alloc::string::String;
 use alloc::vec::Vec;
-use quire_gfx::{draw_text, Frame, Ink, Rect, TextStyle};
+use quire_gfx::{Frame, Ink, Rect, TextStyle};
 use quire_library::time;
 
 use crate::text::{draw_centered, draw_label, line_h, small_caps};
@@ -20,12 +23,14 @@ pub struct Clock {
     focus: usize,
     /// Set when the timer finished and the screen shows it.
     rang: bool,
+    /// Minute of day the clock was last drawn for (`u16::MAX` = never).
+    drawn_minute: u16,
 }
 
 impl Clock {
     /// New.
     pub fn new() -> Self {
-        Clock { timer: None, timer_len: 25 * 60, alarms: Vec::new(), focus: 0, rang: false }
+        Clock { timer: None, timer_len: 25 * 60, alarms: Vec::new(), focus: 0, rang: false, drawn_minute: u16::MAX }
     }
 }
 
@@ -35,26 +40,27 @@ impl Default for Clock {
     }
 }
 
-/// A 2 px stepped ring: `steps` segments of which `done` are drawn.
+/// The 2 px stepped ring: `steps` segments around a circle of radius `r`, the first
+/// `done` of them solid 2 px arcs, the rest a 2 px dot every 6 px of arc, with a short
+/// gap between segments.
 fn ring(f: &mut Frame, cx: i32, cy: i32, r: i32, steps: u32, done: u32) {
     let n = steps.max(1);
+    let circumference = core::f32::consts::TAU * r as f32;
+    // Steps in turns: one pixel of arc for the solid segments, six for the dotted ones.
+    let solid_dt = 1.0 / circumference;
+    let dotted_dt = 6.0 / circumference;
     for i in 0..n {
-        // Each segment: a short arc approximated by a few dots along the circle.
+        // Each segment spans 80 % of its share of the turn; the rest is the gap.
         let a0 = i as f32 / n as f32;
         let a1 = (i as f32 + 0.8) / n as f32;
-        let ink = if i < done { Ink::Black } else { Ink::White };
+        let dt = if i < done { solid_dt } else { dotted_dt };
         let mut t = a0;
         while t < a1 {
-            let ang = t * core::f32::consts::TAU;
-            let (s, c) = sin_cos(ang);
+            let (s, c) = sin_cos(t * core::f32::consts::TAU);
             let x = cx + (c * r as f32) as i32;
             let y = cy + (s * r as f32) as i32;
-            f.fill_rect(Rect::new(x - 1, y - 1, 2, 2), ink);
-            if i >= done {
-                f.fill_rect(Rect::new(x - 1, y - 1, 2, 2), Ink::White);
-                f.fill_rect(Rect::new(x, y, 1, 1), Ink::Black);
-            }
-            t += 0.01;
+            f.fill_rect(Rect::new(x - 1, y - 1, 2, 2), Ink::Black);
+            t += dt;
         }
     }
 }
@@ -81,6 +87,7 @@ impl<E: Env> Screen<E> for Clock {
     fn draw(&mut self, cx: &mut Ctx<E>, f: &mut Frame) -> Refresh {
         running_head(f, "Clock", None);
         let now = cx.env.now();
+        self.drawn_minute = time::minute_of_day(now);
         let w = f.width() as i32;
         let hero = quire_fonts::ui::hero();
         let fl = quire_fonts::ui::label();
@@ -116,13 +123,13 @@ impl<E: Env> Screen<E> for Clock {
         draw_centered(f, fl, cx, top + cap + gap + fl.ascent(), &small_caps(state), crate::text::label_style(false));
         y += 2 * radius + 40;
         // Alarms (visual only: the device shows them when awake).
-        draw_label(f, widgets::INSET, y + fl.ascent(), "Alarms · visual", false);
+        draw_label(f, widgets::INSET, y + fl.ascent(), "Alarms", false);
         y += line_h(fl) + 4;
         let rows: Vec<(String, SettingValue)> = {
             let mut v: Vec<(String, SettingValue)> =
                 alloc::vec![(String::from("Timer length"), SettingValue::Stepper(alloc::format!("{} min", self.timer_len / 60)))];
             for a in &self.alarms {
-                v.push((alloc::format!("{:02}:{:02}", a / 60, a % 60), SettingValue::Toggle(true)));
+                v.push((alloc::format!("{:02}:{:02}", a / 60, a % 60), SettingValue::Text(String::from("visual only"))));
             }
             v.push((String::from("Add alarm"), SettingValue::Nav));
             v
@@ -135,7 +142,6 @@ impl<E: Env> Screen<E> for Clock {
             y += ROW_H;
         }
         rail(f, ["", "Back", if self.timer.is_some() { "Stop" } else { "Start" }, ""], None);
-        let _ = draw_text;
         Refresh::Du
     }
     fn key(&mut self, cx: &mut Ctx<E>, ev: KeyEvent) -> Action<E> {
@@ -193,18 +199,30 @@ impl<E: Env> Screen<E> for Clock {
         match ev {
             Event::Tick | Event::Timer => {
                 let now = cx.env.now();
+                let running = self.timer.is_some();
+                let mut changed = running;
                 if let Some((end, _)) = self.timer {
                     if now >= end {
                         self.timer = None;
                         self.rang = true;
                         cx.env.request(SysRequest::RefreshFull);
+                        changed = true;
                     }
                 }
                 let m = time::minute_of_day(now);
-                if self.alarms.contains(&m) && now.is_multiple_of(60) {
+                if self.alarms.contains(&m) && now.is_multiple_of(60) && !self.rang {
                     self.rang = true;
+                    changed = true;
                 }
-                Action::Redraw
+                // Idle, the clock face changes once a minute.
+                if m != self.drawn_minute {
+                    changed = true;
+                }
+                if changed {
+                    Action::Redraw
+                } else {
+                    Action::None
+                }
             }
             _ => Action::None,
         }

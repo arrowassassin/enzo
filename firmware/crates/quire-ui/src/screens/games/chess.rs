@@ -1,4 +1,8 @@
-//! Chess: 60 px squares, hatched dark squares, clear piece glyphs, an alpha-beta engine.
+//! Chess: 58 px squares, hatched dark squares, clear piece glyphs, an alpha-beta engine.
+//!
+//! The engine allocates nothing per node: moves are generated into a fixed-size list
+//! on the stack, legality is tested on a copy of the 72-byte position, and ordering is
+//! an in-place sort. The search is capped at 15 000 nodes per reply.
 
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -8,7 +12,10 @@ use super::{board_x, Paused, Rng};
 use crate::widgets::{self, rail, running_head};
 use crate::{Action, Ctx, Env, Event, Key, KeyEvent, KeyKind, Refresh, Result_, Screen};
 
-const SQ: i32 = 60;
+/// Square size: 8 × 58 = 464 px, the text block's width (x 32…496).
+const SQ: i32 = 58;
+/// Nodes a reply may search (the device budget: ~0.3 s at depth 3).
+const NODE_CAP: u32 = 15_000;
 
 /// Piece codes: 0 empty; 1–6 white P N B R Q K; 7–12 black.
 type Board = [u8; 64];
@@ -47,8 +54,35 @@ pub struct Mv {
     ep: bool,
 }
 
-/// Game state.
-#[derive(Clone)]
+/// Most moves any position can hold (the theoretical bound is 218).
+const MAX_MOVES: usize = 256;
+
+/// A fixed-capacity move list on the stack.
+struct MoveList {
+    m: [Mv; MAX_MOVES],
+    n: usize,
+}
+
+impl MoveList {
+    fn new() -> Self {
+        MoveList { m: [Mv::default(); MAX_MOVES], n: 0 }
+    }
+    fn push(&mut self, mv: Mv) {
+        if self.n < MAX_MOVES {
+            self.m[self.n] = mv;
+            self.n += 1;
+        }
+    }
+    fn as_slice(&self) -> &[Mv] {
+        &self.m[..self.n]
+    }
+    fn as_mut_slice(&mut self) -> &mut [Mv] {
+        &mut self.m[..self.n]
+    }
+}
+
+/// Game state (72 bytes, `Copy`: a child position is a copy, never an allocation).
+#[derive(Clone, Copy)]
 pub struct Position {
     board: Board,
     white_to_move: bool,
@@ -134,7 +168,7 @@ impl Position {
         self.king_sq(white).map(|k| self.attacked(k, !white)).unwrap_or(false)
     }
 
-    fn pseudo_moves(&self, out: &mut Vec<Mv>) {
+    fn pseudo_moves(&self, out: &mut MoveList) {
         let white = self.white_to_move;
         for from in 0..64usize {
             let p = self.board[from];
@@ -142,19 +176,13 @@ impl Position {
                 continue;
             }
             let (r, c) = ((from / 8) as i32, (from % 8) as i32);
-            let push = |out: &mut Vec<Mv>, rr: i32, cc: i32, capture_only: bool, quiet_only: bool| -> bool {
+            let push = |out: &mut MoveList, rr: i32, cc: i32| -> bool {
                 if !(0..8).contains(&rr) || !(0..8).contains(&cc) {
                     return false;
                 }
                 let to = (rr * 8 + cc) as usize;
                 let t = self.board[to];
                 if own(t, white) {
-                    return false;
-                }
-                if capture_only && t == 0 {
-                    return false;
-                }
-                if quiet_only && t != 0 {
                     return false;
                 }
                 out.push(Mv { from: from as u8, to: to as u8, ..Default::default() });
@@ -200,14 +228,14 @@ impl Position {
                 }
                 2 => {
                     for (dr, dc) in [(1, 2), (2, 1), (-1, 2), (-2, 1), (1, -2), (2, -1), (-1, -2), (-2, -1)] {
-                        push(out, r + dr, c + dc, false, false);
+                        push(out, r + dr, c + dc);
                     }
                 }
                 6 => {
                     for dr in -1..=1 {
                         for dc in -1..=1 {
                             if dr != 0 || dc != 0 {
-                                push(out, r + dr, c + dc, false, false);
+                                push(out, r + dr, c + dc);
                             }
                         }
                     }
@@ -242,7 +270,7 @@ impl Position {
                     };
                     for (dr, dc) in dirs {
                         let (mut rr, mut cc) = (r + dr, c + dc);
-                        while push(out, rr, cc, false, false) {
+                        while push(out, rr, cc) {
                             rr += dr;
                             cc += dc;
                         }
@@ -252,19 +280,32 @@ impl Position {
         }
     }
 
-    /// Legal moves.
-    pub fn moves(&self) -> Vec<Mv> {
-        let mut pseudo = Vec::with_capacity(48);
+    /// Legal moves into a caller-provided list (no allocation).
+    fn legal_moves(&self, out: &mut MoveList) {
+        let mut pseudo = MoveList::new();
         self.pseudo_moves(&mut pseudo);
         let white = self.white_to_move;
-        pseudo
-            .into_iter()
-            .filter(|m| {
-                let mut p = self.clone();
-                p.apply(*m);
-                !p.in_check(white)
-            })
-            .collect()
+        for m in pseudo.as_slice() {
+            let mut p = *self;
+            p.apply(*m);
+            if !p.in_check(white) {
+                out.push(*m);
+            }
+        }
+    }
+
+    /// Legal moves.
+    pub fn moves(&self) -> Vec<Mv> {
+        let mut l = MoveList::new();
+        self.legal_moves(&mut l);
+        l.as_slice().to_vec()
+    }
+
+    /// Whether the side to move has any legal move.
+    fn has_moves(&self) -> bool {
+        let mut l = MoveList::new();
+        self.legal_moves(&mut l);
+        l.n > 0
     }
 
     fn apply(&mut self, m: Mv) {
@@ -353,11 +394,17 @@ impl Position {
     }
 }
 
+/// Ordering score: captures and promotions first, for better cut-offs.
+fn order_key(p: &Position, m: &Mv) -> core::cmp::Reverse<i32> {
+    core::cmp::Reverse((p.board[m.to as usize] != 0) as i32 * 10 + m.promo as i32)
+}
+
 fn search(p: &Position, depth: u8, mut alpha: i32, beta: i32, nodes: &mut u32) -> i32 {
     *nodes += 1;
-    let moves = p.moves();
+    let mut moves = MoveList::new();
+    p.legal_moves(&mut moves);
     let white = p.white_to_move;
-    if moves.is_empty() {
+    if moves.n == 0 {
         return if p.in_check(white) {
             if white {
                 -100_000
@@ -368,17 +415,15 @@ fn search(p: &Position, depth: u8, mut alpha: i32, beta: i32, nodes: &mut u32) -
             0
         };
     }
-    if depth == 0 || *nodes > 60_000 {
+    if depth == 0 || *nodes > NODE_CAP {
         return p.eval();
     }
-    // Captures first for better cut-offs.
-    let mut ordered: Vec<(i32, Mv)> = moves.iter().map(|m| ((p.board[m.to as usize] != 0) as i32 * 10 + m.promo as i32, *m)).collect();
-    ordered.sort_by_key(|m| core::cmp::Reverse(m.0));
+    moves.as_mut_slice().sort_unstable_by_key(|m| order_key(p, m));
     if white {
         let mut best = -1_000_000;
-        for (_, m) in ordered {
-            let mut q = p.clone();
-            q.apply(m);
+        for m in moves.as_slice() {
+            let mut q = *p;
+            q.apply(*m);
             let v = search(&q, depth - 1, alpha, beta, nodes);
             best = best.max(v);
             alpha = alpha.max(v);
@@ -390,9 +435,9 @@ fn search(p: &Position, depth: u8, mut alpha: i32, beta: i32, nodes: &mut u32) -
     } else {
         let mut best = 1_000_000;
         let mut beta = beta;
-        for (_, m) in ordered {
-            let mut q = p.clone();
-            q.apply(m);
+        for m in moves.as_slice() {
+            let mut q = *p;
+            q.apply(*m);
             let v = search(&q, depth - 1, alpha, beta, nodes);
             best = best.min(v);
             beta = beta.min(v);
@@ -406,23 +451,33 @@ fn search(p: &Position, depth: u8, mut alpha: i32, beta: i32, nodes: &mut u32) -
 
 /// The engine's move for the side to move.
 pub fn best_move(p: &Position, depth: u8, rng: &mut Rng) -> Option<Mv> {
-    let moves = p.moves();
-    if moves.is_empty() {
+    let mut moves = MoveList::new();
+    p.legal_moves(&mut moves);
+    if moves.n == 0 {
         return None;
     }
     let white = p.white_to_move;
-    let mut best: Vec<(i32, Mv)> = Vec::new();
+    let mut scores = [0i32; MAX_MOVES];
     let mut nodes = 0u32;
-    for m in moves {
-        let mut q = p.clone();
-        q.apply(m);
-        let v = search(&q, depth - 1, -1_000_000, 1_000_000, &mut nodes);
-        best.push((if white { v } else { -v }, m));
+    for (i, m) in moves.as_slice().iter().enumerate() {
+        let mut q = *p;
+        q.apply(*m);
+        let v = search(&q, depth.saturating_sub(1), -1_000_000, 1_000_000, &mut nodes);
+        scores[i] = if white { v } else { -v };
     }
-    best.sort_by_key(|m| core::cmp::Reverse(m.0));
-    let top = best[0].0;
-    let ties: Vec<Mv> = best.iter().filter(|b| b.0 == top).map(|b| b.1).collect();
-    Some(ties[rng.below(ties.len() as u32) as usize])
+    let top = scores[..moves.n].iter().copied().max().unwrap_or(0);
+    let ties = scores[..moves.n].iter().filter(|s| **s == top).count();
+    let pick = rng.below(ties as u32) as usize;
+    let mut seen = 0;
+    for (i, m) in moves.as_slice().iter().enumerate() {
+        if scores[i] == top {
+            if seen == pick {
+                return Some(*m);
+            }
+            seen += 1;
+        }
+    }
+    moves.as_slice().first().copied()
 }
 
 fn square_name(sq: u8) -> String {
@@ -441,6 +496,8 @@ pub struct ChessScreen {
     message: String,
     started: bool,
     flipped: bool,
+    /// Whether the side to move has a legal move (recomputed after each move).
+    can_move: bool,
 }
 
 impl ChessScreen {
@@ -456,12 +513,13 @@ impl ChessScreen {
             message: String::new(),
             started: false,
             flipped: false,
+            can_move: true,
         }
     }
     fn status(&mut self) {
-        let moves = self.pos.moves();
+        self.can_move = self.pos.has_moves();
         let white = self.pos.white_to_move;
-        self.message = if moves.is_empty() {
+        self.message = if !self.can_move {
             if self.pos.in_check(white) {
                 String::from(if white { "Checkmate — the reader wins" } else { "Checkmate — you win" })
             } else {
@@ -476,7 +534,12 @@ impl ChessScreen {
         };
     }
     fn game_over(&self) -> bool {
-        self.pos.moves().is_empty() || self.pos.halfmove >= 100
+        !self.can_move || self.pos.halfmove >= 100
+    }
+    fn record(&mut self, m: Mv) {
+        let piece = letter(self.pos.board[m.from as usize]);
+        self.pos.apply(m);
+        self.history.push(alloc::format!("{}{}{}", if piece == "P" { "" } else { piece }, square_name(m.from), square_name(m.to)));
     }
 }
 
@@ -510,12 +573,14 @@ impl<E: Env> Screen<E> for ChessScreen {
             if p != 0 {
                 super::pieces::draw_piece(f, rect, kind(p), is_black(p));
             }
-            if self.selected == Some(i) {
-                f.stroke_rect(rect, 4, Ink::Black);
-            }
-            if i == self.cursor {
+            let cursor = i == self.cursor;
+            if cursor {
                 f.stroke_rect(rect.inset(2), 3, Ink::Black);
                 f.invert_rect(rect.inset(5));
+            }
+            // The picked-up piece: a 4 px inset frame, so it reads apart from the cursor.
+            if self.selected == Some(i) {
+                f.stroke_rect(rect.inset(4), 4, if cursor { Ink::White } else { Ink::Black });
             }
         }
         f.stroke_rect(Rect::new(bx - 1, by - 1, (8 * SQ + 2) as u32, (8 * SQ + 2) as u32), 2, Ink::Black);
@@ -530,7 +595,7 @@ impl<E: Env> Screen<E> for ChessScreen {
         if self.game_over() {
             rail(f, ["", "Back", "New game", ""], None);
         } else {
-            rail(f, ["Left", "Pause", if self.selected.is_some() { "Move" } else { "Select" }, "Right"], None);
+            rail(f, ["", "Pause", if self.selected.is_some() { "Move" } else { "Select" }, ""], None);
         }
         Refresh::Du
     }
@@ -565,18 +630,17 @@ impl<E: Env> Screen<E> for ChessScreen {
                         Action::Redraw
                     }
                     Some(from) => {
-                        let moves = self.pos.moves();
-                        let mv = moves.iter().filter(|m| m.from as usize == from && m.to as usize == self.cursor).max_by_key(|m| m.promo);
-                        match mv.copied() {
+                        let mut moves = MoveList::new();
+                        self.pos.legal_moves(&mut moves);
+                        let mv = moves
+                            .as_slice()
+                            .iter()
+                            .filter(|m| m.from as usize == from && m.to as usize == self.cursor)
+                            .max_by_key(|m| m.promo)
+                            .copied();
+                        match mv {
                             Some(m) => {
-                                let piece = letter(self.pos.board[from]);
-                                self.pos.apply(m);
-                                self.history.push(alloc::format!(
-                                    "{}{}{}",
-                                    if piece == "P" { "" } else { piece },
-                                    square_name(m.from),
-                                    square_name(m.to)
-                                ));
+                                self.record(m);
                                 self.selected = None;
                                 self.status();
                                 if !self.game_over() {
@@ -618,9 +682,7 @@ impl<E: Env> Screen<E> for ChessScreen {
     fn event(&mut self, _cx: &mut Ctx<E>, ev: &Event) -> Action<E> {
         if self.thinking && matches!(ev, Event::Timer | Event::Tick) {
             if let Some(m) = best_move(&self.pos, 3, &mut self.rng) {
-                let piece = letter(self.pos.board[m.from as usize]);
-                self.pos.apply(m);
-                self.history.push(alloc::format!("{}{}{}", if piece == "P" { "" } else { piece }, square_name(m.from), square_name(m.to)));
+                self.record(m);
             }
             self.thinking = false;
             self.status();
@@ -678,5 +740,17 @@ mod tests {
         c.board[62] = 0;
         assert!(c.moves().iter().any(|m| m.castle));
         let _ = draw_text;
+    }
+
+    #[test]
+    fn a_reply_from_the_opening_stays_under_the_node_cap() {
+        let mut p = Position::start();
+        p.apply(Mv { from: 52, to: 36, ..Default::default() });
+        let mut rng = Rng(3);
+        let mut nodes = 0u32;
+        let v = search(&p, 3, -1_000_000, 1_000_000, &mut nodes);
+        assert!(nodes <= NODE_CAP + 64, "{nodes}");
+        assert!(v.abs() < 1000, "a quiet opening is roughly level: {v}");
+        assert!(best_move(&p, 3, &mut rng).is_some());
     }
 }

@@ -1,4 +1,6 @@
-//! Minesweeper: 9 × 9, ten mines, 30 px cells, first press is safe.
+//! Minesweeper: 9 × 9, ten mines, 48 px cells, first press is safe. Confirm opens,
+//! Left flags, Right moves on through the grid (wrapping to the next row), Up and Down
+//! move by rows.
 
 use quire_gfx::{Frame, Ink, Pattern, Rect, TextStyle};
 
@@ -53,7 +55,8 @@ impl Minesweeper {
         let mut n = 0;
         while n < MINES {
             let i = self.rng.below((N * N) as u32) as usize;
-            if i == avoid || self.mines[i] || neighbours(avoid).contains(&i) {
+            let (near, k) = neighbours(avoid);
+            if i == avoid || self.mines[i] || near[..k].contains(&i) {
                 continue;
             }
             self.mines[i] = true;
@@ -62,7 +65,8 @@ impl Minesweeper {
         self.placed = true;
     }
     fn count(&self, i: usize) -> u8 {
-        neighbours(i).iter().filter(|j| self.mines[**j]).count() as u8
+        let (n, k) = neighbours(i);
+        n[..k].iter().filter(|j| self.mines[**j]).count() as u8
     }
     fn reveal(&mut self, i: usize) {
         if self.open[i] || self.flag[i] {
@@ -79,9 +83,10 @@ impl Minesweeper {
                 return;
             }
             if self.count(k) == 0 {
-                for j in neighbours(k) {
-                    if !self.open[j] {
-                        stack.push(j);
+                let (near, n) = neighbours(k);
+                for j in &near[..n] {
+                    if !self.open[*j] {
+                        stack.push(*j);
                     }
                 }
             }
@@ -90,9 +95,11 @@ impl Minesweeper {
     }
 }
 
-fn neighbours(i: usize) -> alloc::vec::Vec<usize> {
+/// The cells around `i` (up to eight) and how many there are — no allocation.
+fn neighbours(i: usize) -> ([usize; 8], usize) {
     let (r, c) = ((i / N) as i32, (i % N) as i32);
-    let mut v = alloc::vec::Vec::with_capacity(8);
+    let mut v = [0usize; 8];
+    let mut n = 0;
     for dr in -1..=1 {
         for dc in -1..=1 {
             if dr == 0 && dc == 0 {
@@ -100,11 +107,12 @@ fn neighbours(i: usize) -> alloc::vec::Vec<usize> {
             }
             let (rr, cc) = (r + dr, c + dc);
             if rr >= 0 && rr < N as i32 && cc >= 0 && cc < N as i32 {
-                v.push(rr as usize * N + cc as usize);
+                v[n] = rr as usize * N + cc as usize;
+                n += 1;
             }
         }
     }
-    v
+    (v, n)
 }
 
 impl Default for Minesweeper {
@@ -160,8 +168,11 @@ impl<E: Env> Screen<E> for Minesweeper {
             }
             f.stroke_rect(rect, 1, Ink::Black);
             if focused {
+                // A 3 px frame; inverting a dotted field would only darken it.
                 f.stroke_rect(rect, 3, Ink::Black);
-                f.invert_rect(rect.inset(3));
+                if self.open[i] {
+                    f.invert_rect(rect.inset(3));
+                }
             }
         }
         let y = by + N as i32 * CELL + 24;
@@ -173,8 +184,8 @@ impl<E: Env> Screen<E> for Minesweeper {
             draw_centered(f, quire_fonts::ui::title(), f.width() as i32 / 2, y + 20, "Cleared", TextStyle::INK);
             rail(f, ["", "Back", "New game", ""], None);
         } else {
-            draw_centered(f, fl, f.width() as i32 / 2, y + fl.ascent(), "Confirm opens · long Confirm flags", TextStyle::INK);
-            rail(f, ["Left", "Pause", "Open", "Right"], None);
+            draw_centered(f, fl, f.width() as i32 / 2, y + fl.ascent(), "Confirm opens · Left flags · Right moves on", TextStyle::INK);
+            rail(f, ["Flag", "Pause", "Open", ""], None);
         }
         Refresh::Du
     }
@@ -184,7 +195,7 @@ impl<E: Env> Screen<E> for Minesweeper {
         }
         match (ev.key, ev.kind) {
             (Key::Back, KeyKind::Press) => Action::Push(Paused::new("Minesweeper")),
-            (Key::Confirm, KeyKind::Long) => {
+            (Key::Confirm, KeyKind::Long) | (Key::Left, KeyKind::Press) => {
                 if !self.open[self.cursor] && !self.dead && !self.won {
                     self.flag[self.cursor] = !self.flag[self.cursor];
                 }
@@ -201,12 +212,10 @@ impl<E: Env> Screen<E> for Minesweeper {
                 self.reveal(self.cursor);
                 Action::Redraw
             }
-            (Key::Left, _) => {
-                self.cursor = if self.cursor.is_multiple_of(N) { self.cursor + N - 1 } else { self.cursor - 1 };
-                Action::Redraw
-            }
+            (Key::Left, _) => Action::None,
             (Key::Right, _) => {
-                self.cursor = if self.cursor % N == N - 1 { self.cursor + 1 - N } else { self.cursor + 1 };
+                // On through the grid, wrapping to the next row.
+                self.cursor = (self.cursor + 1) % (N * N);
                 Action::Redraw
             }
             (Key::Up, _) => {

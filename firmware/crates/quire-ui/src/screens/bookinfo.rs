@@ -1,5 +1,8 @@
 //! 12 book info: cover, title, poster numerals (time left, finish by, percent), details,
 //! the book's own analytics block.
+//!
+//! Everything read from the card (the thumbnail, the session log, the manifest for page
+//! two) is loaded once into the screen and kept; a draw touches nothing but RAM.
 
 use alloc::boxed::Box;
 use alloc::string::String;
@@ -12,16 +15,61 @@ use crate::text::{ellipsis, line_h, wrap};
 use crate::widgets::{self, poster_tiles, rail, running_head};
 use crate::{Action, Ctx, Env, Event, Key, KeyEvent, KeyKind, Refresh, Screen};
 
+/// The cover thumbnail on the page.
+const COVER_W: u32 = 104;
+const COVER_H: u32 = 156;
+
 /// The book info screen.
 pub struct BookInfo {
     id: BookId,
     page: usize,
+    /// The thumbnail scaled to the page's cover size, read once.
+    thumb: Option<Option<quire_gfx::Bitmap>>,
+    /// Minutes read per day over the last 30 days, from the session log, read once.
+    days: Option<Vec<u32>>,
+    /// Page two's description and subject line, read once when first shown.
+    meta: Option<(String, String)>,
 }
 
 impl BookInfo {
     /// New.
     pub fn new(id: BookId) -> Self {
-        BookInfo { id, page: 0 }
+        BookInfo { id, page: 0, thumb: None, days: None, meta: None }
+    }
+    fn ensure_page1<E: Env>(&mut self, cx: &Ctx<E>, today: u16) {
+        if self.thumb.is_none() {
+            let scaled = cache::load_thumb(cx.env.fs(), self.id).map(|bm| {
+                let mut tmp = quire_gfx::Bitmap::new(COVER_W, COVER_H);
+                for yy in 0..COVER_H {
+                    for xx in 0..COVER_W {
+                        if bm.get(xx * bm.w / COVER_W, yy * bm.h / COVER_H) {
+                            tmp.set(xx, yy, true);
+                        }
+                    }
+                }
+                tmp
+            });
+            self.thumb = Some(scaled);
+        }
+        if self.days.is_none() {
+            let sessions = cx.stats.book_sessions(cx.env.fs(), self.id, today, 30, 200);
+            let mut days = alloc::vec![0u32; 30];
+            for s in &sessions {
+                let d = quire_library::time::day_of(s.start);
+                if d <= today && today - d < 30 {
+                    days[(29 - (today - d)) as usize] += s.active / 60;
+                }
+            }
+            self.days = Some(days);
+        }
+    }
+    fn ensure_page2<E: Env>(&mut self, cx: &Ctx<E>) {
+        if self.meta.is_none() {
+            let meta = quire_library::Book::open(cx.env.fs(), self.id).ok().map(|bk| bk.meta);
+            let desc = meta.as_ref().and_then(|m| m.description.clone()).unwrap_or_else(|| String::from("No description in this file."));
+            let subjects = meta.map(|m| m.subjects.join(" · ")).unwrap_or_default();
+            self.meta = Some((desc, subjects));
+        }
     }
 }
 
@@ -38,7 +86,13 @@ impl<E: Env> Screen<E> for BookInfo {
         "12-bookinfo"
     }
     fn draw(&mut self, cx: &mut Ctx<E>, f: &mut Frame) -> Refresh {
-        let Some(b) = cx.lib.get(self.id).cloned() else { return Refresh::Du };
+        let Some(b) = cx.lib.get(self.id).cloned() else {
+            // The book left the library while this was open (deleted from its compass).
+            running_head(f, "Book", None);
+            widgets::empty_state(f, f.height() as i32 / 2 - 40, "This book is no longer on the card", "Back returns to the list.");
+            rail(f, ["", "Back", "", ""], None);
+            return Refresh::Gc;
+        };
         running_head(f, "Book", None);
         let w = f.width() as i32;
         let ft = quire_fonts::ui::title();
@@ -47,21 +101,11 @@ impl<E: Env> Screen<E> for BookInfo {
         let today = cx.today();
         let mut y = widgets::CONTENT_TOP;
         if self.page == 0 {
+            self.ensure_page1(cx, today);
             // Cover left, title block right.
-            let cover = cache::load_thumb(cx.env.fs(), self.id);
-            let cr = Rect::new(widgets::INSET, y, 104, 156);
-            match cover {
-                Some(bm) => {
-                    let mut tmp = quire_gfx::Bitmap::new(104, 156);
-                    for yy in 0..156u32 {
-                        for xx in 0..104u32 {
-                            if bm.get(xx * bm.w / 104, yy * bm.h / 156) {
-                                tmp.set(xx, yy, true);
-                            }
-                        }
-                    }
-                    f.blit(cr.x, cr.y, tmp.as_ref(), BlitMode::Or);
-                }
+            let cr = Rect::new(widgets::INSET, y, COVER_W, COVER_H);
+            match self.thumb.as_ref().and_then(|t| t.as_ref()) {
+                Some(bm) => f.blit(cr.x, cr.y, bm.as_ref(), BlitMode::Or),
                 None => widgets::typographic_cover(f, cr, &b.title, &b.author_line()),
             }
             f.stroke_rect(cr, 2, Ink::Black);
@@ -109,16 +153,8 @@ impl<E: Env> Screen<E> for BookInfo {
             };
             y = poster_tiles(f, widgets::INSET, y, w - 2 * widgets::INSET, &tiles, 3) + 16;
             // Last 30 days ink line for this book.
-            let sessions = cx.stats.book_sessions(cx.env.fs(), self.id, today, 30, 200);
-            let mut days = alloc::vec![0u32; 30];
-            for s in &sessions {
-                let d = quire_library::time::day_of(s.start);
-                if d <= today && today - d < 30 {
-                    days[(29 - (today - d)) as usize] += s.active / 60;
-                }
-            }
-            let has = days.iter().any(|d| *d > 0);
-            if has {
+            let days = self.days.clone().unwrap_or_default();
+            if days.iter().any(|d| *d > 0) {
                 crate::text::draw_label(f, widgets::INSET, y + fl.ascent(), "Last 30 days", false);
                 y += line_h(fl) + 4;
                 widgets::ink_line(
@@ -149,14 +185,13 @@ impl<E: Env> Screen<E> for BookInfo {
             let _ = y;
         } else {
             // Page 2: description and path.
-            let meta = quire_library::Book::open(cx.env.fs(), self.id).ok().map(|bk| bk.meta);
-            let desc = meta.as_ref().and_then(|m| m.description.clone()).unwrap_or_else(|| String::from("No description in this file."));
+            self.ensure_page2(cx);
+            let (desc, subjects) = self.meta.clone().unwrap_or_default();
             for l in wrap(fb, &desc, w - 2 * widgets::INSET).iter().take(18) {
                 draw_text(f, fb, widgets::INSET, y + fb.ascent(), l, TextStyle::INK);
                 y += line_h(fb);
             }
             y += 12;
-            let subjects = meta.map(|m| m.subjects.join(" · ")).unwrap_or_default();
             if !subjects.is_empty() {
                 draw_text(f, fl, widgets::INSET, y + fl.ascent(), &ellipsis(fl, &subjects, w - 2 * widgets::INSET), TextStyle::INK);
                 y += line_h(fl);
@@ -176,6 +211,9 @@ impl<E: Env> Screen<E> for BookInfo {
     fn key(&mut self, cx: &mut Ctx<E>, ev: KeyEvent) -> Action<E> {
         if ev.kind != KeyKind::Press {
             return Action::None;
+        }
+        if cx.lib.get(self.id).is_none() {
+            return Action::Pop;
         }
         match ev.key {
             Key::Back => Action::Pop,
@@ -197,9 +235,16 @@ impl<E: Env> Screen<E> for BookInfo {
     }
     fn event(&mut self, _cx: &mut Ctx<E>, ev: &Event) -> Action<E> {
         if matches!(ev, Event::Ingest { .. }) {
+            // Ingest changes the cover and the manifest: read them again next draw.
+            self.thumb = None;
+            self.meta = None;
             Action::Redraw
         } else {
             Action::None
         }
+    }
+    fn resume(&mut self, _cx: &mut Ctx<E>) {
+        // A session may have been recorded meanwhile (the compass opened the book).
+        self.days = None;
     }
 }

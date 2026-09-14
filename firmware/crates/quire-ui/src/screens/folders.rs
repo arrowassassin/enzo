@@ -13,7 +13,9 @@ use crate::{Action, Ctx, Env, Key, KeyEvent, KeyKind, Refresh, Screen};
 /// The folder browser.
 pub struct Folders {
     path: String,
-    entries: Vec<DirEntry>,
+    /// Entries of the folder, with the number of children for sub-folders (counted once
+    /// when the folder is entered, not per draw).
+    entries: Vec<(DirEntry, usize)>,
     nav: ListNav,
     loaded: bool,
 }
@@ -24,9 +26,17 @@ impl Folders {
         Folders { path: String::from("/"), entries: Vec::new(), nav: ListNav::new(0, 8), loaded: false }
     }
     fn load<E: Env>(&mut self, cx: &Ctx<E>) {
-        self.entries = cx.env.fs().read_dir(&self.path).unwrap_or_default();
-        self.entries.retain(|e| !e.name.starts_with('.') && e.name != "System Volume Information");
-        self.entries.sort_by(|a, b| b.is_dir.cmp(&a.is_dir).then(a.name.to_lowercase().cmp(&b.name.to_lowercase())));
+        let fs = cx.env.fs();
+        let mut entries = fs.read_dir(&self.path).unwrap_or_default();
+        entries.retain(|e| !e.name.starts_with('.') && e.name != "System Volume Information");
+        entries.sort_by(|a, b| b.is_dir.cmp(&a.is_dir).then(a.name.to_lowercase().cmp(&b.name.to_lowercase())));
+        self.entries = entries
+            .into_iter()
+            .map(|e| {
+                let count = if e.is_dir { fs.read_dir(&quire_fs::join(&self.path, &e.name)).map(|v| v.len()).unwrap_or(0) } else { 0 };
+                (e, count)
+            })
+            .collect();
         self.nav.set_n(self.entries.len());
         self.nav.focus = 0;
         self.loaded = true;
@@ -45,6 +55,10 @@ fn size_text(bytes: u64) -> String {
     } else {
         alloc::format!("{} KB", bytes.div_ceil(1024))
     }
+}
+
+fn count_text(count: usize) -> String {
+    alloc::format!("{count} {}", if count == 1 { "file" } else { "files" })
 }
 
 impl<E: Env> Screen<E> for Folders {
@@ -82,17 +96,16 @@ impl<E: Env> Screen<E> for Folders {
             if has_parent && i == 0 {
                 row(f, y, row_h, "../", None, None, state);
             } else {
-                let e = &self.entries[i - offset];
+                let (e, count) = &self.entries[i - offset];
                 if e.is_dir {
-                    let count = cx.env.fs().read_dir(&quire_fs::join(&self.path, &e.name)).map(|v| v.len()).unwrap_or(0);
-                    row(f, y, row_h, &alloc::format!("{}/", e.name), None, Some(&alloc::format!("{count} files")), state);
+                    row(f, y, row_h, &alloc::format!("{}/", e.name), None, Some(&count_text(*count)), state);
                 } else {
                     row(f, y, row_h, &e.name, None, Some(&size_text(e.size)), state);
                 }
             }
             y += row_h;
         }
-        rail(f, ["", "Back", "Open", ""], None);
+        rail(f, ["", "Back", if n == 0 { "" } else { "Open" }, ""], None);
         Refresh::Gc
     }
     fn key(&mut self, cx: &mut Ctx<E>, ev: KeyEvent) -> Action<E> {
@@ -113,7 +126,7 @@ impl<E: Env> Screen<E> for Folders {
                 return Action::Redraw;
             }
             let idx = self.nav.focus - if has_parent { 1 } else { 0 };
-            let Some(e) = self.entries.get(idx).cloned() else { return Action::None };
+            let Some((e, _)) = self.entries.get(idx).cloned() else { return Action::None };
             let full = quire_fs::join(&self.path, &e.name);
             if e.is_dir {
                 self.path = full;
@@ -135,5 +148,17 @@ impl<E: Env> Screen<E> for Folders {
             return Action::Redraw;
         }
         Action::None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn one_file_is_singular() {
+        assert_eq!(count_text(1), "1 file");
+        assert_eq!(count_text(0), "0 files");
+        assert_eq!(count_text(12), "12 files");
     }
 }

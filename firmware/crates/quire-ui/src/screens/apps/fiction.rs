@@ -1,24 +1,26 @@
 //! 76 interactive fiction: Z-machine stories from `/stories`, transcript on the page, a
 //! command line, verb row and noun grid on the compass, phone keyboard for the rest.
+//!
+//! The story file stays on the card: the machine keeps only the game's dynamic memory
+//! (see [`crate::zmachine`]) and the screen re-opens the file for each burst of
+//! execution — a key press, a Tick with budget left, a save — never for a draw.
 
 use alloc::string::String;
 use alloc::vec::Vec;
-use quire_fs::Fs;
+use quire_fs::{Fs, ReadAt};
 use quire_gfx::{draw_text, Frame, Ink, Rect, TextStyle};
 
 use crate::keyboard::KeyboardScreen;
 use crate::text::{ellipsis, line_h, page_indicator, wrap};
 use crate::theme::*;
 use crate::widgets::{self, empty_state, rail, row, running_head, ListNav, RowState};
-use crate::zmachine::{Machine, Step};
+use crate::zmachine::{Core, Step};
 use crate::{Action, Ctx, Env, Event, Key, KeyEvent, KeyKind, Refresh, Result_, Screen};
 
 /// Story folder.
 pub const STORIES_DIR: &str = "/stories";
-/// Largest story file accepted.
-#[cfg(target_os = "none")]
-const STORY_LIMIT: u64 = 256 * 1024;
-#[cfg(not(target_os = "none"))]
+/// Largest story file listed (the machine pages it from the card, so only the
+/// Z-machine's own 512 KB address limit applies).
 const STORY_LIMIT: u64 = 512 * 1024;
 
 const VERBS: [&str; 8] = ["look", "inventory", "north", "south", "east", "west", "up", "down"];
@@ -77,6 +79,8 @@ impl<E: Env> Screen<E> for Stories {
         running_head(f, "Interactive fiction", Some(&page_indicator(self.nav.page(), self.nav.pages())));
         if self.files.is_empty() {
             empty_state(f, 240, "No stories yet", "Drop .z3, .z5 or .z8 story files into /stories on the card.");
+            rail(f, ["", "Back", "", ""], None);
+            return Refresh::Gc;
         }
         let mut y = widgets::CONTENT_TOP;
         for i in self.nav.visible() {
@@ -105,13 +109,16 @@ impl<E: Env> Screen<E> for Stories {
         if ev.is(Key::Confirm) {
             if let Some(name) = self.files.get(self.nav.focus).cloned() {
                 return match Play::open(cx, &name) {
-                    Some(p) => Action::Push(alloc::boxed::Box::new(p)),
-                    None => Action::Push(super::super::Dialog::new(
-                        "Couldn't open the story",
-                        "The file is not a Z-machine story version 3, 5 or 8, or it is too large.",
-                        "Close",
-                        "Close",
-                    )),
+                    Ok(p) => Action::Push(alloc::boxed::Box::new(p)),
+                    Err(why) => {
+                        let mut body = String::from(why);
+                        if let Some(first) = body.get(..1) {
+                            let up = first.to_uppercase();
+                            body.replace_range(..1, &up);
+                        }
+                        body.push('.');
+                        Action::Push(super::super::Dialog::new("Couldn't open the story", &body, "Close", "Close"))
+                    }
                 };
             }
             return Action::None;
@@ -126,9 +133,16 @@ impl<E: Env> Screen<E> for Stories {
 /// Playing a story.
 pub struct Play {
     story: String,
-    machine: Machine,
-    /// Transcript lines (wrapped later).
+    /// The machine without its story file (which is re-opened per burst of execution).
+    machine: Core,
+    /// The status line as of the last run (v3 games compute it from memory).
+    status: String,
+    /// Transcript text (bounded; wrapped into `lines` when it changes).
     transcript: String,
+    /// The transcript wrapped for `lines_w` pixels, rebuilt only after new output.
+    lines: Vec<String>,
+    lines_w: i32,
+    lines_stale: bool,
     command: String,
     step: Step,
     /// Which verb page the compass shows.
@@ -138,65 +152,49 @@ pub struct Play {
 }
 
 impl Play {
-    /// Open a story, restoring a saved game when present.
-    pub fn open<E: Env>(cx: &mut Ctx<E>, name: &str) -> Option<Self> {
+    /// Open a story, restoring a saved game when present. The error is a short reason
+    /// for the dialog.
+    pub fn open<E: Env>(cx: &mut Ctx<E>, name: &str) -> Result<Self, &'static str> {
         let fs = cx.env.fs();
-        let bytes = fs.read_to_vec(&quire_fs::join(STORIES_DIR, name)).ok()?;
-        let mut machine = Machine::new(bytes).ok()?;
+        let file = fs.open(&quire_fs::join(STORIES_DIR, name)).map_err(|_| "the file could not be opened")?;
+        let mut machine = Core::new(&file)?;
         if let Ok(s) = fs.read_to_vec(&save_path(name)) {
-            machine.restore(&s);
+            machine.attach(&file).restore(&s);
         }
         let mut p = Play {
             story: name.into(),
             machine,
+            status: String::new(),
             transcript: String::new(),
+            lines: Vec::new(),
+            lines_w: 0,
+            lines_stale: true,
             command: String::new(),
             step: Step::Budget,
             verbs_more: false,
             back: 0,
         };
-        p.run();
-        Some(p)
+        p.run(&file);
+        Ok(p)
     }
-    fn run(&mut self) {
-        self.step = self.machine.run(200_000);
-        let out = self.machine.take_output();
-        self.transcript.push_str(&out);
-        if self.transcript.len() > 24 * 1024 {
-            let cut = self.transcript.len() - 16 * 1024;
-            let cut = self.transcript.floor_char_boundary(cut);
-            self.transcript = String::from(&self.transcript[cut..]);
+    /// Open the story file on the card for a burst of execution.
+    fn story_file<E: Env>(&self, cx: &Ctx<E>) -> Option<<E::Fs as Fs>::File> {
+        cx.env.fs().open(&quire_fs::join(STORIES_DIR, &self.story)).ok()
+    }
+    /// Run with the story file open; when the card cannot open it, say so on the page.
+    fn with_story<E: Env>(&mut self, cx: &Ctx<E>, go: impl FnOnce(&mut Self, &dyn ReadAt)) {
+        match self.story_file(cx) {
+            Some(file) => go(self, &file),
+            None => {
+                self.transcript.push_str("\n[The story file could not be read from the card.]\n");
+                self.lines_stale = true;
+            }
         }
     }
-    fn send(&mut self, line: &str) {
-        self.transcript.push_str(&alloc::format!("> {line}\n"));
-        match self.step {
-            Step::WaitLine => self.machine.input(line),
-            Step::WaitChar => self.machine.input_char(line.chars().next().map(|c| c as u16).unwrap_or(13)),
-            _ => {}
-        }
-        self.back = 0;
-        self.run();
-    }
-    fn save<E: Env>(&mut self, cx: &Ctx<E>) {
-        let fs = cx.env.fs();
-        let _ = fs.mkdir_all("/.quire/stories");
-        let data = self.machine.take_save().unwrap_or_else(|| self.machine.save());
-        let _ = fs.write_atomic(&save_path(&self.story), &data);
-    }
-}
-
-impl<E: Env> Screen<E> for Play {
-    fn name(&self) -> &'static str {
-        "76-fiction-play"
-    }
-    fn draw(&mut self, cx: &mut Ctx<E>, f: &mut Frame) -> Refresh {
-        let w = f.width() as i32;
-        let h = f.height() as i32;
-        let fb = quire_fonts::ui::body();
-        let fl = quire_fonts::ui::label();
-        // Status line.
-        let status = match self.machine.status_line() {
+    fn run(&mut self, src: &dyn ReadAt) {
+        let mut at = self.machine.attach(src);
+        self.step = at.run(200_000);
+        self.status = match at.status_line() {
             Some((loc, a, b, is_time)) => {
                 if is_time {
                     alloc::format!("{loc} · {a:02}:{b:02}")
@@ -204,18 +202,80 @@ impl<E: Env> Screen<E> for Play {
                     alloc::format!("{loc} · {a} · {b} turns")
                 }
             }
-            None => self.machine.upper_window().first().cloned().unwrap_or_else(|| self.story.clone()),
+            None => at.upper_window().first().cloned().unwrap_or_else(|| self.story.clone()),
         };
-        draw_text(f, fl, MARGIN, MARGIN + 14, &ellipsis(fl, &status, w - 2 * MARGIN), TextStyle::INK);
+        let out = at.take_output();
+        if !out.is_empty() {
+            self.lines_stale = true;
+        }
+        self.transcript.push_str(&out);
+        if self.transcript.len() > 24 * 1024 {
+            let cut = self.transcript.len() - 16 * 1024;
+            let cut = self.transcript.floor_char_boundary(cut);
+            self.transcript = String::from(&self.transcript[cut..]);
+            self.lines_stale = true;
+        }
+    }
+    fn send(&mut self, src: &dyn ReadAt, line: &str) {
+        self.transcript.push_str(&alloc::format!("> {line}\n"));
+        self.lines_stale = true;
+        match self.step {
+            Step::WaitLine => self.machine.attach(src).input(line),
+            Step::WaitChar => self.machine.attach(src).input_char(line.chars().next().map(|c| c as u16).unwrap_or(13)),
+            _ => {}
+        }
+        self.back = 0;
+        self.run(src);
+    }
+    /// Write the game's own pending save, or a snapshot of the current state.
+    fn save<E: Env>(&mut self, cx: &Ctx<E>) {
+        let fs = cx.env.fs();
+        let _ = fs.mkdir_all("/.quire/stories");
+        let data = match self.machine.take_save() {
+            Some(d) => d,
+            None => match self.story_file(cx) {
+                Some(file) => self.machine.attach(&file).save(),
+                None => return,
+            },
+        };
+        if !data.is_empty() {
+            let _ = fs.write_atomic(&save_path(&self.story), &data);
+        }
+    }
+    /// Write the game's pending save (after a `save` command) if there is one.
+    fn save_pending<E: Env>(&mut self, cx: &Ctx<E>) {
+        if let Some(s) = self.machine.take_save() {
+            let fs = cx.env.fs();
+            let _ = fs.mkdir_all("/.quire/stories");
+            let _ = fs.write_atomic(&save_path(&self.story), &s);
+        }
+    }
+}
+
+impl<E: Env> Screen<E> for Play {
+    fn name(&self) -> &'static str {
+        "76-fiction-play"
+    }
+    fn draw(&mut self, _cx: &mut Ctx<E>, f: &mut Frame) -> Refresh {
+        let w = f.width() as i32;
+        let h = f.height() as i32;
+        let fb = quire_fonts::ui::body();
+        let fl = quire_fonts::ui::label();
+        // Status line (cached by the last run: drawing never touches the card).
+        draw_text(f, fl, MARGIN, MARGIN + 14, &ellipsis(fl, &self.status, w - 2 * MARGIN), TextStyle::INK);
         f.fill_rect(Rect::new(MARGIN, MARGIN + 22, (w - 2 * MARGIN) as u32, 1), Ink::Black);
-        // Transcript: wrap and show the last page (minus `back` pages).
-        let lines = wrap(fb, &self.transcript, w - 2 * MARGIN);
+        // Transcript: wrapped once per change, showing the last page (minus `back` pages).
+        if self.lines_stale || self.lines_w != w - 2 * MARGIN {
+            self.lines = wrap(fb, &self.transcript, w - 2 * MARGIN);
+            self.lines_w = w - 2 * MARGIN;
+            self.lines_stale = false;
+        }
         let cmd_h = 48;
         let per = ((h - RAIL_H - cmd_h - MARGIN - 40) / line_h(fb)).max(4) as usize;
-        let pages = lines.len().div_ceil(per).max(1);
+        let pages = self.lines.len().div_ceil(per).max(1);
         let page = pages.saturating_sub(1).saturating_sub(self.back);
         let mut y = MARGIN + 34;
-        for l in lines.iter().skip(page * per).take(per) {
+        for l in self.lines.iter().skip(page * per).take(per) {
             draw_text(f, fb, MARGIN, y + fb.ascent(), l, TextStyle::INK);
             y += line_h(fb);
         }
@@ -233,7 +293,6 @@ impl<E: Env> Screen<E> for Play {
         } else {
             rail(f, ["Verbs", "Back", "Send", "Type"], None);
         }
-        let _ = cx;
         Refresh::Du
     }
     fn key(&mut self, cx: &mut Ctx<E>, ev: KeyEvent) -> Action<E> {
@@ -244,9 +303,12 @@ impl<E: Env> Screen<E> for Play {
             }
             (Key::Right, KeyKind::Press) => {
                 if self.machine.halted() {
-                    self.machine.restart();
-                    self.transcript.clear();
-                    self.run();
+                    self.with_story(cx, |p, src| {
+                        p.machine.attach(src).restart();
+                        p.transcript.clear();
+                        p.lines_stale = true;
+                        p.run(src);
+                    });
                     return Action::Redraw;
                 }
                 Action::Push(KeyboardScreen::new("Command", &self.command, "e.g. open mailbox").boxed())
@@ -255,12 +317,8 @@ impl<E: Env> Screen<E> for Play {
             (Key::Confirm, KeyKind::Press) => {
                 if !self.command.is_empty() {
                     let c = core::mem::take(&mut self.command);
-                    self.send(&c);
-                    if let Some(s) = self.machine.take_save() {
-                        let fs = cx.env.fs();
-                        let _ = fs.mkdir_all("/.quire/stories");
-                        let _ = fs.write_atomic(&save_path(&self.story), &s);
-                    }
+                    self.with_story(cx, |p, src| p.send(src, &c));
+                    self.save_pending(cx);
                     return Action::Redraw;
                 }
                 Action::Push(alloc::boxed::Box::new(VerbCompass { more: self.verbs_more }))
@@ -280,14 +338,10 @@ impl<E: Env> Screen<E> for Play {
     fn result(&mut self, cx: &mut Ctx<E>, r: Result_) -> Action<E> {
         match r {
             Result_::Text(t) => {
-                let t = t.trim();
+                let t = String::from(t.trim());
                 if !t.is_empty() {
-                    self.send(t);
-                    if let Some(s) = self.machine.take_save() {
-                        let fs = cx.env.fs();
-                        let _ = fs.mkdir_all("/.quire/stories");
-                        let _ = fs.write_atomic(&save_path(&self.story), &s);
-                    }
+                    self.with_story(cx, |p, src| p.send(src, &t));
+                    self.save_pending(cx);
                 }
             }
             Result_::Choice(i) => {
@@ -297,10 +351,11 @@ impl<E: Env> Screen<E> for Play {
                     if v == "save" {
                         self.save(cx);
                         self.transcript.push_str("Saved.\n");
+                        self.lines_stale = true;
                     } else if matches!(v, "take" | "drop" | "open" | "examine" | "read") {
                         self.command = alloc::format!("{v} ");
                     } else {
-                        self.send(v);
+                        self.with_story(cx, |p, src| p.send(src, v));
                     }
                 } else if i == 8 {
                     self.verbs_more = !self.verbs_more;
@@ -311,9 +366,9 @@ impl<E: Env> Screen<E> for Play {
         }
         Action::Redraw
     }
-    fn event(&mut self, _cx: &mut Ctx<E>, ev: &Event) -> Action<E> {
+    fn event(&mut self, cx: &mut Ctx<E>, ev: &Event) -> Action<E> {
         if matches!(ev, Event::Tick) && self.step == Step::Budget {
-            self.run();
+            self.with_story(cx, |p, src| p.run(src));
             return Action::Redraw;
         }
         Action::None

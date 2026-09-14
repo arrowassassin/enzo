@@ -208,7 +208,7 @@ impl<E: Env> Screen<E> for Sudoku {
                     TextStyle { inverted: focused, ..TextStyle::INK },
                 );
             }
-            rail(f, ["Left", "Cancel", if self.pencil { "Pencil" } else { "Enter" }, "Right"], None);
+            rail(f, ["", "Cancel", if self.pencil { "Pencil" } else { "Enter" }, ""], None);
         } else if self.solved() {
             draw_centered(f, quire_fonts::ui::title(), f.width() as i32 / 2, py + 30, "Solved", TextStyle::INK);
             rail(f, ["", "Back", "New", ""], None);

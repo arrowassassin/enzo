@@ -9,8 +9,7 @@ use crate::text::{centered_baseline, draw_centered};
 use crate::widgets::{self, rail, running_head};
 use crate::{Action, Ctx, Env, Key, KeyEvent, KeyKind, Refresh, Result_, Screen};
 
-static WORDS: &str = include_str!("../../../data/wordle-words.txt");
-static COMMON: &str = include_str!("../../../data/common-words.txt");
+use crate::screens::cursor::words::{WORDLE_ACCEPTED, WORDLE_ANSWERS};
 
 const TILE: i32 = 72;
 const ROWS: [&str; 3] = ["qwertyuiop", "asdfghjkl", "zxcvbnm"];
@@ -37,23 +36,22 @@ pub struct Wordle {
 }
 
 /// The answer for a day: a common 5-letter word from the frequency list that the
-/// Wordle list accepts.
+/// Wordle list accepts (a build-time table, so this is one index — no scan).
 pub fn answer_for(day: u16) -> String {
-    let answers: Vec<&str> = COMMON
-        .lines()
-        .filter(|w| w.len() == 5 && w.chars().all(|c| c.is_ascii_lowercase()))
-        .filter(|w| WORDS.lines().any(|x| x == *w))
-        .collect();
-    if answers.is_empty() {
-        return String::from("quire");
-    }
-    // Scramble the day so consecutive days are not alphabetical neighbours.
-    let i = (day as u32).wrapping_mul(2654435761) as usize % answers.len();
-    String::from(answers[i])
+    // Scramble the day so consecutive days are not frequency neighbours.
+    let i = (day as u32).wrapping_mul(2654435761) as usize % WORDLE_ANSWERS.len();
+    String::from_utf8_lossy(&WORDLE_ANSWERS[i]).into_owned()
 }
 
+/// Whether a guess is in the accepted list (a binary search over the packed table).
 fn is_word(w: &str) -> bool {
-    WORDS.lines().any(|x| x == w)
+    let b = w.as_bytes();
+    if b.len() != 5 || !b.iter().all(|c| c.is_ascii_lowercase()) {
+        return false;
+    }
+    let mut key = [0u8; 5];
+    key.copy_from_slice(b);
+    WORDLE_ACCEPTED.binary_search(&key).is_ok()
 }
 
 impl Wordle {

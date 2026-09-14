@@ -58,22 +58,15 @@ impl<E: Env> Screen<E> for Wikipedia {
             }
             (None, None) => {
                 running_head(f, "Wikipedia", None);
+                let wifi = matches!(cx.env.wifi(), WifiState::Connected { .. });
                 if self.working {
                     widgets::working_card(f, "Looking up", &self.query, 0, "wikipedia.org");
+                } else if wifi {
+                    empty_state(f, 240, "Look anything up", "Confirm to type a term on your phone or the keyboard.");
                 } else {
-                    let wifi = matches!(cx.env.wifi(), WifiState::Connected { .. });
-                    empty_state(
-                        f,
-                        240,
-                        "Look anything up",
-                        if wifi {
-                            "Confirm to type a term on your phone or the keyboard."
-                        } else {
-                            "Wi-Fi is off. Turn it on from the Power menu first."
-                        },
-                    );
+                    empty_state(f, 240, "Wikipedia needs Wi-Fi", "Confirm turns it on; then search a term.");
                 }
-                rail(f, ["", "Back", "Search", ""], None);
+                rail(f, ["", "Back", if wifi { "Search" } else { "Wi-Fi" }, ""], None);
             }
         }
         Refresh::Gc
@@ -84,7 +77,12 @@ impl<E: Env> Screen<E> for Wikipedia {
         }
         match ev.key {
             Key::Back => Action::Pop,
-            Key::Confirm => Action::Push(KeyboardScreen::t9("Wikipedia", &self.query, "Search").boxed()),
+            Key::Confirm => {
+                if self.result.is_none() && !matches!(cx.env.wifi(), WifiState::Connected { .. }) {
+                    return Action::Push(alloc::boxed::Box::new(super::super::wifi::WifiScreen::new_with_hint("Wikipedia needs Wi-Fi")));
+                }
+                Action::Push(KeyboardScreen::t9("Wikipedia", &self.query, "Search").boxed())
+            }
             Key::Right => {
                 if self.result.is_some() {
                     self.page += 1;

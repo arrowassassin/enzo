@@ -1,4 +1,5 @@
-//! 2048: 112 px tiles, numerals in Literata.
+//! 2048: 110 px tiles with 8 px gaps (464 px, the text block's width), numerals in
+//! Literata.
 
 use quire_gfx::{Frame, Ink, Rect, TextStyle};
 
@@ -7,7 +8,7 @@ use crate::text::{centered_baseline, draw_centered};
 use crate::widgets::{self, rail, running_head};
 use crate::{Action, Ctx, Env, Key, KeyEvent, KeyKind, Refresh, Result_, Screen};
 
-const TILE: i32 = 112;
+const TILE: i32 = 110;
 const GAP: i32 = 8;
 
 /// The 2048 game.
@@ -152,7 +153,7 @@ impl<E: Env> Screen<E> for Game2048 {
             rail(f, ["", "Back", "New game", ""], None);
         } else {
             draw_centered(f, fl, f.width() as i32 / 2, by + size + 30, "Left · Right · Up · Down slide the tiles", TextStyle::INK);
-            rail(f, ["Left", "Pause", "", "Right"], None);
+            rail(f, ["", "Pause", "", ""], None);
         }
         Refresh::Du
     }

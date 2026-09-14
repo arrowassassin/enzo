@@ -9,7 +9,8 @@ use crate::theme::*;
 use crate::widgets::{self, rail, running_head};
 use crate::{Action, Ctx, Env, Key, KeyEvent, KeyKind, Refresh, Screen};
 
-const KEYS: [[&str; 4]; 5] = [["C", "(", ")", "÷"], ["7", "8", "9", "×"], ["4", "5", "6", "−"], ["1", "2", "3", "+"], ["0", ".", "⌫", "="]];
+const KEYS: [[&str; 4]; 5] =
+    [["C", "(", ")", "÷"], ["7", "8", "9", "×"], ["4", "5", "6", "−"], ["1", "2", "3", "+"], ["0", ".", "Del", "="]];
 
 /// The calculator.
 pub struct Calculator {
@@ -21,7 +22,8 @@ pub struct Calculator {
 impl Calculator {
     /// New.
     pub fn new() -> Self {
-        Calculator { expr: String::new(), result: None, focus: (4, 3) }
+        // The focus starts on a digit, so the first Confirm types rather than evaluates.
+        Calculator { expr: String::new(), result: None, focus: (2, 1) }
     }
 }
 
@@ -168,11 +170,22 @@ impl<E: Env> Screen<E> for Calculator {
         let y = widgets::CONTENT_TOP;
         let display = Rect::new(widgets::INSET, y, (w - 2 * widgets::INSET) as u32, 96);
         f.stroke_rect(display, 2, Ink::Black);
-        let shown = widgets::tail_fit(mono, if self.expr.is_empty() { "0" } else { &self.expr }, display.w as i32 - 24);
-        draw_right(f, mono, display.right() - 12, y + 12 + mono.ascent(), &shown, TextStyle::INK);
-        if let Some(r) = &self.result {
-            let rf = if quire_gfx::measure_text(poster, r, TextStyle::INK) > display.w as i32 - 24 { mono } else { poster };
-            draw_right(f, rf, display.right() - 12, display.bottom() - 12, r, TextStyle::INK);
+        // The value is "anything measured": poster numerals, right-aligned. With a result
+        // showing, the expression sits above it in mono.
+        let expr = if self.expr.is_empty() { "0" } else { &self.expr };
+        match &self.result {
+            Some(r) => {
+                let shown = widgets::tail_fit(mono, expr, display.w as i32 - 24);
+                draw_right(f, mono, display.right() - 12, y + 12 + mono.ascent(), &shown, TextStyle::INK);
+                let rf = if quire_gfx::measure_text(poster, r, TextStyle::INK) > display.w as i32 - 24 { mono } else { poster };
+                draw_right(f, rf, display.right() - 16, display.bottom() - 12, r, TextStyle::INK);
+            }
+            None => {
+                let big = quire_gfx::measure_text(poster, expr, TextStyle::INK) <= display.w as i32 - 32;
+                let font = if big { poster } else { mono };
+                let shown = widgets::tail_fit(font, expr, display.w as i32 - 32);
+                draw_right(f, font, display.right() - 16, display.bottom() - 12, &shown, TextStyle::INK);
+            }
         }
         let top = display.bottom() + 16;
         let kw = (w - 2 * widgets::INSET - 3 * 8) / 4;
@@ -232,7 +245,7 @@ impl<E: Env> Screen<E> for Calculator {
                         self.expr.clear();
                         self.result = None;
                     }
-                    "⌫" => {
+                    "Del" => {
                         self.expr.pop();
                     }
                     "=" => self.result = Some(evaluate(&self.expr).unwrap_or_else(String::from)),

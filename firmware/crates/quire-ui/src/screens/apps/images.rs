@@ -114,7 +114,7 @@ impl<E: Env> Screen<E> for Images {
             );
             y += row_h;
         }
-        rail(f, ["", "Back", "Open", ""], None);
+        rail(f, ["", "Back", if self.files.is_empty() { "" } else { "Open" }, ""], None);
         Refresh::Gc
     }
     fn key(&mut self, _cx: &mut Ctx<E>, ev: KeyEvent) -> Action<E> {

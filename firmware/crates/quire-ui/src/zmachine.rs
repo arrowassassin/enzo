@@ -5,9 +5,12 @@
 //! versions — 6 is graphical and 1–2 are museum pieces) in `no_std` with a memory budget
 //! sized for the ESP32-C3:
 //!
-//! * the story file is kept in one `Vec<u8>`; the game's dynamic memory is the front of
-//!   that vector and is mutated in place, with a copy of the original dynamic bytes kept
-//!   for `restart`, `verify` and delta-compressed snapshots;
+//! * the story file stays on the card (any [`ReadAt`] source — a file, or a `Vec<u8>`
+//!   in tests): the game's dynamic memory (header field 0x0e, at most 48 KB) is read
+//!   into RAM and mutated in place, while static and high memory are served through a
+//!   small cache of 512-byte sectors read on demand. `restart`, `verify` and the
+//!   delta-compressed snapshots re-read the original bytes from the source rather than
+//!   keeping a second copy;
 //! * the evaluation stack is a `Vec<u16>` bounded to 4096 words and the call stack to
 //!   256 frames — exceeding either is a [`Step::Error`], never a panic;
 //! * output is buffered in a `String` the caller drains with [`Machine::take_output`];
@@ -22,7 +25,7 @@
 //! # Driving the machine
 //!
 //! ```ignore
-//! let mut m = Machine::new(story_bytes)?;
+//! let mut m = Machine::new(story_file)?; // anything that implements `ReadAt`
 //! loop {
 //!     match m.run(5_000) {
 //!         Step::Budget => { ui.print(&m.take_output()); continue; }
@@ -56,11 +59,20 @@
 use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
+use core::cell::RefCell;
+use quire_fs::ReadAt;
 
 type R<T> = Result<T, String>;
 
-/// Story files larger than this are rejected before anything is allocated.
+/// Story files larger than this are rejected before anything is allocated (a v8 story
+/// cannot address more anyway).
 const MAX_STORY: usize = 512 * 1024;
+/// Largest dynamic-memory area kept resident; stories wanting more are refused.
+pub const MAX_DYN: usize = 48 * 1024;
+/// Size of one cached story sector.
+const SECTOR: usize = 512;
+/// Sectors of static/high memory held in RAM at once.
+const SECTORS: usize = 8;
 /// Evaluation stack bound, in words.
 const MAX_STACK: usize = 4096;
 /// Call stack bound, in frames.
@@ -117,11 +129,78 @@ enum State {
     Error(String),
 }
 
-/// A running Z-machine story.
-pub struct Machine {
-    mem: Vec<u8>,
-    /// Original dynamic memory (`mem[..static_base]`) for restart, verify and snapshots.
-    dyn_orig: Vec<u8>,
+/// Static and high memory, paged from the story source through a small LRU of sectors.
+struct Pager {
+    /// Sector number held by each slot (`u32::MAX` = empty).
+    tags: [u32; SECTORS],
+    /// Last use of each slot, for eviction.
+    age: [u32; SECTORS],
+    clock: u32,
+    /// The slot that served the previous read (checked first).
+    last: usize,
+    bufs: [[u8; SECTOR]; SECTORS],
+}
+
+impl Pager {
+    fn new() -> Self {
+        Pager { tags: [u32::MAX; SECTORS], age: [0; SECTORS], clock: 0, last: 0, bufs: [[0; SECTOR]; SECTORS] }
+    }
+
+    /// Forget every cached sector (the source changed).
+    fn clear(&mut self) {
+        self.tags = [u32::MAX; SECTORS];
+    }
+
+    /// The slot holding sector `sec`, reading it from `src` when needed; `None` on a
+    /// read failure.
+    fn slot(&mut self, src: &dyn ReadAt, sec: u32) -> Option<usize> {
+        self.clock = self.clock.wrapping_add(1);
+        if self.tags[self.last] == sec {
+            self.age[self.last] = self.clock;
+            return Some(self.last);
+        }
+        let mut victim = 0;
+        for i in 0..SECTORS {
+            if self.tags[i] == sec {
+                self.age[i] = self.clock;
+                self.last = i;
+                return Some(i);
+            }
+            if self.age[i] < self.age[victim] {
+                victim = i;
+            }
+        }
+        let off = sec as u64 * SECTOR as u64;
+        let want = (src.len().saturating_sub(off)).min(SECTOR as u64) as usize;
+        if want == 0 {
+            return None;
+        }
+        self.tags[victim] = u32::MAX;
+        src.read_exact_at(off, &mut self.bufs[victim][..want]).ok()?;
+        self.tags[victim] = sec;
+        self.age[victim] = self.clock;
+        self.last = victim;
+        Some(victim)
+    }
+
+    /// The byte at story offset `a` (the caller has checked `a` is inside the file).
+    fn byte(&mut self, src: &dyn ReadAt, a: usize) -> Option<u8> {
+        let slot = self.slot(src, (a / SECTOR) as u32)?;
+        Some(self.bufs[slot][a % SECTOR])
+    }
+}
+
+/// The state of a running story without its story file: dynamic memory, stacks,
+/// screen, output. It is `'static`, so a screen can own it and hand it the open file
+/// (any [`ReadAt`]) for each burst of execution with [`Core::attach`]. [`Machine`] pairs
+/// a `Core` with a source it owns.
+pub struct Core {
+    /// Sector cache for static and high memory.
+    pager: RefCell<Pager>,
+    /// Story file length.
+    len: usize,
+    /// Dynamic memory (`story[..static_base]`), resident and mutated in place.
+    dynmem: Vec<u8>,
     version: u8,
     static_base: usize,
     pc: usize,
@@ -171,32 +250,148 @@ fn char_to_zscii(c: char) -> Option<u8> {
     }
 }
 
-impl Machine {
-    /// Load a story file. Fails (without allocating anything beyond the story itself) when
-    /// the file is over 512 KB, shorter than a header, an unsupported version, or has a
-    /// header whose memory map does not fit the file.
-    pub fn new(story: Vec<u8>) -> Result<Machine, &'static str> {
-        if story.len() > MAX_STORY {
+/// A [`Core`] attached to its story source for the duration of a call.
+pub struct Attached<'a> {
+    core: &'a mut Core,
+    src: &'a dyn ReadAt,
+}
+
+impl core::ops::Deref for Attached<'_> {
+    type Target = Core;
+    fn deref(&self) -> &Core {
+        self.core
+    }
+}
+
+impl core::ops::DerefMut for Attached<'_> {
+    fn deref_mut(&mut self) -> &mut Core {
+        self.core
+    }
+}
+
+/// A running Z-machine story that owns its source (a file, or — the default — a
+/// `Vec<u8>` in tests).
+pub struct Machine<S: ReadAt = Vec<u8>> {
+    core: Core,
+    src: S,
+}
+
+impl<S: ReadAt> Machine<S> {
+    /// Load a story: see [`Core::new`].
+    pub fn new(story: S) -> Result<Machine<S>, &'static str> {
+        let core = Core::new(&story)?;
+        Ok(Machine { core, src: story })
+    }
+    /// The state attached to the owned source.
+    pub fn attached(&mut self) -> Attached<'_> {
+        Attached { core: &mut self.core, src: &self.src }
+    }
+    /// The state without its source.
+    pub fn core(&self) -> &Core {
+        &self.core
+    }
+    /// The story file's Z-machine version (3, 4, 5, 7 or 8).
+    pub fn version(&self) -> u8 {
+        self.core.version
+    }
+    /// Execute up to `budget` instructions: see [`Attached::run`].
+    pub fn run(&mut self, budget: u32) -> Step {
+        self.attached().run(budget)
+    }
+    /// Take buffered output text (the status line is separate).
+    pub fn take_output(&mut self) -> String {
+        self.core.take_output()
+    }
+    /// Whether the game cleared the screen since the last call: see [`Core::take_clear`].
+    pub fn take_clear(&mut self) -> bool {
+        self.core.take_clear()
+    }
+    /// Provide a line of input after `WaitLine`: see [`Attached::input`].
+    pub fn input(&mut self, line: &str) {
+        self.attached().input(line)
+    }
+    /// Provide a character after `WaitChar`: see [`Attached::input_char`].
+    pub fn input_char(&mut self, c: u16) {
+        self.attached().input_char(c)
+    }
+    /// The v3 status line: see [`Attached::status_line`].
+    pub fn status_line(&mut self) -> Option<(String, i16, i16, bool)> {
+        self.attached().status_line()
+    }
+    /// Text of the upper window, as lines.
+    pub fn upper_window(&self) -> Vec<String> {
+        self.core.upper_window()
+    }
+    /// Whether the game has finished (`quit`, or an error).
+    pub fn halted(&self) -> bool {
+        self.core.halted()
+    }
+    /// Seed the random number generator.
+    pub fn seed(&mut self, seed: u32) {
+        self.core.seed(seed)
+    }
+    /// Take the snapshot written by the game's most recent `save` opcode, if any.
+    pub fn take_save(&mut self) -> Option<Vec<u8>> {
+        self.core.take_save()
+    }
+    /// Hand the game a snapshot for its next `restore` opcode.
+    pub fn offer_restore(&mut self, data: Vec<u8>) {
+        self.core.offer_restore(data)
+    }
+    /// Restart the story from the beginning: see [`Attached::restart`].
+    pub fn restart(&mut self) {
+        self.attached().restart()
+    }
+    /// Snapshot the whole machine state: see [`Attached::save`].
+    pub fn save(&mut self) -> Vec<u8> {
+        self.attached().save()
+    }
+    /// Load a snapshot: see [`Attached::restore`].
+    pub fn restore(&mut self, data: &[u8]) -> bool {
+        self.attached().restore(data)
+    }
+}
+
+impl Core {
+    /// Load a story from `story`. Fails (allocating nothing but the dynamic memory) when
+    /// the file is over 512 KB, shorter than a header, an unsupported version, keeps more
+    /// than [`MAX_DYN`] of dynamic memory, or has a header whose memory map does not fit
+    /// the file.
+    pub fn new(story: &dyn ReadAt) -> Result<Core, &'static str> {
+        let len = story.len();
+        if len > MAX_STORY as u64 {
             return Err("story file larger than 512 KB");
         }
-        if story.len() < 64 {
+        if len < 64 {
             return Err("story file shorter than a header");
         }
-        let version = story[0];
+        let len = len as usize;
+        let mut header = [0u8; 64];
+        if story.read_exact_at(0, &mut header).is_err() {
+            return Err("could not read the story file");
+        }
+        let version = header[0];
         if !matches!(version, 3 | 4 | 5 | 7 | 8) {
             return Err("unsupported Z-machine version");
         }
-        let static_base = be16(&story, 0x0e) as usize;
-        if static_base < 64 || static_base > story.len() {
+        let static_base = be16(&header, 0x0e) as usize;
+        if static_base < 64 || static_base > len {
             return Err("static memory base outside the file");
         }
-        if be16(&story, 0x06) as usize >= story.len() {
+        if static_base > MAX_DYN {
+            return Err("this story keeps more than 48 KB of dynamic memory, more than this reader can hold");
+        }
+        if be16(&header, 0x06) as usize >= len {
             return Err("initial program counter outside the file");
         }
-        let dyn_orig = story[..static_base].to_vec();
-        let mut m = Machine {
-            mem: story,
-            dyn_orig,
+        let mut dynmem = alloc::vec![0u8; static_base];
+        if story.read_exact_at(0, &mut dynmem).is_err() {
+            return Err("could not read the story file");
+        }
+        let mut m = Core {
+            pager: RefCell::new(Pager::new()),
+            len,
+            dynmem,
             version,
             static_base,
             pc: 0,
@@ -220,8 +415,19 @@ impl Machine {
             offered_restore: None,
             undo: None,
         };
-        m.restart();
+        m.reset();
         Ok(m)
+    }
+
+    /// Attach the story source for a burst of execution. The source must be the same
+    /// story the core was loaded from (a re-opened file, typically).
+    pub fn attach<'a>(&'a mut self, src: &'a dyn ReadAt) -> Attached<'a> {
+        Attached { core: self, src }
+    }
+
+    /// Forget cached story sectors (after the source was re-opened, say).
+    pub fn drop_cache(&mut self) {
+        self.pager.borrow_mut().clear();
     }
 
     /// The story file's Z-machine version (3, 4, 5, 7 or 8).
@@ -229,6 +435,219 @@ impl Machine {
         self.version
     }
 
+    /// Take buffered output text (the status line is separate).
+    pub fn take_output(&mut self) -> String {
+        core::mem::take(&mut self.output)
+    }
+
+    /// Whether the game asked for the lower window (the whole screen) to be cleared since
+    /// the last call; the UI should wipe its transcript view before drawing new output.
+    pub fn take_clear(&mut self) -> bool {
+        core::mem::replace(&mut self.cleared, false)
+    }
+
+    /// Text of the upper window (v5+ split-screen status), if any, as lines.
+    pub fn upper_window(&self) -> Vec<String> {
+        (0..self.upper_rows)
+            .map(|r| {
+                let row: String = self.upper[r * COLS..(r + 1) * COLS].iter().collect();
+                String::from(row.trim_end())
+            })
+            .collect()
+    }
+
+    /// Whether the game has finished (`quit`, or an error).
+    pub fn halted(&self) -> bool {
+        matches!(self.state, State::Halted | State::Error(_))
+    }
+
+    /// Whether the game is waiting for a line of input.
+    pub fn wants_line(&self) -> bool {
+        matches!(self.state, State::WaitLine { .. })
+    }
+
+    /// Seed the random number generator (for example from a clock at boot); the sequence
+    /// is otherwise deterministic from `new`.
+    pub fn seed(&mut self, seed: u32) {
+        self.rng = if seed == 0 { 0x2545_f491 } else { seed };
+        self.rng_pred = 0;
+    }
+
+    /// Take the snapshot written by the game's most recent `save` opcode, if any.
+    pub fn take_save(&mut self) -> Option<Vec<u8>> {
+        self.pending_save.take()
+    }
+
+    /// Hand the game a snapshot for its next `restore` opcode to load. Without one, an
+    /// in-game `restore` reports failure.
+    pub fn offer_restore(&mut self, data: Vec<u8>) {
+        self.offered_restore = Some(data);
+    }
+
+    fn blocked(&self) -> Option<Step> {
+        match &self.state {
+            State::Running => None,
+            State::WaitLine { .. } => Some(Step::WaitLine),
+            State::WaitChar { .. } => Some(Step::WaitChar),
+            State::Halted => Some(Step::Halt),
+            State::Error(m) => Some(Step::Error(m.clone())),
+        }
+    }
+
+    fn reset_screen(&mut self) {
+        self.upper.clear();
+        self.upper_rows = 0;
+        self.window = 0;
+        self.cursor = (0, 0);
+        self.screen_on = true;
+        self.stream3.clear();
+        self.font = 1;
+    }
+
+    fn frame(&self) -> &Frame {
+        // `frames` always holds the main frame; `reset` puts it there.
+        self.frames.last().expect("frame stack never empty")
+    }
+
+    fn push(&mut self, v: u16) -> R<()> {
+        if self.stack.len() >= MAX_STACK {
+            return fault("stack overflow");
+        }
+        self.stack.push(v);
+        Ok(())
+    }
+
+    fn pop(&mut self) -> R<u16> {
+        if self.stack.len() <= self.frame().sp as usize {
+            return fault("stack underflow");
+        }
+        Ok(self.stack.pop().unwrap_or(0))
+    }
+
+    fn upper_put(&mut self, c: char) {
+        let (row, col) = self.cursor;
+        if c == '\n' {
+            self.cursor = (row + 1, 0);
+            return;
+        }
+        if row < self.upper_rows && col < COLS {
+            self.upper[row * COLS + col] = c;
+            self.cursor.1 = col + 1;
+        }
+    }
+
+    fn split_window(&mut self, lines: u16) {
+        let rows = (lines as usize).min(ROWS);
+        self.upper.resize(rows * COLS, ' ');
+        if self.version == 3 {
+            self.upper.iter_mut().for_each(|c| *c = ' ');
+        }
+        self.upper_rows = rows;
+        if self.cursor.0 >= rows {
+            self.cursor = (0, 0);
+        }
+    }
+
+    fn erase_window(&mut self, w: u16) {
+        match w as i16 {
+            -1 => {
+                self.reset_screen();
+                self.cleared = true;
+            }
+            -2 => {
+                self.upper.iter_mut().for_each(|c| *c = ' ');
+                self.cursor = (0, 0);
+                self.cleared = true;
+            }
+            0 => self.cleared = true,
+            1 => {
+                self.upper.iter_mut().for_each(|c| *c = ' ');
+                self.cursor = (0, 0);
+            }
+            _ => {}
+        }
+    }
+
+    // ----------------------------------------------------------------------------------
+    // Random numbers
+
+    fn random(&mut self, range: i16) -> u16 {
+        if range < 0 {
+            let s = range.unsigned_abs();
+            if s < 1000 {
+                self.rng_pred = s;
+                self.rng_count = 0;
+            } else {
+                self.rng_pred = 0;
+                self.rng = s as u32;
+            }
+            return 0;
+        }
+        if range == 0 {
+            self.rng_pred = 0;
+            self.rng ^= self.ticks.wrapping_mul(0x9e37_79b9);
+            return 0;
+        }
+        let r = range as u32;
+        if self.rng_pred > 0 {
+            self.rng_count = if self.rng_count >= self.rng_pred { 1 } else { self.rng_count + 1 };
+            return ((self.rng_count as u32 - 1) % r + 1) as u16;
+        }
+        if self.rng == 0 {
+            self.rng = 0x2545_f491;
+        }
+        let mut x = self.rng;
+        x ^= x << 13;
+        x ^= x >> 17;
+        x ^= x << 5;
+        self.rng = x;
+        ((x >> 4) % r + 1) as u16
+    }
+
+    /// Start from the current dynamic memory: header, stacks, screen.
+    fn reset(&mut self) {
+        self.setup_header();
+        self.stack.clear();
+        self.frames.clear();
+        self.frames.push(Frame { ret_pc: 0, store: None, nlocals: 0, nargs: 0, sp: 0, locals: [0; 15] });
+        self.pc = be16(&self.dynmem, 0x06) as usize;
+        self.state = State::Running;
+        self.reset_screen();
+    }
+
+    fn setup_header(&mut self) {
+        let version = self.version;
+        let m = &mut self.dynmem;
+        if version <= 3 {
+            // Status line available, screen splitting available, variable pitch off.
+            m[1] = (m[1] & !0x70) | 0x20;
+        } else {
+            // No colours/pictures/bold/italic/sound/timed input; fixed-space available.
+            m[1] = 0x10;
+        }
+        // Flags 2: keep transcript, fixed pitch and undo requests; refuse the rest.
+        m[0x10] = 0;
+        m[0x11] &= 0x13;
+        m[0x1e] = 6;
+        m[0x1f] = b'Q';
+        m[0x20] = ROWS as u8;
+        m[0x21] = COLS as u8;
+        if version >= 5 {
+            m[0x22] = 0;
+            m[0x23] = COLS as u8;
+            m[0x24] = 0;
+            m[0x25] = ROWS as u8;
+            m[0x26] = 1;
+            m[0x27] = 1;
+            m[0x2c] = 9; // default background: white
+            m[0x2d] = 2; // default foreground: black
+        }
+        m[0x32] = 1;
+        m[0x33] = 1;
+    }
+}
+
+impl Attached<'_> {
     /// Execute up to `budget` instructions.
     ///
     /// Returns early with [`Step::Budget`] when the output buffer has grown past 16 KB so
@@ -249,27 +668,6 @@ impl Machine {
             }
         }
         self.blocked().unwrap_or(Step::Budget)
-    }
-
-    fn blocked(&self) -> Option<Step> {
-        match &self.state {
-            State::Running => None,
-            State::WaitLine { .. } => Some(Step::WaitLine),
-            State::WaitChar { .. } => Some(Step::WaitChar),
-            State::Halted => Some(Step::Halt),
-            State::Error(m) => Some(Step::Error(m.clone())),
-        }
-    }
-
-    /// Take buffered output text (the status line is separate).
-    pub fn take_output(&mut self) -> String {
-        core::mem::take(&mut self.output)
-    }
-
-    /// Whether the game asked for the lower window (the whole screen) to be cleared since
-    /// the last call; the UI should wipe its transcript view before drawing new output.
-    pub fn take_clear(&mut self) -> bool {
-        core::mem::replace(&mut self.cleared, false)
     }
 
     /// Provide a line of input after `WaitLine`. Ignored in any other state. The line is
@@ -304,41 +702,8 @@ impl Machine {
         let a = self.rw(g + 2).ok()? as i16;
         let b = self.rw(g + 4).ok()? as i16;
         let name = if loc == 0 { String::new() } else { self.obj_name(loc).unwrap_or_default() };
-        let is_time = self.mem[1] & 0x02 != 0;
+        let is_time = self.dynmem[1] & 0x02 != 0;
         Some((name, a, b, is_time))
-    }
-
-    /// Text of the upper window (v5+ split-screen status), if any, as lines.
-    pub fn upper_window(&self) -> Vec<String> {
-        (0..self.upper_rows)
-            .map(|r| {
-                let row: String = self.upper[r * COLS..(r + 1) * COLS].iter().collect();
-                String::from(row.trim_end())
-            })
-            .collect()
-    }
-
-    /// Whether the game has finished (`quit`, or an error).
-    pub fn halted(&self) -> bool {
-        matches!(self.state, State::Halted | State::Error(_))
-    }
-
-    /// Seed the random number generator (for example from a clock at boot); the sequence
-    /// is otherwise deterministic from `new`.
-    pub fn seed(&mut self, seed: u32) {
-        self.rng = if seed == 0 { 0x2545_f491 } else { seed };
-        self.rng_pred = 0;
-    }
-
-    /// Take the snapshot written by the game's most recent `save` opcode, if any.
-    pub fn take_save(&mut self) -> Option<Vec<u8>> {
-        self.pending_save.take()
-    }
-
-    /// Hand the game a snapshot for its next `restore` opcode to load. Without one, an
-    /// in-game `restore` reports failure.
-    pub fn offer_restore(&mut self, data: Vec<u8>) {
-        self.offered_restore = Some(data);
     }
 
     // ----------------------------------------------------------------------------------
@@ -347,87 +712,56 @@ impl Machine {
     /// Restart the story from the beginning, as the `restart` opcode does. Buffered output
     /// is kept; the transcript and fixed-pitch header bits survive, as the standard asks.
     pub fn restart(&mut self) {
-        let flags2 = self.mem[0x11] & 0x03;
-        self.mem[..self.static_base].copy_from_slice(&self.dyn_orig);
-        self.mem[0x11] = (self.mem[0x11] & !0x03) | flags2;
-        self.setup_header();
-        self.stack.clear();
-        self.frames.clear();
-        self.frames.push(Frame { ret_pc: 0, store: None, nlocals: 0, nargs: 0, sp: 0, locals: [0; 15] });
-        self.pc = be16(&self.mem, 0x06) as usize;
-        self.state = State::Running;
-        self.reset_screen();
+        let flags2 = self.dynmem[0x11] & 0x03;
+        if let Err(e) = self.reload_dyn() {
+            self.state = State::Error(e);
+            return;
+        }
+        self.dynmem[0x11] = (self.dynmem[0x11] & !0x03) | flags2;
+        self.reset();
     }
 
-    fn reset_screen(&mut self) {
-        self.upper.clear();
-        self.upper_rows = 0;
-        self.window = 0;
-        self.cursor = (0, 0);
-        self.screen_on = true;
-        self.stream3.clear();
-        self.font = 1;
-    }
-
-    fn setup_header(&mut self) {
-        let m = &mut self.mem;
-        if self.version <= 3 {
-            // Status line available, screen splitting available, variable pitch off.
-            m[1] = (m[1] & !0x70) | 0x20;
-        } else {
-            // No colours/pictures/bold/italic/sound/timed input; fixed-space available.
-            m[1] = 0x10;
-        }
-        // Flags 2: keep transcript, fixed pitch and undo requests; refuse the rest.
-        m[0x10] = 0;
-        m[0x11] &= 0x13;
-        m[0x1e] = 6;
-        m[0x1f] = b'Q';
-        m[0x20] = ROWS as u8;
-        m[0x21] = COLS as u8;
-        if self.version >= 5 {
-            m[0x22] = 0;
-            m[0x23] = COLS as u8;
-            m[0x24] = 0;
-            m[0x25] = ROWS as u8;
-            m[0x26] = 1;
-            m[0x27] = 1;
-            m[0x2c] = 9; // default background: white
-            m[0x2d] = 2; // default foreground: black
-        }
-        m[0x32] = 1;
-        m[0x33] = 1;
+    /// Re-read the original dynamic memory from the story source.
+    fn reload_dyn(&mut self) -> R<()> {
+        let n = self.static_base;
+        let src = self.src;
+        src.read_exact_at(0, &mut self.core.dynmem[..n]).map_err(|_| String::from("story read failed"))
     }
 
     // ----------------------------------------------------------------------------------
     // Memory
 
     fn rb(&self, a: usize) -> R<u8> {
-        self.mem.get(a).copied().ok_or_else(|| format!("read outside memory at {a:#x}"))
+        if a < self.static_base {
+            return Ok(self.dynmem[a]);
+        }
+        if a >= self.len {
+            return Err(format!("read outside memory at {a:#x}"));
+        }
+        self.pager.borrow_mut().byte(self.src, a).ok_or_else(|| String::from("story read failed"))
     }
 
     fn rw(&self, a: usize) -> R<u16> {
-        match (self.mem.get(a), self.mem.get(a + 1)) {
-            (Some(&h), Some(&l)) => Ok(u16::from_be_bytes([h, l])),
-            _ => Err(format!("read outside memory at {a:#x}")),
-        }
+        let h = self.rb(a)?;
+        let l = self.rb(a.wrapping_add(1))?;
+        Ok(u16::from_be_bytes([h, l]))
     }
 
     fn wb(&mut self, a: usize, v: u8) -> R<()> {
         if a >= self.static_base {
             return Err(format!("write outside dynamic memory at {a:#x}"));
         }
-        self.mem[a] = v;
+        self.dynmem[a] = v;
         Ok(())
     }
 
     fn ww(&mut self, a: usize, v: u16) -> R<()> {
-        if a + 1 >= self.static_base {
+        if a.wrapping_add(1) >= self.static_base {
             return Err(format!("write outside dynamic memory at {a:#x}"));
         }
         let [h, l] = v.to_be_bytes();
-        self.mem[a] = h;
-        self.mem[a + 1] = l;
+        self.dynmem[a] = h;
+        self.dynmem[a + 1] = l;
         Ok(())
     }
 
@@ -454,7 +788,7 @@ impl Machine {
     }
 
     fn set_pc(&mut self, pc: i64) -> R<()> {
-        if pc < 0 || pc as usize >= self.mem.len() {
+        if pc < 0 || pc as usize >= self.len {
             return fault("jump outside memory");
         }
         self.pc = pc as usize;
@@ -463,26 +797,6 @@ impl Machine {
 
     // ----------------------------------------------------------------------------------
     // Stack and variables
-
-    fn frame(&self) -> &Frame {
-        // `frames` always holds the main frame; `restart` puts it there.
-        self.frames.last().expect("frame stack never empty")
-    }
-
-    fn push(&mut self, v: u16) -> R<()> {
-        if self.stack.len() >= MAX_STACK {
-            return fault("stack overflow");
-        }
-        self.stack.push(v);
-        Ok(())
-    }
-
-    fn pop(&mut self) -> R<u16> {
-        if self.stack.len() <= self.frame().sp as usize {
-            return fault("stack underflow");
-        }
-        Ok(self.stack.pop().unwrap_or(0))
-    }
 
     fn read_var(&mut self, v: u8) -> R<u16> {
         match v {
@@ -587,17 +901,12 @@ impl Machine {
         for (l, a) in locals.iter_mut().zip(args).take(n) {
             *l = *a;
         }
-        if pc >= self.mem.len() {
+        if pc >= self.len {
             return fault("routine outside memory");
         }
-        self.frames.push(Frame {
-            ret_pc: self.pc as u32,
-            store,
-            nlocals: n as u8,
-            nargs: args.len() as u8,
-            sp: self.stack.len() as u16,
-            locals,
-        });
+        let ret_pc = self.pc as u32;
+        let sp = self.stack.len() as u16;
+        self.frames.push(Frame { ret_pc, store, nlocals: n as u8, nargs: args.len() as u8, sp, locals });
         self.pc = pc;
         Ok(())
     }
@@ -829,7 +1138,10 @@ impl Machine {
                 }
                 e
             };
-            let word = self.mem[start + ws..start + we].to_vec();
+            let mut word = Vec::with_capacity(we - ws);
+            for k in ws..we {
+                word.push(self.rb(start + k)?);
+            }
             let addr = self.dict_lookup(dict, &word)?;
             let e = parse + 2 + count * 4;
             if !(keep_unknown && addr == 0) {
@@ -912,50 +1224,6 @@ impl Machine {
         }
     }
 
-    fn upper_put(&mut self, c: char) {
-        let (row, col) = self.cursor;
-        if c == '\n' {
-            self.cursor = (row + 1, 0);
-            return;
-        }
-        if row < self.upper_rows && col < COLS {
-            self.upper[row * COLS + col] = c;
-            self.cursor.1 = col + 1;
-        }
-    }
-
-    fn split_window(&mut self, lines: u16) {
-        let rows = (lines as usize).min(ROWS);
-        self.upper.resize(rows * COLS, ' ');
-        if self.version == 3 {
-            self.upper.iter_mut().for_each(|c| *c = ' ');
-        }
-        self.upper_rows = rows;
-        if self.cursor.0 >= rows {
-            self.cursor = (0, 0);
-        }
-    }
-
-    fn erase_window(&mut self, w: u16) {
-        match w as i16 {
-            -1 => {
-                self.reset_screen();
-                self.cleared = true;
-            }
-            -2 => {
-                self.upper.iter_mut().for_each(|c| *c = ' ');
-                self.cursor = (0, 0);
-                self.cleared = true;
-            }
-            0 => self.cleared = true,
-            1 => {
-                self.upper.iter_mut().for_each(|c| *c = ' ');
-                self.cursor = (0, 0);
-            }
-            _ => {}
-        }
-    }
-
     // ----------------------------------------------------------------------------------
     // Objects
 
@@ -966,7 +1234,7 @@ impl Machine {
         let base = self.rw(0x0a)? as usize;
         let (defaults, size) = if self.version <= 3 { (62, 9) } else { (126, 14) };
         let a = base + defaults + (obj as usize - 1) * size;
-        if a + size > self.mem.len() {
+        if a + size > self.len {
             return fault("object outside memory");
         }
         Ok(a)
@@ -1181,42 +1449,6 @@ impl Machine {
     }
 
     // ----------------------------------------------------------------------------------
-    // Random numbers
-
-    fn random(&mut self, range: i16) -> u16 {
-        if range < 0 {
-            let s = range.unsigned_abs();
-            if s < 1000 {
-                self.rng_pred = s;
-                self.rng_count = 0;
-            } else {
-                self.rng_pred = 0;
-                self.rng = s as u32;
-            }
-            return 0;
-        }
-        if range == 0 {
-            self.rng_pred = 0;
-            self.rng ^= self.ticks.wrapping_mul(0x9e37_79b9);
-            return 0;
-        }
-        let r = range as u32;
-        if self.rng_pred > 0 {
-            self.rng_count = if self.rng_count >= self.rng_pred { 1 } else { self.rng_count + 1 };
-            return ((self.rng_count as u32 - 1) % r + 1) as u16;
-        }
-        if self.rng == 0 {
-            self.rng = 0x2545_f491;
-        }
-        let mut x = self.rng;
-        x ^= x << 13;
-        x ^= x >> 17;
-        x ^= x << 5;
-        self.rng = x;
-        ((x >> 4) % r + 1) as u16
-    }
-
-    // ----------------------------------------------------------------------------------
     // Snapshots
 
     /// Snapshot the whole machine state as a byte vector. The format ("QZS1") is:
@@ -1240,16 +1472,20 @@ impl Machine {
     ///
     /// All integers are big-endian. Snapshots are typically a few hundred bytes to a few
     /// KB. The in-game `save`/`save_undo` opcodes use the same format.
+    ///
+    /// Compressing the dynamic memory re-reads the story's original bytes from the card;
+    /// should that fail the result is empty (and a `restore` of it fails).
     pub fn save(&self) -> Vec<u8> {
         self.snapshot(false)
     }
 
     fn snapshot(&self, at_save_opcode: bool) -> Vec<u8> {
-        let mut out = Vec::with_capacity(512);
+        let Some(dyn_bytes) = self.compress_dyn() else { return Vec::new() };
+        let mut out = Vec::with_capacity(512 + dyn_bytes.len());
         out.extend_from_slice(SNAPSHOT_MAGIC);
-        out.extend_from_slice(&self.mem[2..4]);
-        out.extend_from_slice(&self.mem[0x12..0x18]);
-        out.extend_from_slice(&self.mem[0x1c..0x1e]);
+        out.extend_from_slice(&self.dynmem[2..4]);
+        out.extend_from_slice(&self.dynmem[0x12..0x18]);
+        out.extend_from_slice(&self.dynmem[0x1c..0x1e]);
         let (tag, text, parse, store) = match &self.state {
             State::WaitLine { text, parse, store } => (1u8, *text, *parse, store.unwrap_or(0xff)),
             State::WaitChar { store } => (2, 0, 0, *store),
@@ -1279,35 +1515,43 @@ impl Machine {
                 out.extend_from_slice(&l.to_be_bytes());
             }
         }
-        let dyn_bytes = self.compress_dyn();
         out.extend_from_slice(&(dyn_bytes.len() as u32).to_be_bytes());
         out.extend_from_slice(&dyn_bytes);
         out
     }
 
-    fn compress_dyn(&self) -> Vec<u8> {
+    /// XOR dynamic memory against the story's original bytes (streamed from the source
+    /// a sector at a time), zero runs as `0, count`; trailing zeros are dropped.
+    fn compress_dyn(&self) -> Option<Vec<u8>> {
         let n = self.static_base;
         let mut out = Vec::new();
-        let mut i = 0;
-        while i < n {
-            let x = self.mem[i] ^ self.dyn_orig[i];
-            if x != 0 {
-                out.push(x);
-                i += 1;
-            } else {
-                let mut run = 0usize;
-                while run < 255 && i + run + 1 < n && self.mem[i + run + 1] == self.dyn_orig[i + run + 1] {
-                    run += 1;
+        let mut orig = [0u8; SECTOR];
+        let mut zeros = 0usize;
+        let mut at = 0;
+        while at < n {
+            let want = (n - at).min(SECTOR);
+            self.src.read_exact_at(at as u64, &mut orig[..want]).ok()?;
+            for (k, o) in orig[..want].iter().enumerate() {
+                let x = self.dynmem[at + k] ^ o;
+                if x == 0 {
+                    zeros += 1;
+                    if zeros == 256 {
+                        out.push(0);
+                        out.push(255);
+                        zeros = 0;
+                    }
+                } else {
+                    if zeros > 0 {
+                        out.push(0);
+                        out.push((zeros - 1) as u8);
+                        zeros = 0;
+                    }
+                    out.push(x);
                 }
-                out.push(0);
-                out.push(run as u8);
-                i += run + 1;
             }
+            at += want;
         }
-        while out.len() >= 2 && out[out.len() - 2] == 0 {
-            out.truncate(out.len() - 2);
-        }
-        out
+        Some(out)
     }
 
     /// Check that a compressed dynamic-memory delta decodes to at most `n` bytes.
@@ -1332,22 +1576,22 @@ impl Machine {
     }
 
     /// Apply a delta that passed [`Machine::delta_fits`] to dynamic memory.
-    fn apply_delta(&mut self, data: &[u8]) {
-        let n = self.static_base;
-        self.mem[..n].copy_from_slice(&self.dyn_orig);
+    fn apply_delta(&mut self, data: &[u8]) -> R<()> {
+        self.reload_dyn()?;
         let mut i = 0;
         let mut p = 0;
         while p < data.len() {
             let b = data[p];
             p += 1;
             if b != 0 {
-                self.mem[i] ^= b;
+                self.dynmem[i] ^= b;
                 i += 1;
             } else {
                 i += data.get(p).copied().unwrap_or(0) as usize + 1;
                 p += 1;
             }
         }
+        Ok(())
     }
 
     /// Load a snapshot made by [`Machine::save`] (or by the game's own `save` opcode).
@@ -1360,14 +1604,14 @@ impl Machine {
             return false;
         }
         let Some(ident) = r.bytes(10) else { return false };
-        if ident[..2] != self.mem[2..4] || ident[2..8] != self.mem[0x12..0x18] || ident[8..] != self.mem[0x1c..0x1e] {
+        if ident[..2] != self.dynmem[2..4] || ident[2..8] != self.dynmem[0x12..0x18] || ident[8..] != self.dynmem[0x1c..0x1e] {
             return false;
         }
         let (Some(tag), Some(text), Some(parse), Some(store)) = (r.u8(), r.u16(), r.u16(), r.u8()) else { return false };
         let (Some(pc), Some(rng), Some(rng_pred), Some(rng_count)) = (r.u32(), r.u32(), r.u16(), r.u16()) else {
             return false;
         };
-        if pc as usize >= self.mem.len() {
+        if pc as usize >= self.len {
             return false;
         }
         let Some(nstack) = r.u16() else { return false };
@@ -1388,7 +1632,7 @@ impl Machine {
             let (Some(ret_pc), Some(store), Some(nlocals), Some(nargs), Some(sp)) = (r.u32(), r.u8(), r.u8(), r.u8(), r.u16()) else {
                 return false;
             };
-            if nlocals > 15 || sp as usize > stack.len() || ret_pc as usize >= self.mem.len() {
+            if nlocals > 15 || sp as usize > stack.len() || ret_pc as usize >= self.len {
                 return false;
             }
             let mut locals = [0u16; 15];
@@ -1403,9 +1647,12 @@ impl Machine {
         if !Self::delta_fits(dyn_bytes, self.static_base) {
             return false;
         }
-        let flags2 = self.mem[0x11] & 0x03;
-        self.apply_delta(dyn_bytes);
-        self.mem[0x11] = (self.mem[0x11] & !0x03) | flags2;
+        let flags2 = self.dynmem[0x11] & 0x03;
+        if let Err(e) = self.apply_delta(dyn_bytes) {
+            self.state = State::Error(e);
+            return false;
+        }
+        self.dynmem[0x11] = (self.dynmem[0x11] & !0x03) | flags2;
         self.setup_header();
         self.stack = stack;
         self.frames = frames;
@@ -1724,13 +1971,22 @@ impl Machine {
             4 | 5 => 4,
             _ => 8,
         };
-        let len = (be16(&self.mem, 0x1a) as usize * scale).min(self.mem.len());
+        let len = (be16(&self.dynmem, 0x1a) as usize * scale).min(self.len);
+        // Sum the file as written, streamed from the source a sector at a time.
+        let mut buf = [0u8; SECTOR];
         let mut sum = 0u16;
-        for i in 0x40..len {
-            let b = if i < self.static_base { self.dyn_orig[i] } else { self.mem[i] };
-            sum = sum.wrapping_add(b as u16);
+        let mut at = 0x40;
+        while at < len {
+            let want = (len - at).min(SECTOR);
+            if self.src.read_exact_at(at as u64, &mut buf[..want]).is_err() {
+                return false;
+            }
+            for b in &buf[..want] {
+                sum = sum.wrapping_add(*b as u16);
+            }
+            at += want;
         }
-        sum == be16(&self.mem, 0x1c)
+        sum == be16(&self.dynmem, 0x1c)
     }
 
     fn exec_var(&mut self, op: u8, ops: &[u16]) -> R<()> {
@@ -1837,10 +2093,13 @@ impl Machine {
             0x1c => {
                 let from = a as usize + c as usize;
                 let end = from + b as usize;
-                if end > self.mem.len() {
+                if end > self.len {
                     return fault("encode_text outside memory");
                 }
-                let word = self.mem[from..end].to_vec();
+                let mut word = Vec::with_capacity(end - from);
+                for k in from..end {
+                    word.push(self.rb(k)?);
+                }
                 let enc = self.encode_word(&word);
                 let dest = arg(ops, 3) as usize;
                 for (i, w) in enc.iter().enumerate().take(if self.version <= 3 { 2 } else { 3 }) {
@@ -2021,12 +2280,18 @@ mod tests {
 
     const ADVENT: &[u8] = include_bytes!("../data/advent.z5");
 
-    fn boot(story: &[u8]) -> Machine {
+    /// Boot a story from memory: a `Vec<u8>` is a `ReadAt`, so the machine pages it
+    /// exactly as it would a file on the card.
+    fn boot(story: &[u8]) -> Machine<Vec<u8>> {
         Machine::new(story.to_vec()).expect("story loads")
     }
 
+    fn dynmem(m: &Machine<Vec<u8>>) -> &[u8] {
+        &m.core.dynmem
+    }
+
     /// Run until the machine wants a line, collecting output.
-    fn run_to_prompt(m: &mut Machine) -> String {
+    fn run_to_prompt(m: &mut Machine<Vec<u8>>) -> String {
         let mut out = String::new();
         for _ in 0..1000 {
             match m.run(20_000) {
@@ -2041,7 +2306,7 @@ mod tests {
         panic!("never reached a prompt: {out:?}");
     }
 
-    fn command(m: &mut Machine, line: &str) -> String {
+    fn command(m: &mut Machine<Vec<u8>>, line: &str) -> String {
         m.input(line);
         run_to_prompt(m)
     }
@@ -2111,13 +2376,13 @@ mod tests {
         assert!(m.halted());
         assert_eq!(m.take_output(), "Quit  look\nbye\n");
         // Text buffer holds the lower-cased line; parse buffer has two matched words.
-        assert_eq!(&m.mem[0x201..0x20c], b"quit  look\0");
-        assert_eq!(m.mem[0x241], 2);
-        assert_eq!(be16(&m.mem, 0x242), 0x4b);
-        assert_eq!(m.mem[0x244], 4);
-        assert_eq!(m.mem[0x245], 1);
-        assert_eq!(be16(&m.mem, 0x246), 0x44);
-        assert_eq!(m.mem[0x249], 7);
+        assert_eq!(&dynmem(&m)[0x201..0x20c], b"quit  look\0");
+        assert_eq!(dynmem(&m)[0x241], 2);
+        assert_eq!(be16(dynmem(&m), 0x242), 0x4b);
+        assert_eq!(dynmem(&m)[0x244], 4);
+        assert_eq!(dynmem(&m)[0x245], 1);
+        assert_eq!(be16(dynmem(&m), 0x246), 0x44);
+        assert_eq!(dynmem(&m)[0x249], 7);
         assert_eq!(m.run(100), Step::Halt);
     }
 
@@ -2165,6 +2430,60 @@ mod tests {
         s[0x0e] = 0xff;
         s[0x0f] = 0xff;
         assert!(Machine::new(s).is_err());
+        // More dynamic memory than the reader keeps resident is refused with a reason.
+        let mut big = tiny_story(&[0xba], 0x400);
+        big.resize(70 * 1024, 0);
+        big[0x0e] = 0xf0;
+        big[0x0f] = 0x00;
+        let err = Machine::new(big).err().expect("refused");
+        assert!(err.contains("48 KB"), "{err}");
+    }
+
+    #[test]
+    fn static_memory_is_paged_from_the_source() {
+        // advent.z5 is 138 KB; only its dynamic memory is resident.
+        let mut m = boot(ADVENT);
+        assert!(m.core.dynmem.len() <= MAX_DYN);
+        assert_eq!(m.core.len, ADVENT.len());
+        let static_base = m.core.static_base;
+        let at = m.attached();
+        // Reads across the whole file agree with the bytes, including across sector edges.
+        for a in [static_base, SECTOR - 1, SECTOR, 7 * SECTOR + 511, ADVENT.len() - 2, ADVENT.len() - 1] {
+            if a >= static_base {
+                assert_eq!(at.rb(a).unwrap(), ADVENT[a], "byte {a:#x}");
+            }
+        }
+        assert_eq!(at.rw(ADVENT.len() - 2).unwrap(), be16(ADVENT, ADVENT.len() - 2));
+        assert!(at.rb(ADVENT.len()).is_err());
+        assert!(at.rw(ADVENT.len() - 1).is_err());
+        // A source that fails to read is an error, not a panic.
+        struct Flaky(Vec<u8>);
+        impl ReadAt for Flaky {
+            fn len(&self) -> u64 {
+                self.0.len() as u64
+            }
+            fn read_at(&self, offset: u64, buf: &mut [u8]) -> quire_fs::FsResult<usize> {
+                if offset >= 0x8000 {
+                    return Err(quire_fs::FsError::Io(String::from("card gone")));
+                }
+                self.0.as_slice().read_at(offset, buf)
+            }
+        }
+        let mut m = Machine::new(Flaky(ADVENT.to_vec())).expect("loads");
+        let mut saw_error = false;
+        for _ in 0..200 {
+            match m.run(5_000) {
+                Step::WaitLine => m.input("east"),
+                Step::WaitChar => m.input_char(13),
+                Step::Budget => {}
+                Step::Error(_) => {
+                    saw_error = true;
+                    break;
+                }
+                Step::Halt => break,
+            }
+        }
+        assert!(saw_error || m.halted(), "a failing read ends the run cleanly");
     }
 
     /// A small deterministic generator for the fuzz tests.
@@ -2269,9 +2588,10 @@ mod tests {
     #[test]
     fn verify_and_random() {
         let mut m = boot(ADVENT);
-        assert!(m.verify());
-        m.mem[0x1c] ^= 1;
-        assert!(!m.verify());
+        assert!(m.attached().verify());
+        m.core.dynmem[0x1c] ^= 1;
+        assert!(!m.attached().verify());
+        let m = &mut m.core;
         m.random(-5);
         let seq: Vec<u16> = (0..7).map(|_| m.random(10)).collect();
         assert_eq!(seq, [1, 2, 3, 4, 5, 1, 2]);
@@ -2379,7 +2699,8 @@ mod tests {
 
     #[test]
     fn text_roundtrip_through_dictionary() {
-        let m = boot(ADVENT);
+        let mut m = boot(ADVENT);
+        let m = m.attached();
         let dict = m.rw(0x08).unwrap() as usize;
         let addr = m.dict_lookup(dict, b"lantern").unwrap();
         assert_ne!(addr, 0);

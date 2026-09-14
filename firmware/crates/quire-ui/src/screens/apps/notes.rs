@@ -91,7 +91,7 @@ impl<E: Env> Screen<E> for Notes {
             );
             y += row_h;
         }
-        rail(f, ["", "Back", "Open", "New"], None);
+        rail(f, ["", "Back", if self.files.is_empty() { "" } else { "Open" }, "New"], None);
         Refresh::Gc
     }
     fn key(&mut self, cx: &mut Ctx<E>, ev: KeyEvent) -> Action<E> {

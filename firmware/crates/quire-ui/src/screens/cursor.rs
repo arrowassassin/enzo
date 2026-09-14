@@ -4,31 +4,76 @@
 use alloc::boxed::Box;
 use alloc::string::String;
 use alloc::vec::Vec;
-use quire_gfx::{Frame, Ink, Rect};
+use quire_gfx::{Frame, Ink, Rect, TextStyle};
 use quire_library::marks::{Mark, MarkKind};
 
+use crate::text::draw_right;
 use crate::theme::*;
-use crate::widgets::rail;
+use crate::widgets::{rail, CONTENT_TOP};
 use crate::{Action, Ctx, Env, Key, KeyEvent, KeyKind, Refresh, Screen};
 
-/// The 10 000 most common English words, most common first.
-static COMMON: &str = include_str!("../../data/common-words.txt");
+/// Word tables baked by `build.rs` from `data/common-words.txt` and
+/// `data/wordle-words.txt`: hashed frequency ranks for the cursor and the dictionary
+/// flow, packed five-letter words for Wordle. Nothing here is scanned at run time.
+pub mod words {
+    include!(concat!(env!("OUT_DIR"), "/words.rs"));
+}
+
+/// How many words the cursor cycles through with Rarer / Next.
+const CYCLE: usize = 6;
+
+/// FNV-1a over the lowercase form of `word`, matching the build script's hashing.
+fn hash_lower(word: &str) -> u32 {
+    let mut h: u32 = 0x811c_9dc5;
+    let mut buf = [0u8; 4];
+    for c in word.chars() {
+        for l in c.to_lowercase() {
+            for b in l.encode_utf8(&mut buf).bytes() {
+                h ^= b as u32;
+                h = h.wrapping_mul(0x0100_0193);
+            }
+        }
+    }
+    h
+}
+
+/// The word without surrounding punctuation or a possessive ending, which is what the
+/// frequency list and the dictionary know.
+pub fn normalise(word: &str) -> &str {
+    let w = word.trim_matches(|c: char| !c.is_alphanumeric());
+    let w = w.strip_suffix("'s").or_else(|| w.strip_suffix("’s")).unwrap_or(w);
+    w.trim_end_matches(|c: char| !c.is_alphanumeric())
+}
 
 /// Rank of a word in the frequency list (0 = "the"); None when not in the list.
 pub fn rank(word: &str) -> Option<u32> {
-    let w = word.to_lowercase();
-    COMMON.lines().position(|l| l == w).map(|p| p as u32)
+    let w = normalise(word);
+    if w.is_empty() {
+        return None;
+    }
+    let h = hash_lower(w);
+    words::COMMON_HASHES.binary_search(&h).ok().map(|i| words::COMMON_RANKS[i] as u32)
 }
 
-/// Rarity score: higher is rarer. Unknown words are rarest; short words are common.
+/// Rarity score: higher is rarer. Unknown words are rarest (capitalised ones — names,
+/// mostly — below unknown common nouns); short words and numbers are common.
 pub fn rarity(word: &str) -> u32 {
-    let n = word.chars().count();
-    if n < 4 || word.chars().all(|c| c.is_ascii_digit()) {
+    let w = normalise(word);
+    let n = w.chars().count();
+    if n < 4 || w.chars().all(|c| c.is_ascii_digit()) {
         return 0;
     }
-    match rank(word) {
+    match rank(w) {
         Some(r) => r + 1,
-        None => 100_000 + n as u32,
+        None => {
+            let mut chars = w.chars();
+            let capitalised = chars.next().map(|c| c.is_uppercase()).unwrap_or(false) && chars.all(|c| !c.is_uppercase());
+            if capitalised {
+                50_000 + n as u32
+            } else {
+                100_000 + n as u32
+            }
+        }
     }
 }
 
@@ -44,7 +89,7 @@ pub struct WordCursor {
     by_rarity: Vec<usize>,
     /// Current word index (into `words`).
     cur: usize,
-    /// Position in the rarity order.
+    /// Position in the rarity order (may be past `CYCLE` after a line move).
     rare_pos: usize,
     /// Selection end (inclusive) when selecting.
     sel_end: Option<usize>,
@@ -61,12 +106,18 @@ impl WordCursor {
         }
         if let Some(r) = cx.reader.as_mut() {
             self.words = r.page_words();
+            // Rarity once per word, then a sort over the scores (no work per comparison).
+            let scores: Vec<u32> = self.words.iter().map(|(w, _)| rarity(w)).collect();
             let mut order: Vec<usize> = (0..self.words.len()).collect();
-            order.sort_by(|a, b| rarity(&self.words[*b].0).cmp(&rarity(&self.words[*a].0)).then(a.cmp(b)));
+            order.sort_by(|a, b| scores[*b].cmp(&scores[*a]).then(a.cmp(b)));
             self.by_rarity = order;
             self.cur = self.by_rarity.first().copied().unwrap_or(0);
             self.rare_pos = 0;
         }
+    }
+    /// How many words Rarer / Next cycle through.
+    fn cycle(&self) -> usize {
+        self.by_rarity.len().clamp(1, CYCLE)
     }
     fn move_line(&mut self, down: bool) {
         let Some((_, r)) = self.words.get(self.cur) else { return };
@@ -81,7 +132,7 @@ impl WordCursor {
             self.words.iter().enumerate().filter(|(_, (_, w))| w.y == ty).min_by_key(|(_, (_, w))| (w.x + w.w as i32 / 2 - cx).abs())
         {
             self.cur = i;
-            self.rare_pos = self.by_rarity.iter().position(|x| *x == i).unwrap_or(0);
+            self.rare_pos = self.by_rarity.iter().position(|x| *x == i).unwrap_or(usize::MAX);
         }
     }
     fn selection_text(&self) -> String {
@@ -121,22 +172,30 @@ impl<E: Env> Screen<E> for WordCursor {
                 }
             }
         }
-        // Counter "1/6" at the top right (rarity position), or "selection".
-        let mono = quire_fonts::ui::mono();
+        // Counter "1 / 6" (rarity position within the cycle, "—" off it), or "selection".
+        let n = self.cycle();
         let label = if self.sel_end.is_some() {
             String::from("selection")
+        } else if self.rare_pos < n {
+            alloc::format!("{} / {}", self.rare_pos + 1, n)
         } else {
-            alloc::format!("{} / {}", self.rare_pos + 1, self.by_rarity.len().min(6))
+            String::from("—")
         };
-        // The counter takes the chapter's place in the running head while the cursor is up.
+        // The counter takes the chapter's place in the running head while the cursor is up,
+        // in the small mono face.
         if let Some(r) = cx.reader.as_ref() {
             let w = f.width() as i32;
             let text = r.text_rect();
-            let right = w - MARGIN - SPINE_W - 6;
+            let right = (w - MARGIN - SPINE_W - 6).max(text.right());
             f.fill_rect(Rect::new(0, 0, w as u32, (MARGIN + 26) as u32), Ink::White);
-            crate::widgets::reading_head(f, &r.book.meta.title, &label, text.x, right.max(text.right()), MARGIN + 18);
+            crate::widgets::reading_head(f, &r.book.meta.title, "", text.x, right, MARGIN + 18);
+            draw_right(f, quire_fonts::ui::mono(), right, MARGIN + 18, &label, TextStyle::INK);
         }
-        let _ = mono;
+        // The Spine is not needed while the cursor is up: clear its strip so the side
+        // labels are not drawn through it.
+        let w = f.width() as i32;
+        let h = f.height() as i32;
+        f.fill_rect(Rect::new(w - 40, CONTENT_TOP, 40, (h - RAIL_H - CONTENT_TOP).max(0) as u32), Ink::White);
         if self.sel_end.is_some() {
             crate::widgets::side_labels(f, Some("Less"), Some("More"), true);
             rail(f, ["Less", "Cancel", "Save", "More"], None);
@@ -152,6 +211,7 @@ impl<E: Env> Screen<E> for WordCursor {
             return Action::Pop;
         }
         let n = self.words.len();
+        let cycle = self.cycle();
         match (ev.key, ev.kind) {
             (Key::Back, KeyKind::Press) => {
                 if self.sel_end.is_some() {
@@ -185,14 +245,14 @@ impl<E: Env> Screen<E> for WordCursor {
                     }
                     return Action::Pop;
                 }
-                let word = self.words[self.cur].0.clone();
+                let word = String::from(normalise(&self.words[self.cur].0));
                 Action::Replace(Box::new(super::dictionary::Dictionary::new(word)))
             }
             (Key::Right, KeyKind::Press) | (Key::Right, KeyKind::Repeat) | (Key::Right, KeyKind::Long) => {
                 if self.sel_end.is_some() {
                     self.sel_end = Some((self.sel_end.unwrap_or(self.cur) + 1).min(n - 1));
                 } else {
-                    self.rare_pos = (self.rare_pos + 1) % self.by_rarity.len().max(1);
+                    self.rare_pos = if self.rare_pos >= cycle { 0 } else { (self.rare_pos + 1) % cycle };
                     self.cur = self.by_rarity[self.rare_pos];
                 }
                 Action::Redraw
@@ -202,7 +262,7 @@ impl<E: Env> Screen<E> for WordCursor {
                     let e = self.sel_end.unwrap_or(self.cur);
                     self.sel_end = Some(if e > self.cur { e - 1 } else { self.cur });
                 } else {
-                    self.rare_pos = if self.rare_pos == 0 { self.by_rarity.len().saturating_sub(1) } else { self.rare_pos - 1 };
+                    self.rare_pos = if self.rare_pos == 0 || self.rare_pos >= cycle { cycle - 1 } else { self.rare_pos - 1 };
                     self.cur = self.by_rarity[self.rare_pos];
                 }
                 Action::Redraw
@@ -226,5 +286,33 @@ impl<E: Env> Screen<E> for WordCursor {
             }
             _ => Action::None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ranks_come_from_the_table() {
+        assert_eq!(rank("the"), Some(0));
+        assert_eq!(rank("The"), Some(0));
+        assert_eq!(rank("THE,"), Some(0));
+        assert!(rank("zzzzqx").is_none());
+        assert!(rank("").is_none());
+        assert_eq!(words::COMMON_HASHES.len(), words::COMMON_LEN);
+        assert!(words::COMMON_HASHES.windows(2).all(|p| p[0] < p[1]));
+    }
+
+    #[test]
+    fn possessives_and_punctuation_do_not_make_a_word_rare() {
+        assert_eq!(normalise("shepherd's,"), "shepherd");
+        assert_eq!(normalise("“pedestrian”"), "pedestrian");
+        assert_eq!(rarity("shepherd's"), rarity("shepherd"));
+        assert!(rarity("pedestrian") > rarity("shepherd's"), "a rare real word beats a common possessive");
+        assert!(rarity("Ishmael") > rarity("whale"), "unknown names are rarer than known words");
+        assert!(rarity("circumambulate") > rarity("Ishmael"), "unknown common nouns rank above names");
+        assert_eq!(rarity("1851"), 0);
+        assert_eq!(rarity("and"), 0);
     }
 }

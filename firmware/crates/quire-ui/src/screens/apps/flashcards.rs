@@ -90,9 +90,9 @@ pub fn rate(c: &mut CardState, rating: u8, today: u16) {
     }
 }
 
-/// The deck list.
+/// The deck list: (file name, cards, due today), read once per visit — never per draw.
 pub struct Decks {
-    decks: Vec<String>,
+    decks: Vec<(String, usize, usize)>,
     nav: ListNav,
     loaded: bool,
 }
@@ -116,16 +116,26 @@ impl<E: Env> Screen<E> for Decks {
     }
     fn draw(&mut self, cx: &mut Ctx<E>, f: &mut Frame) -> Refresh {
         if !self.loaded {
-            self.decks = cx
-                .env
-                .fs()
+            let fs = cx.env.fs();
+            let today = cx.today();
+            let mut names: Vec<String> = fs
                 .read_dir(DECKS_DIR)
                 .unwrap_or_default()
                 .into_iter()
                 .filter(|e| !e.is_dir && e.name.ends_with(".txt"))
                 .map(|e| e.name)
                 .collect();
-            self.decks.sort();
+            names.sort();
+            self.decks = names
+                .into_iter()
+                .map(|name| {
+                    let cards = load_deck(fs, &name);
+                    let state: DeckState =
+                        fs.read_to_vec(&state_path(&name)).ok().and_then(|b| postcard::from_bytes(&b).ok()).unwrap_or_default();
+                    let due = cards.iter().enumerate().filter(|(i, _)| state.cards.get(*i).map(|c| c.due <= today).unwrap_or(true)).count();
+                    (name, cards.len(), due)
+                })
+                .collect();
             self.nav.set_n(self.decks.len());
             self.loaded = true;
         }
@@ -134,21 +144,18 @@ impl<E: Env> Screen<E> for Decks {
         running_head(f, "Flashcards", Some(&page_indicator(self.nav.page(), self.nav.pages())));
         if self.decks.is_empty() {
             empty_state(f, 240, "No decks yet", "Drop a text file into /flashcards with one card per line: front | back.");
+            rail(f, ["", "Back", "", ""], None);
+            return Refresh::Gc;
         }
-        let today = cx.today();
         let mut y = widgets::CONTENT_TOP;
         for i in self.nav.visible() {
-            let name = &self.decks[i];
-            let cards = load_deck(cx.env.fs(), name);
-            let state: DeckState =
-                cx.env.fs().read_to_vec(&state_path(name)).ok().and_then(|b| postcard::from_bytes(&b).ok()).unwrap_or_default();
-            let due = cards.iter().enumerate().filter(|(i, _)| state.cards.get(*i).map(|c| c.due <= today).unwrap_or(true)).count();
+            let (name, cards, due) = &self.decks[i];
             row(
                 f,
                 y,
                 row_h,
                 name.trim_end_matches(".txt"),
-                Some(&alloc::format!("{} cards", cards.len())),
+                Some(&alloc::format!("{cards} {}", if *cards == 1 { "card" } else { "cards" })),
                 Some(&alloc::format!("{due} due")),
                 if i == self.nav.focus { RowState::Focused } else { RowState::Normal },
             );
@@ -165,7 +172,7 @@ impl<E: Env> Screen<E> for Decks {
             return Action::Pop;
         }
         if ev.is(Key::Confirm) {
-            if let Some(name) = self.decks.get(self.nav.focus).cloned() {
+            if let Some((name, _, _)) = self.decks.get(self.nav.focus).cloned() {
                 return Action::Push(alloc::boxed::Box::new(Study::new(cx, &name)));
             }
             return Action::None;
@@ -265,7 +272,8 @@ impl<E: Env> Screen<E> for Study {
         if self.back {
             rail(f, ["Again", "Hard", "Good", "Easy"], None);
         } else {
-            rail(f, ["", "Back", "Show", "Skip"], None);
+            draw_centered(f, fl, w / 2, h - RAIL_H - 24, "Confirm — show the back", TextStyle::INK);
+            rail(f, ["", "Back", "Flip", "Skip"], None);
         }
         Refresh::Du
     }

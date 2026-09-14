@@ -1,21 +1,32 @@
 //! 11 library: tabs Recent · All · Authors · Series · Collections · Folders; grid or list;
 //! long-Confirm compass with Open · Info · Finished · Collection, side Delete / Move.
+//!
+//! The rows of a tab are built once per (tab, group, library generation) with sort keys
+//! computed up front — a key press or a draw never re-sorts the library.
 
 use alloc::boxed::Box;
 use alloc::string::String;
 use alloc::vec::Vec;
 use quire_fs::Fs;
-use quire_gfx::{Frame, Ink, Rect};
+use quire_gfx::{draw_text, measure_text, BitmapRef, BlitMode, Frame, Ink, Rect, TextStyle};
+use quire_library::index::sort_title;
 use quire_library::time::fmt_duration;
-use quire_library::{cache, BookEntry, BookId, IngestState, Status};
+use quire_library::{cache, BookEntry, BookId, IngestState, Library, Status};
 
 use crate::screens::reading::draw_compass;
-use crate::text::page_indicator;
+use crate::text::{ellipsis, page_indicator};
 use crate::theme::*;
-use crate::widgets::{self, cover_cell, empty_state, rail, row_thumb, running_head, tabs, ListNav, RowState};
+use crate::widgets::{self, empty_state, rail, row_thumb, running_head, tabs, ListNav, RowState};
 use crate::{Action, Ctx, Env, Event, Key, KeyEvent, KeyKind, Refresh, Result_, Screen, SysRequest};
 
 const TABS: [&str; 6] = ["Recent", "All", "Authors", "Series", "Collections", "Folders"];
+
+/// Grid cell: 144 × 216 (the cover's 2:3) with 16 px gaps between three columns.
+const CELL_W: i32 = 144;
+const CELL_H: i32 = 216;
+const GRID_COLS: usize = 3;
+/// Row pitch: the cell plus two caption lines.
+const CELL_PITCH: i32 = CELL_H + 64;
 
 /// The library screen.
 pub struct LibraryScreen {
@@ -26,6 +37,9 @@ pub struct LibraryScreen {
     /// For Authors/Series/Collections: the group opened, if any.
     group: Option<String>,
     thumbs: Vec<(BookId, quire_gfx::Bitmap)>,
+    /// The rows of the current tab, and the (tab, group, generation) they were built for.
+    items: Vec<Item>,
+    items_key: Option<(usize, Option<String>, u32)>,
 }
 
 /// A row of the current tab: a book, or a group header row.
@@ -34,39 +48,108 @@ enum Item {
     Group(String, usize),
 }
 
+/// Visible books with a precomputed sort key, so a sort never allocates per comparison.
+fn keyed<'a, K: Ord>(lib: &'a Library, key: impl Fn(&'a BookEntry) -> K) -> Vec<(K, &'a BookEntry)> {
+    let mut v: Vec<(K, &BookEntry)> = lib.books.iter().filter(|b| !b.hidden()).map(|b| (key(b), b)).collect();
+    v.sort_by(|a, b| a.0.cmp(&b.0));
+    v
+}
+
+/// Books grouped by their first author (case-insensitively), authors A–Z, books by
+/// series index then title.
+fn by_author(lib: &Library) -> Vec<(String, Vec<BookId>)> {
+    let sorted = keyed(lib, |b| {
+        (b.authors.first().map(|s| s.to_lowercase()).unwrap_or_default(), b.series.as_ref().map(|s| s.1).unwrap_or(0), sort_title(&b.title))
+    });
+    let mut out: Vec<(String, Vec<BookId>)> = Vec::new();
+    for (_, b) in sorted {
+        let name = b.authors.first().cloned().unwrap_or_else(|| String::from("Unknown author"));
+        match out.last_mut() {
+            Some((n, v)) if n.eq_ignore_ascii_case(&name) => v.push(b.id),
+            _ => out.push((name, alloc::vec![b.id])),
+        }
+    }
+    out
+}
+
+/// Books grouped by series, series A–Z, books by index then title.
+fn by_series(lib: &Library) -> Vec<(String, Vec<BookId>)> {
+    let mut sorted = keyed(lib, |b| {
+        let (name, idx) = b.series.as_ref().map(|s| (s.0.to_lowercase(), s.1)).unwrap_or_default();
+        (name, idx, sort_title(&b.title))
+    });
+    sorted.retain(|(_, b)| b.series.is_some());
+    let mut out: Vec<(String, Vec<BookId>)> = Vec::new();
+    for (_, b) in sorted {
+        let name = b.series.as_ref().map(|s| s.0.clone()).unwrap_or_default();
+        match out.last_mut() {
+            Some((n, v)) if *n == name => v.push(b.id),
+            _ => out.push((name, alloc::vec![b.id])),
+        }
+    }
+    out
+}
+
+/// The rows of a tab.
+fn build_items(lib: &Library, tab: usize, group: Option<&str>) -> Vec<Item> {
+    match (tab, group) {
+        (0, _) => lib.shelf().iter().map(|b| Item::Book(b.id)).collect(),
+        (1, _) => keyed(lib, |b| sort_title(&b.title)).into_iter().map(|(_, b)| Item::Book(b.id)).collect(),
+        (2, None) => by_author(lib).into_iter().map(|(n, v)| Item::Group(n, v.len())).collect(),
+        (2, Some(g)) => {
+            by_author(lib).into_iter().find(|(n, _)| n == g).map(|(_, v)| v.into_iter().map(Item::Book).collect()).unwrap_or_default()
+        }
+        (3, None) => by_series(lib).into_iter().map(|(n, v)| Item::Group(n, v.len())).collect(),
+        (3, Some(g)) => {
+            by_series(lib).into_iter().find(|(n, _)| n == g).map(|(_, v)| v.into_iter().map(Item::Book).collect()).unwrap_or_default()
+        }
+        (4, None) => {
+            // Member counts in one pass over the books, not one pass per collection.
+            let mut counts: Vec<usize> = alloc::vec![0; lib.collections.len()];
+            for b in lib.books.iter().filter(|b| !b.hidden()) {
+                for (k, c) in lib.collections.iter().enumerate() {
+                    if b.collections.contains(&c.id) {
+                        counts[k] += 1;
+                    }
+                }
+            }
+            lib.collections.iter().zip(counts).map(|(c, n)| Item::Group(c.name.clone(), n)).collect()
+        }
+        (4, Some(g)) => lib
+            .collections
+            .iter()
+            .find(|c| c.name == g)
+            .map(|c| {
+                let id = c.id;
+                let mut v = keyed(lib, |b| sort_title(&b.title));
+                v.retain(|(_, b)| b.collections.contains(&id));
+                v.into_iter().map(|(_, b)| Item::Book(b.id)).collect()
+            })
+            .unwrap_or_default(),
+        _ => Vec::new(),
+    }
+}
+
 impl LibraryScreen {
     /// New, on the last-used tab.
     pub fn new() -> Self {
-        LibraryScreen { tab: 0, nav: ListNav::new(0, 6), on_tabs: false, group: None, thumbs: Vec::new() }
+        LibraryScreen {
+            tab: 0,
+            nav: ListNav::new(0, 6),
+            on_tabs: false,
+            group: None,
+            thumbs: Vec::new(),
+            items: Vec::new(),
+            items_key: None,
+        }
     }
 
-    fn items<E: Env>(&self, cx: &Ctx<E>) -> Vec<Item> {
-        let lib = &*cx.lib;
-        match (self.tab, &self.group) {
-            (0, _) => lib.shelf().iter().map(|b| Item::Book(b.id)).collect(),
-            (1, _) => lib.by_title().iter().map(|b| Item::Book(b.id)).collect(),
-            (2, None) => lib.authors().into_iter().map(|(n, v)| Item::Group(n, v.len())).collect(),
-            (2, Some(g)) => lib
-                .authors()
-                .into_iter()
-                .find(|(n, _)| n == g)
-                .map(|(_, v)| v.iter().map(|b| Item::Book(b.id)).collect())
-                .unwrap_or_default(),
-            (3, None) => lib.series().into_iter().map(|(n, v)| Item::Group(n, v.len())).collect(),
-            (3, Some(g)) => lib
-                .series()
-                .into_iter()
-                .find(|(n, _)| n == g)
-                .map(|(_, v)| v.iter().map(|b| Item::Book(b.id)).collect())
-                .unwrap_or_default(),
-            (4, None) => lib.collections.iter().map(|c| Item::Group(c.name.clone(), lib.in_collection(c.id).len())).collect(),
-            (4, Some(g)) => lib
-                .collections
-                .iter()
-                .find(|c| c.name == *g)
-                .map(|c| lib.in_collection(c.id).iter().map(|b| Item::Book(b.id)).collect())
-                .unwrap_or_default(),
-            _ => Vec::new(),
+    /// Rebuild the rows when the tab, the group or the library changed.
+    fn ensure_items<E: Env>(&mut self, cx: &Ctx<E>) {
+        let key = (self.tab, self.group.clone(), cx.lib.generation());
+        if self.items_key.as_ref() != Some(&key) {
+            self.items = build_items(cx.lib, self.tab, self.group.as_deref());
+            self.items_key = Some(key);
         }
     }
 
@@ -112,6 +195,52 @@ fn value_for<E: Env>(cx: &Ctx<E>, b: &BookEntry) -> String {
     }
 }
 
+/// A grid cell: the thumbnail scaled (nearest neighbour) into 144 × 216, or a
+/// typographic plate; a 2 px frame (6 px on focus); title and "author · tag" beneath,
+/// the author ellipsised on its own so the tag always shows.
+#[allow(clippy::too_many_arguments)]
+fn grid_cell(f: &mut Frame, x: i32, y: i32, thumb: Option<BitmapRef<'_>>, title: &str, author: &str, focused: bool, percent: Option<u8>) {
+    let r = Rect::new(x, y, CELL_W as u32, CELL_H as u32);
+    match thumb {
+        Some(bm) => {
+            f.fill_rect(r, Ink::White);
+            if bm.w == CELL_W as u32 && bm.h == CELL_H as u32 {
+                f.blit(x, y, bm, BlitMode::Or);
+            } else {
+                for yy in 0..CELL_H as u32 {
+                    let sy = (yy * bm.h) / CELL_H as u32;
+                    for xx in 0..CELL_W as u32 {
+                        let sx = (xx * bm.w) / CELL_W as u32;
+                        if bm.get(sx, sy) {
+                            f.set(x + xx as i32, y + yy as i32, Ink::Black);
+                        }
+                    }
+                }
+            }
+        }
+        None => widgets::typographic_cover(f, r, title, author),
+    }
+    f.stroke_rect(r, if focused { 6 } else { 2 }, Ink::Black);
+    let tfont = quire_fonts::ui::body();
+    let afont = quire_fonts::ui::label();
+    draw_text(f, tfont, x, y + CELL_H + 8 + tfont.ascent(), &ellipsis(tfont, title, CELL_W), TextStyle::INK);
+    let tag = match percent {
+        Some(p) if p > 0 && p < 100 => alloc::format!("{p}%"),
+        Some(100) => String::from("finished"),
+        _ => String::new(),
+    };
+    let line2 = match (author.is_empty(), tag.is_empty()) {
+        (false, false) => {
+            let tail = alloc::format!(" · {tag}");
+            let tagw = measure_text(afont, &tail, TextStyle::INK);
+            alloc::format!("{}{tail}", ellipsis(afont, author, CELL_W - tagw))
+        }
+        (true, false) => tag,
+        _ => ellipsis(afont, author, CELL_W),
+    };
+    draw_text(f, afont, x, y + CELL_H + 8 + tfont.ascent() + tfont.below() + 4 + afont.ascent(), &line2, TextStyle::INK);
+}
+
 impl<E: Env> Screen<E> for LibraryScreen {
     fn name(&self) -> &'static str {
         "11-library"
@@ -121,19 +250,19 @@ impl<E: Env> Screen<E> for LibraryScreen {
             // Folders is its own screen; draw a redirect-free version by delegating.
             self.tab = cx.settings.library_tab.min(4) as usize;
         }
-        let items = self.items(cx);
+        self.ensure_items(cx);
         let grid = self.grid(cx);
         let per = if grid { 6 } else { widgets::rows_between(widgets::CONTENT_TOP + 36, f.height() as i32 - RAIL_H, ROW_THUMB_H) };
         self.nav.per_page = per;
-        self.nav.set_n(items.len());
+        self.nav.set_n(self.items.len());
         let title = match &self.group {
             Some(g) => g.clone(),
             None => String::from("Library"),
         };
         running_head(f, &title, None);
         let indicator = page_indicator(self.nav.page(), self.nav.pages());
-        let y = tabs(f, widgets::CONTENT_TOP - 8, &TABS, self.tab, self.on_tabs, (self.nav.pages() > 1).then_some(indicator.as_str()));
-        if items.is_empty() {
+        let y = tabs(f, widgets::CONTENT_TOP - 8, &TABS, self.tab, self.on_tabs, Some(indicator.as_str()));
+        if self.items.is_empty() {
             let (line, hint) = match self.tab {
                 4 => ("No collections yet", "Long-press Confirm on a book to add it to one."),
                 3 => ("No series yet", "Series come from the books' metadata."),
@@ -143,25 +272,26 @@ impl<E: Env> Screen<E> for LibraryScreen {
             rail(f, ["", "Back", "Bookshop", "Drop"], None);
             return Refresh::Gc;
         }
-        let ids: Vec<BookId> = self.nav.visible().filter_map(|i| if let Item::Book(id) = items[i] { Some(id) } else { None }).collect();
+        let ids: Vec<BookId> =
+            self.nav.visible().filter_map(|i| if let Item::Book(id) = self.items[i] { Some(id) } else { None }).collect();
         self.ensure_thumbs(cx, &ids);
         if grid {
             let w = f.width() as i32;
-            let gap = (w - 2 * widgets::INSET - 3 * COVER_W as i32) / 2;
+            let gap = (w - 2 * widgets::INSET - GRID_COLS as i32 * CELL_W) / (GRID_COLS as i32 - 1);
             for (k, i) in self.nav.visible().enumerate() {
-                let Item::Book(id) = items[i] else { continue };
+                let Item::Book(id) = self.items[i] else { continue };
                 let Some(b) = cx.lib.get(id) else { continue };
-                let (c, r) = (k % 3, k / 3);
-                let x = widgets::INSET + c as i32 * (COVER_W as i32 + gap);
-                let yy = y + 12 + r as i32 * (COVER_H as i32 + 64);
+                let (c, r) = (k % GRID_COLS, k / GRID_COLS);
+                let x = widgets::INSET + c as i32 * (CELL_W + gap);
+                let yy = y + 12 + r as i32 * CELL_PITCH;
                 let thumb = self.thumbs.iter().find(|(t, _)| *t == id).map(|(_, bm)| bm.as_ref());
-                cover_cell(f, x, yy, thumb, &b.title, &b.author_line(), i == self.nav.focus && !self.on_tabs, Some(b.percent()));
+                grid_cell(f, x, yy, thumb, &b.title, &b.author_line(), i == self.nav.focus && !self.on_tabs, Some(b.percent()));
             }
         } else {
             let mut yy = y + 4;
             for i in self.nav.visible() {
                 let focused = i == self.nav.focus && !self.on_tabs;
-                match &items[i] {
+                match &self.items[i] {
                     Item::Book(id) => {
                         let Some(b) = cx.lib.get(*id) else { continue };
                         let v = value_for(cx, b);
@@ -177,7 +307,7 @@ impl<E: Env> Screen<E> for LibraryScreen {
                         yy += ROW_THUMB_H;
                     }
                     Item::Group(name, n) => {
-                        let v = alloc::format!("{n} books");
+                        let v = alloc::format!("{n} {}", if *n == 1 { "book" } else { "books" });
                         widgets::row(f, yy, ROW_THUMB_H, name, None, Some(&v), if focused { RowState::Focused } else { RowState::Normal });
                         yy += ROW_THUMB_H;
                     }
@@ -191,7 +321,7 @@ impl<E: Env> Screen<E> for LibraryScreen {
         if ev.kind == KeyKind::Release {
             return Action::None;
         }
-        let items = self.items(cx);
+        self.ensure_items(cx);
         if ev.is(Key::Back) {
             if self.group.is_some() {
                 self.group = None;
@@ -221,7 +351,7 @@ impl<E: Env> Screen<E> for LibraryScreen {
             return Action::Redraw;
         }
         if ev.is_long(Key::Confirm) {
-            if let Some(Item::Book(id)) = items.get(self.nav.focus) {
+            if let Some(Item::Book(id)) = self.items.get(self.nav.focus) {
                 return Action::Push(Box::new(BookCompass::new(*id)));
             }
             // Long-Confirm elsewhere toggles grid/list.
@@ -229,7 +359,7 @@ impl<E: Env> Screen<E> for LibraryScreen {
             return Action::Redraw;
         }
         if ev.is(Key::Confirm) {
-            return match items.get(self.nav.focus) {
+            return match self.items.get(self.nav.focus) {
                 Some(Item::Book(id)) => {
                     let ready = cx.lib.get(*id).map(|b| b.ingest == IngestState::Ready).unwrap_or(false);
                     if ready {
@@ -247,7 +377,7 @@ impl<E: Env> Screen<E> for LibraryScreen {
                 None => Action::None,
             };
         }
-        if ev.key == Key::Up && self.nav.focus < (if self.grid(cx) { 3 } else { 1 }) && !self.on_tabs && self.nav.page() == 0 {
+        if ev.key == Key::Up && self.nav.focus < (if self.grid(cx) { GRID_COLS } else { 1 }) && !self.on_tabs && self.nav.page() == 0 {
             self.on_tabs = true;
             return Action::Redraw;
         }
@@ -258,8 +388,8 @@ impl<E: Env> Screen<E> for LibraryScreen {
                 match ev.key {
                     Key::Left => self.nav.focus = (self.nav.focus + n - 1) % n,
                     Key::Right => self.nav.focus = (self.nav.focus + 1) % n,
-                    Key::Up => self.nav.focus = self.nav.focus.saturating_sub(3),
-                    Key::Down => self.nav.focus = (self.nav.focus + 3).min(n - 1),
+                    Key::Up => self.nav.focus = self.nav.focus.saturating_sub(GRID_COLS),
+                    Key::Down => self.nav.focus = (self.nav.focus + GRID_COLS).min(n - 1),
                     _ => return Action::None,
                 }
                 return Action::Redraw;
@@ -273,7 +403,10 @@ impl<E: Env> Screen<E> for LibraryScreen {
     }
     fn event(&mut self, _cx: &mut Ctx<E>, ev: &Event) -> Action<E> {
         match ev {
-            Event::Ingest { .. } | Event::BooksChanged => Action::Redraw,
+            Event::Ingest { .. } | Event::BooksChanged => {
+                self.items_key = None;
+                Action::Redraw
+            }
             _ => Action::None,
         }
     }
