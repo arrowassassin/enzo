@@ -5,6 +5,8 @@
 [workspace]
 resolver = "2"
 members = ["bin/*", "crates/*"]
+# The vendored crate is its own workspace root (host-only tests and dev-dependencies).
+exclude = ["vendor/embedded-sdmmc"]
 
 [workspace.package]
 version = "0.1.0"
@@ -30,7 +32,8 @@ picoserve = { version = "0.20.0", default-features = false, features = ["embassy
 embedded-hal = "1.0"
 embedded-hal-bus = { version = "0.3.0" }
 embedded-io-async = "0.7"
-embedded-sdmmc = { version = "0.10.0", default-features = false }
+# Vendored fork with long file name creation; see vendor/embedded-sdmmc/VENDORED.md.
+embedded-sdmmc = { path = "vendor/embedded-sdmmc", default-features = false }
 static_cell = "2.1"
 heapless = { version = "0.9", default-features = false }
 log = "0.4"
