@@ -225,6 +225,8 @@ async fn main(_spawner: embassy_executor::Spawner) -> ! {
 
     // Mount the card; without one, say so and wait for it. The card's CS pin is re-created
     // per attempt because a failed mount consumes it with the discarded card object.
+    // Dropping the output releases GPIO12 (it holds the pin's lifetime, not a Drop impl).
+    #[allow(clippy::drop_non_drop)]
     drop(sd_cs);
     let fs = loop {
         // SAFETY: GPIO12 was released above and is used by nothing else.

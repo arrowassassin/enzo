@@ -88,6 +88,6 @@ impl SpiBus<u8> for BusHandle<'_> {
         self.shared.with(self.shared.rate(self.role), |b| SpiBus::transfer_in_place(b, words))
     }
     fn flush(&mut self) -> Result<(), Self::Error> {
-        self.shared.with(self.shared.rate(self.role), |b| SpiBus::flush(b))
+        self.shared.with(self.shared.rate(self.role), SpiBus::flush)
     }
 }
