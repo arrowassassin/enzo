@@ -62,7 +62,7 @@ fn measure<F: FnOnce(&mut Sim)>(sim: &mut Sim, name: &str, f: F) -> Row {
         name: name.to_string(),
         allocs: COUNT.load(Relaxed),
         bytes: BYTES.load(Relaxed),
-        peak: PEAK.load(Relaxed) - live0,
+        peak: PEAK.load(Relaxed).saturating_sub(live0),
         retained: LIVE.load(Relaxed) as i64 - live0 as i64,
         biggest: BIGGEST.load(Relaxed),
         us,
@@ -121,7 +121,7 @@ fn efficiency_numbers() {
     println!(
         "boot (Ui::new + first draw): {} ms, live heap after boot {} KB",
         t.elapsed().as_millis(),
-        kb(LIVE.load(Relaxed) - live_start)
+        kb(LIVE.load(Relaxed).saturating_sub(live_start))
     );
     let after_boot = LIVE.load(Relaxed);
 
@@ -152,7 +152,7 @@ fn efficiency_numbers() {
         el as f64 / 40_000.0,
         COUNT.load(Relaxed) / 40,
         kb(BYTES.load(Relaxed) / 40),
-        kb(PEAK.load(Relaxed) - live0),
+        kb(PEAK.load(Relaxed).saturating_sub(live0)),
         kb(LIVE.load(Relaxed).saturating_sub(live0))
     );
     let live0 = LIVE.load(Relaxed);
@@ -170,9 +170,9 @@ fn efficiency_numbers() {
         el as f64 / 40_000.0,
         COUNT.load(Relaxed) / 40,
         kb(BYTES.load(Relaxed) / 40),
-        kb(PEAK.load(Relaxed) - live0)
+        kb(PEAK.load(Relaxed).saturating_sub(live0))
     );
-    println!("live heap on reading page (book open, frame + frame_cache + next_frame): {} KB", kb(LIVE.load(Relaxed) - live_start));
+    println!("live heap on reading page (book open, frame + frame_cache + next_frame): {} KB", kb(LIVE.load(Relaxed).saturating_sub(live_start)));
     // Skim.
     rows.push(measure(&mut sim, "reading: hold Right (Long + 6 Repeats + Release)", |s| {
         s.hold(Key::Right, 6);
@@ -181,7 +181,7 @@ fn efficiency_numbers() {
     let live_after_index = LIVE.load(Relaxed);
     println!(
         "live heap after index_all: {} KB (delta vs boot {} KB)",
-        kb(live_after_index - live_start),
+        kb(live_after_index.saturating_sub(live_start)),
         (live_after_index as i64 - after_boot as i64) / 1024
     );
     rows.push(measure(&mut sim, "reading: Tick with index complete", tick));
@@ -322,7 +322,7 @@ fn efficiency_numbers() {
         s.reset();
     }));
     print(&rows);
-    println!("final live heap: {} KB", kb(LIVE.load(Relaxed) - live_start));
+    println!("final live heap: {} KB", kb(LIVE.load(Relaxed).saturating_sub(live_start)));
     let _ = std::fs::remove_dir_all(&card);
 }
 
