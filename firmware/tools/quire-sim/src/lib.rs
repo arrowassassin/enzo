@@ -393,7 +393,6 @@ pub fn tour_targets() -> Vec<(&'static str, Vec<Key>)> {
     vec![
         ("11-library", vec![Key::Right, Key::Right]),
         ("35-bookshop", vec![Key::Confirm, Key::Confirm]),
-        ("38-browse", vec![]),
         ("30-drop", vec![]),
         ("60a-overview", vec![Key::Right, Key::Right, Key::Right, Key::Right]),
         ("61-yearinreview", vec![Key::Left, Key::Left]),
@@ -425,7 +424,7 @@ pub fn tour_targets() -> Vec<(&'static str, Vec<Key>)> {
         ("75-images", vec![]),
         ("76-fiction", vec![]),
         ("80-sudoku", vec![Key::Confirm]),
-        ("80-2048", vec![Key::Left, Key::Up, Key::Back]),
+        ("80-2048", vec![Key::Left, Key::Up]),
         ("80-minesweeper", vec![Key::Confirm]),
         ("80-chess", vec![Key::Confirm, Key::Confirm]),
         ("80-wordle", vec![]),
@@ -530,9 +529,27 @@ pub fn tour_with(sim: &mut Sim, visit: &mut dyn FnMut(&mut Sim, &str, bool)) {
     sim.sleep_as(SleepVariant::Cover, visit, "40-sleep-charging");
     sim.env.battery.charging = false;
     sim.reset();
-    tour_home_empty(sim, visit);
+}
 
-    // First run, on an empty card.
+/// The stops where the universal key grammar does not apply (boot and recovery own the
+/// keys; nothing is open on the empty home; the first-run wizard runs on another card),
+/// so they are captured by [`tour`] but not walked by [`tour_with`].
+pub fn tour_special(sim: &mut Sim, visit: &mut dyn FnMut(&mut Sim, &str, bool)) {
+    sim.reset();
+    sim.push(Box::new(quire_ui::screens::boot::Boot { status: String::from("Indexing 2 of 3 books"), permille: 600 }));
+    visit(sim, "01-boot", false);
+    sim.pop();
+    sim.push(Box::new(quire_ui::screens::settings::Recovery::new("The last update did not verify.")));
+    visit(sim, "99-recovery", false);
+    sim.pop();
+    // The pause card over a game (Right on it quits, so a round trip through Jump from
+    // here is not a plain Back).
+    sim.open("80-2048");
+    sim.press(Key::Back);
+    visit(sim, "80-paused", false);
+    sim.press(Key::Right);
+    sim.reset();
+    tour_home_empty(sim, visit);
     tour_first_run(visit);
 }
 
@@ -559,6 +576,12 @@ fn tour_more(sim: &mut Sim, visit: &mut dyn FnMut(&mut Sim, &str, bool)) {
     visit(sim, "12-bookinfo", false);
     sim.press(Key::Right);
     visit(sim, "12-bookinfo-2", true);
+    sim.reset();
+
+    // Browse, behind the Bookshop's Left.
+    sim.open("35-bookshop");
+    sim.press(Key::Left);
+    visit(sim, "38-browse", true);
     sim.reset();
 
     // Stats pages behind the overview.
@@ -687,12 +710,6 @@ fn tour_more(sim: &mut Sim, visit: &mut dyn FnMut(&mut Sim, &str, bool)) {
     sim.reset();
 
     // Cards the platform pushes.
-    sim.push(Box::new(quire_ui::screens::boot::Boot { status: String::from("Indexing 2 of 3 books"), permille: 600 }));
-    visit(sim, "01-boot", false);
-    sim.pop();
-    sim.push(Box::new(quire_ui::screens::settings::Recovery::new("The last update did not verify.")));
-    visit(sim, "99-recovery", false);
-    sim.pop();
     sim.push(Box::new(quire_ui::screens::settings::OtaScreen::available(OtaInfo {
         version: String::from("0.2.0"),
         notes: String::from("Faster page turns on long chapters. The Spine now marks parts as well as chapters. Fixes a sleep-screen crash with very large covers."),
@@ -771,15 +788,15 @@ fn tour_first_run(visit: &mut dyn FnMut(&mut Sim, &str, bool)) {
     sim.press(Key::Right);
     visit(&mut sim, "02-firstrun-reader", false);
     sim.press(Key::Right);
-    visit(&mut sim, "02-firstrun-books", true);
+    visit(&mut sim, "02-firstrun-books", false);
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// Walk the whole device (see [`tour_with`]) and capture a frame at each stop. Returns the
-/// shots in order.
+/// Walk the whole device (see [`tour_with`] and [`tour_special`]) and capture a frame at
+/// each stop. Returns the shots in order.
 pub fn tour(sim: &mut Sim) -> Vec<Shot> {
     let mut shots = Vec::new();
-    tour_with(sim, &mut |sim, name, _| {
+    let mut shoot = |sim: &mut Sim, name: &str, _leaf: bool| {
         shots.push(Shot {
             name: name.to_string(),
             frame: sim.frame().clone(),
@@ -787,6 +804,8 @@ pub fn tour(sim: &mut Sim) -> Vec<Shot> {
             refresh: sim.last_refresh,
             ms: sim.last_ms,
         });
-    });
+    };
+    tour_with(sim, &mut shoot);
+    tour_special(sim, &mut shoot);
     shots
 }

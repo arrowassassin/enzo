@@ -44,7 +44,10 @@ fn no_screen_draws_into_the_last_columns() {
     for s in &shots {
         // Full-bleed screens (sleep, the inverted paper, the locked strip, game boards)
         // legitimately reach the edge; text pages and lists never do.
-        let full_bleed = s.name.starts_with("40-") || s.name.starts_with("41-") || s.name.contains("80-");
+        // A dialog or working card screens the whole frame beneath it with the 50 % dots,
+        // edges included, by design.
+        let screened = matches!(s.stack.last().copied(), Some("11-dialog") | Some("12-working"));
+        let full_bleed = s.name.starts_with("40-") || s.name.starts_with("41-") || s.name.contains("80-") || screened;
         if full_bleed {
             continue;
         }
