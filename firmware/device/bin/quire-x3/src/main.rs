@@ -434,7 +434,7 @@ async fn main(spawner: embassy_executor::Spawner) -> ! {
         if go_to_sleep {
             ui.flush(&mut env);
             display.sleep();
-            light_sleep_until_wake(&mut keys, &mut rtc, &mut display, &mut sd_power, &env, &ui).await;
+            light_sleep_until_wake(&mut keys, &mut rtc, &mut display, &mut sd_power, &mut i2c_bus, &mut env, &mut ui).await;
             last_activity = uptime_ms();
             let r = ui.handle(&mut env, Event::Wake);
             display.show(ui.frame(), r.max(Refresh::Gc), ui.settings.gc_every_pages, || {});
@@ -527,17 +527,20 @@ fn refresh_after_idle(ui: &mut Ui<DeviceEnv>, env: &mut DeviceEnv, display: &mut
 }
 
 /// Light sleep in 30 s slices until the Power key wakes us, or deep sleep once the
-/// power-off timeout passes.
+/// power-off timeout passes. The system timer stops in light sleep, so the clock is
+/// re-read from the RTC after every slice, and a sleep screen with a clock is redrawn
+/// when the minute changes.
 async fn light_sleep_until_wake(
     keys: &mut Keys,
     rtc: &mut Rtc<'static>,
     display: &mut Display,
     sd_power: &mut Output<'static>,
-    env: &DeviceEnv,
-    ui: &Ui<DeviceEnv>,
+    i2c_bus: &mut i2c::Bus,
+    env: &mut DeviceEnv,
+    ui: &mut Ui<DeviceEnv>,
 ) {
-    let started = uptime_ms();
     let off_after_ms = (ui.settings.power_off_after_min as u32).saturating_mul(60_000);
+    let mut slept_ms = 0u32;
     loop {
         {
             // SAFETY: GPIO3 is also held as the `Input` in `keys`; the wake source only
@@ -549,6 +552,13 @@ async fn light_sleep_until_wake(
             rtc.sleep_light(&[&timer, &gpio]);
         }
         tick_uptime();
+        // The system timer paused: catch the clock up from the RTC (or by the slice).
+        slept_ms = slept_ms.saturating_add(30_000);
+        match i2c::read_clock(i2c_bus) {
+            Some(t) => env.set_clock(t),
+            None => env.set_clock(env.now().wrapping_add(30)),
+        }
+        env.tick_clock();
         // Debounce: the key has to be down for a moment.
         let mut held = 0;
         for _ in 0..6 {
@@ -565,8 +575,15 @@ async fn light_sleep_until_wake(
             keys.machine = KeyMachine::new();
             return;
         }
-        if off_after_ms > 0 && uptime_ms().wrapping_sub(started) >= off_after_ms {
+        if off_after_ms > 0 && slept_ms >= off_after_ms {
             deep_sleep(display, sd_power, rtc, env);
+        }
+        // A sleep screen with a live clock repaints once a minute (a DU refresh); the
+        // panel goes back to sleep straight after.
+        let r = ui.handle(env, Event::Tick);
+        if r != Refresh::None {
+            display.show(ui.frame(), r, ui.settings.gc_every_pages, || {});
+            display.sleep();
         }
     }
 }
