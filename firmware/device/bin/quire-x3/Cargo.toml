@@ -25,6 +25,8 @@ embassy-futures.workspace = true
 static_cell.workspace = true
 log.workspace = true
 embedded-hal.workspace = true
+heapless.workspace = true
+nb.workspace = true
 quire-board = { path = "../../crates/quire-board" }
 quire-epd = { path = "../../crates/quire-epd" }
 quire-ui = { path = "../../../crates/quire-ui" }

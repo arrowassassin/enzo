@@ -1,7 +1,7 @@
 //! Resume state across sleep and resets (RTC fast memory), the crash counter that
 //! opens safe mode, and the SD rail hold for deep sleep.
 
-use core::sync::atomic::{AtomicU32, Ordering};
+use core::sync::atomic::AtomicU32;
 
 use esp_hal::ram;
 

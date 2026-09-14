@@ -8,7 +8,6 @@ extern crate alloc;
 
 mod display;
 
-use alloc::string::String;
 use alloc::vec::Vec;
 use core::sync::atomic::Ordering;
 
@@ -32,10 +31,10 @@ use quire_board::env::DeviceEnv;
 use quire_board::keys::KeyMachine;
 use quire_board::power::{self, UPTIME_MS};
 use quire_board::sdfs::{SdFs, Vm};
-use quire_board::{i2c, pins};
+use quire_board::i2c;
 use quire_gfx::{draw_text, Frame, Ink, TextStyle};
 use quire_library::{ingest_book, scan};
-use quire_ui::{Event, Refresh, SysRequest, Ui};
+use quire_ui::{Env, Event, Refresh, SysRequest, Ui};
 use static_cell::StaticCell;
 
 use crate::display::Display;
@@ -209,7 +208,7 @@ async fn main(_spawner: embassy_executor::Spawner) -> ! {
     let g1: KeyPin1 = adc_cfg.enable_pin_with_cal(peripherals.GPIO1, Attenuation::_11dB);
     let g2: KeyPin2 = adc_cfg.enable_pin_with_cal(peripherals.GPIO2, Attenuation::_11dB);
     let adc = Adc::new(peripherals.ADC1, adc_cfg);
-    let power_key = Input::new(peripherals.GPIO3.reborrow(), InputConfig::default().with_pull(Pull::Up));
+    let power_key = Input::new(peripherals.GPIO3, InputConfig::default().with_pull(Pull::Up));
     let mut keys = Keys { adc, g1, g2, power: power_key, machine: KeyMachine::new() };
 
     // Local time: the clock chip, else the resume block, else a fixed epoch the first-run
@@ -217,7 +216,7 @@ async fn main(_spawner: embassy_executor::Spawner) -> ! {
     let resume = power::load();
     let local_now = clock.or(resume.map(|r| r.clock).filter(|c| *c > 1_600_000_000)).unwrap_or(1_789_000_000);
     let clean = matches!(reset, Some(esp_hal::rtc_cntl::SocResetReason::ChipPowerOn) | Some(esp_hal::rtc_cntl::SocResetReason::CoreDeepSleep))
-        || wake != esp_hal::system::SleepSource::Undefined;
+        || !matches!(wake, esp_hal::system::SleepSource::Undefined);
     let crashes = power::note_boot(clean, local_now);
     let safe_mode = crashes >= power::SAFE_MODE_CRASHES;
     if safe_mode {
@@ -252,7 +251,8 @@ async fn main(_spawner: embassy_executor::Spawner) -> ! {
     };
     let _ = safe_mode;
 
-    let mac = esp_hal::efuse::Efuse::mac_address();
+    let mac = esp_hal::efuse::base_mac_address();
+    let mac = mac.as_bytes();
     let serial = alloc::format!("{:02X}{:02X}{:02X}{:02X}{:02X}{:02X}", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
     let mut env = DeviceEnv::new(fs, local_now, display.name(), serial, BUILD);
     if let Some(b) = battery {
@@ -332,7 +332,9 @@ async fn main(_spawner: embassy_executor::Spawner) -> ! {
                 SysRequest::LockKeys(_) => {}
                 SysRequest::Screenshot => {
                     let name = alloc::format!("/screenshot-{}.pbm", env.now());
-                    let _ = quire_library::cache::write_pbm(&env.fs, &name, &ui.frame().as_bitmap().to_bitmap());
+                    let r = ui.frame().as_bitmap();
+                    let bm = quire_gfx::Bitmap { w: r.w, h: r.h, bits: r.bits.to_vec() };
+                    let _ = quire_library::cache::write_pbm(&env.fs, &name, &bm);
                 }
                 SysRequest::Rescan => scanned = false,
                 SysRequest::IngestNow => ingest_queue = ui.lib.pending(),
@@ -398,7 +400,8 @@ async fn main(_spawner: embassy_executor::Spawner) -> ! {
             let _ = ui.lib.save(&env.fs);
             refresh_after_idle(&mut ui, &mut env, &mut display, Event::Ingest { id, done: 1, total: 1, finished });
         } else if let Some(r) = ui.reader.as_mut() {
-            r.prerender(&env.fs, &ui.settings);
+            // Prefetch the next section near a boundary so the turn needs no card read.
+            r.prefetch_next(&env.fs);
         }
 
         if !worked {

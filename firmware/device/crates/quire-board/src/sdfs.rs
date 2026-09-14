@@ -47,7 +47,7 @@ pub type Card = SdCard<CardSpi, Delay>;
 /// The volume manager: up to 8 open directories and 8 open files.
 pub type Vm = VolumeManager<Card, Clock, 8, 8, 1>;
 
-fn map<E: core::fmt::Debug>(e: embedded_sdmmc::Error<E>) -> FsError {
+fn map<E: core::error::Error>(e: embedded_sdmmc::Error<E>) -> FsError {
     use embedded_sdmmc::Error as E2;
     match e {
         E2::NotFound => FsError::NotFound,

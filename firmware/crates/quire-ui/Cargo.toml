@@ -5,6 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 description = "Quire's screen system: key grammar, screen stack, widgets, the Spine, and every screen of the reader"
+build = "build.rs"
 
 [dependencies]
 quire-fs = { path = "../quire-fs" }
@@ -16,10 +17,13 @@ quire-doc = { path = "../quire-doc" }
 quire-library = { path = "../quire-library" }
 serde = { workspace = true }
 postcard = { workspace = true }
-qrcodegen = { workspace = true }
+qrcodegen-no-heap = { workspace = true }
+miniz_oxide = { workspace = true }
 
 [features]
-default = []
+default = ["builtin-dict"]
+# Compile WordNet (data/en.qdict, ~1.5 MB) into the binary as the first "Define" source.
+builtin-dict = []
 std = ["quire-fs/std", "quire-library/std", "quire-doc/std", "quire-gfx/std"]
 
 [dev-dependencies]

@@ -4,6 +4,7 @@ use alloc::string::String;
 use alloc::vec::Vec;
 use core::sync::atomic::Ordering;
 
+use quire_fs::Fs;
 use quire_ui::net::{NetState, NoNet};
 use quire_ui::{Battery, DeviceInfo, Env, SysRequest, WifiState};
 

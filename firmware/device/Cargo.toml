@@ -38,6 +38,7 @@ static_cell = "2.1"
 heapless = { version = "0.9", default-features = false }
 log = "0.4"
 critical-section = "1.2"
+nb = "1.1"
 
 [profile.release]
 codegen-units = 1

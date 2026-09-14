@@ -77,7 +77,8 @@ fn star(f: &mut Frame, x: i32, y: i32, filled: bool, ink: Ink) {
             xs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(core::cmp::Ordering::Equal));
             let mut i = 0;
             while i + 1 < n {
-                let (a, b) = (xs[i].round() as i32, xs[i + 1].round() as i32);
+                // `f32::round` is not in `core`; add a half and truncate (values are positive).
+                let (a, b) = ((xs[i] + 0.5) as i32, (xs[i + 1] + 0.5) as i32);
                 if b > a {
                     f.fill_rect(Rect::new(x + a, y + row, (b - a) as u32, 1), ink);
                 }
