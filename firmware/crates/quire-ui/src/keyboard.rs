@@ -177,8 +177,12 @@ impl<E: Env> Screen<E> for KeyboardScreen {
         // Phone strip.
         let strip_y = widgets::CONTENT_TOP;
         let url = phone_url(cx);
-        let qr_size = crate::qr::size(&url, 3).unwrap_or(0);
-        crate::qr::draw(f, &url, w - INSET_X - qr_size, strip_y, 3);
+        // Encode once, then draw (N2).
+        let qr = crate::qr::Qr::encode(&url);
+        let qr_size = qr.as_ref().map(|q| q.size_px(3)).unwrap_or(0);
+        if let Some(q) = &qr {
+            q.draw(f, w - INSET_X - qr_size, strip_y, 3);
+        }
         draw_label(f, INSET_X, strip_y + 18, "Type on your phone", false);
         draw_text(f, quire_fonts::ui::mono(), INSET_X, strip_y + 44, &url, TextStyle::INK);
         let field_y = strip_y + qr_size.max(64) + 12;
