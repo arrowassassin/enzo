@@ -103,7 +103,10 @@ fn key_grammar_holds_everywhere() {
     assert!(sim.env.requests.iter().any(|r| matches!(r, quire_ui::SysRequest::Sleep)));
     sim.event(quire_ui::Event::Wake);
     assert_eq!(sim.top(), "20-reading", "waking returns to the page");
-    // Pages advance and the position persists.
+    // Pages advance and the position persists (from a text chapter: the front matter's
+    // image pages carry no characters).
+    sim.index_all();
+    assert!(sim.goto_chapter("Loomings"));
     let before = sim.ui.reader.as_ref().unwrap().loc().chars;
     sim.press(Key::Right);
     sim.press(Key::Right);

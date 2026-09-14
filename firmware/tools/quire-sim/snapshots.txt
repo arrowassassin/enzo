@@ -18,7 +18,7 @@
 25-layout 9e2c0e27202e9e1c
 25-type 2cf094c8b217d7b7
 25-type-bigger 2cf094c8b217d7b7
-26-cursor 9cb4880cd9336dc3
+26-cursor 69819b70e07bc9de
 27-dictionary e73df97d279c02d5
 28-highlights 23108733dc59d493
 30-drop 1af283bd0e4b1eb1
@@ -48,7 +48,7 @@
 50-settings--4-25-layout 9e2c0e27202e9e1c
 50-settings--5-50-settings 665f3fadf3b02e20
 50-settings--6-50-settings 3dd1a1e5637615fc
-50-settings--7-50-keys 217574c1edd1ce6c
+50-settings--7-50-keys 9f71637772ae8190
 50-settings--8-50-settings 3dd1a1e5637615fc
 50-settings--9-50-settings a69461bf51af4238
 60a-overview 60150ae2d67bfcb6
@@ -63,9 +63,9 @@
 71-flashcards 8c7f5afec4821827
 71-flashcards--1-71-flashcards-front b31a013535584c66
 72-news c978f0217e7aceab
-73-clock 22077cf7fdaadbe9
-73-clock--1-73-clock 4dadbae6fc8700d3
-73-clock--2-73-clock 616859f78d22d0e0
+73-clock cd083c38496c812f
+73-clock--1-73-clock d15ec1dc4e0bf2a1
+73-clock--2-73-clock 9bf991b3a64b0fc8
 74-weather 104c1630a0f56803
 75-images 75cc058f591e7595
 76-fiction 9bdcefc96c9ebe41
