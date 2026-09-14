@@ -20,10 +20,18 @@ use crate::inflate::{Framing, Inflater};
 use crate::{limits, DocError, Metadata, Sink, TocEntry};
 
 /// Largest inflated page content we hold at once.
+#[cfg(target_os = "none")]
+const CONTENT_LIMIT: usize = 160 * 1024;
+/// Largest inflated page content we hold at once on the host.
+#[cfg(not(target_os = "none"))]
 const CONTENT_LIMIT: usize = 1024 * 1024;
 /// Operators per page before we stop interpreting (runaway forms).
 const OP_BUDGET: u32 = 400_000;
 /// Positioned items per page.
+#[cfg(target_os = "none")]
+const ITEM_LIMIT: usize = 4000;
+/// Positioned items per page on the host.
+#[cfg(not(target_os = "none"))]
 const ITEM_LIMIT: usize = 20_000;
 /// Fonts kept decoded across pages.
 const FONT_CACHE: usize = 48;
@@ -1962,6 +1970,14 @@ fn decode_image<R: ReadAt>(doc: &mut Document<'_, R>, x: &Obj, fit: Fit) -> Resu
     let (w, h) = (w as u32, h as u32);
     match doc.image_filter(x)?.as_deref() {
         Some("DCTDecode") | Some("DCT") => {
+            let filters = doc.filters_of(x)?;
+            if filters.len() == 1 {
+                // The JPEG is the raw stream: decode straight from the file, row by row.
+                let Obj::Stream { offset, len, .. } = x else { return Err(DocError::Malformed("pdf: not a stream")) };
+                let src = doc.source();
+                let raw_len = (*len).min(src.len().saturating_sub(*offset));
+                return crate::jpeg::decode(&quire_fs::Slice::new(src, *offset, raw_len), fit);
+            }
             let bytes = doc.stream_data(x)?;
             return crate::jpeg::decode(&bytes, fit);
         }

@@ -147,7 +147,10 @@ pub fn ingest<R: ReadAt>(file: &R, name: &str, sink: &mut dyn Sink) -> Result<()
     };
 
     let mut offset = 0usize;
+    // Text of an incomplete last line of the previous chunk.
     let mut carry = String::new();
+    // Bytes of an incomplete UTF-8 sequence at the end of the previous chunk.
+    let mut tail: Vec<u8> = Vec::new();
     let mut buf = alloc::vec![0u8; 32 * 1024];
     let mut first = true;
     loop {
@@ -156,6 +159,15 @@ pub fn ingest<R: ReadAt>(file: &R, name: &str, sink: &mut dyn Sink) -> Result<()
             break;
         }
         offset += n;
+        let joined: Vec<u8>;
+        let raw_all: &[u8] = if tail.is_empty() {
+            &buf[..n]
+        } else {
+            let mut j = core::mem::take(&mut tail);
+            j.extend_from_slice(&buf[..n]);
+            joined = j;
+            &joined
+        };
         let mut chunk = if utf16 {
             // UTF-16 must be decoded from the start; re-read whole for such (rare) files.
             if first {
@@ -166,7 +178,7 @@ pub fn ingest<R: ReadAt>(file: &R, name: &str, sink: &mut dyn Sink) -> Result<()
                 String::new()
             }
         } else {
-            let mut raw = &buf[..n];
+            let mut raw = raw_all;
             if first {
                 raw = raw.strip_prefix(&[0xEF, 0xBB, 0xBF]).unwrap_or(raw);
             }
@@ -176,17 +188,18 @@ pub fn ingest<R: ReadAt>(file: &R, name: &str, sink: &mut dyn Sink) -> Result<()
                 Err(e) => e.valid_up_to(),
             };
             let (good, rest) = raw.split_at(valid_to);
-            let mut s = carry.clone();
-            carry.clear();
+            let mut s = core::mem::take(&mut carry);
             match core::str::from_utf8(good) {
                 Ok(t) => s.push_str(t),
                 Err(_) => s.push_str(&decode_bytes(good)),
             }
-            if !rest.is_empty() && rest.len() < 4 {
-                carry = String::from_utf8_lossy(rest).into_owned(); // never valid; treat as lossy
-                carry.clear();
-                // Store raw bytes for the next round instead.
-                let _ = rest;
+            if !rest.is_empty() {
+                if rest.len() < 4 && offset < len {
+                    // An incomplete multi-byte sequence: finish it with the next chunk.
+                    tail = rest.to_vec();
+                } else {
+                    s.push_str(&decode_bytes(rest));
+                }
             }
             s
         };
@@ -200,15 +213,8 @@ pub fn ingest<R: ReadAt>(file: &R, name: &str, sink: &mut dyn Sink) -> Result<()
             if i == bytes.len() || bytes[i] == b'\n' {
                 let line = &chunk[line_start..i];
                 if i == bytes.len() {
-                    // Incomplete last line of the chunk: carry it.
-                    if !line.is_empty() {
-                        if !para.is_empty() && !wrapped {
-                            para.push('\n');
-                        } else if !para.is_empty() {
-                            para.push(' ');
-                        }
-                        para.push_str(line);
-                    }
+                    // Incomplete last line of the chunk: it continues in the next chunk.
+                    carry = String::from(line);
                     break;
                 }
                 if line.trim().is_empty() {
@@ -228,6 +234,12 @@ pub fn ingest<R: ReadAt>(file: &R, name: &str, sink: &mut dyn Sink) -> Result<()
             i += 1;
         }
         sink.progress(offset as u32, len as u32);
+    }
+    if !carry.trim().is_empty() {
+        if !para.is_empty() {
+            para.push(if wrapped { ' ' } else { '\n' });
+        }
+        para.push_str(&carry);
     }
     flush_para(&mut para, &mut w, sink, &mut chapter, &mut toc, &mut chapter_open, &mut chapter_chars)?;
     if !chapter_open {
@@ -277,6 +289,26 @@ fn first_title(sample: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn chunk_boundaries_do_not_split_words() {
+        // Paragraphs of 71 bytes; the 32 KB read boundary falls inside words and, with
+        // the "é", inside a multi-byte character somewhere in 200 KB.
+        let mut txt = String::new();
+        for i in 0..3000 {
+            txt.push_str(&alloc::format!("Paragraph numéro {i} of the long chapter, with enough words to matter.\n\n"));
+        }
+        let mut sink = crate::memsink::MemSink::default();
+        ingest(&txt.as_bytes(), "long.txt", &mut sink).unwrap();
+        let all = sink.all_text();
+        for i in 0..3000 {
+            assert!(
+                all.contains(&alloc::format!("Paragraph numéro {i} of the long chapter, with enough words to matter.")),
+                "paragraph {i} intact"
+            );
+        }
+        assert!(!all.contains("  "), "no doubled spaces");
+    }
 
     #[test]
     fn encodings() {

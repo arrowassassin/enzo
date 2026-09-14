@@ -1,0 +1,26 @@
+[package]
+name = "quire-library"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Quire's on-card library: book index, ingest cache, positions, page indexes, marks, collections and reading statistics"
+
+[dependencies]
+quire-fs = { path = "../quire-fs" }
+quire-qtx = { path = "../quire-qtx" }
+quire-gfx = { path = "../quire-gfx", default-features = false }
+quire-doc = { path = "../quire-doc" }
+quire-layout = { path = "../quire-layout" }
+serde = { workspace = true }
+postcard = { workspace = true }
+
+[features]
+default = []
+std = ["quire-fs/std", "quire-doc/std"]
+
+[dev-dependencies]
+quire-fs = { path = "../quire-fs", features = ["std"] }
+quire-doc = { path = "../quire-doc", features = ["std"] }
+quire-gfx = { path = "../quire-gfx", features = ["std"] }
+quire-fonts = { path = "../quire-fonts" }

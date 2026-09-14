@@ -14,8 +14,16 @@ mod text;
 pub use text::ingest;
 
 /// Largest inflated stream we hold in memory (content streams, object streams, ToUnicode).
-const STREAM_LIMIT: usize = 2 * 1024 * 1024;
+#[cfg(target_os = "none")]
+pub(crate) const STREAM_LIMIT: usize = 192 * 1024;
+/// Largest inflated stream we hold in memory on the host.
+#[cfg(not(target_os = "none"))]
+pub(crate) const STREAM_LIMIT: usize = 2 * 1024 * 1024;
 /// Largest object we parse.
+#[cfg(target_os = "none")]
+const OBJ_LIMIT: usize = 64 * 1024;
+/// Largest object we parse on the host.
+#[cfg(not(target_os = "none"))]
 const OBJ_LIMIT: usize = 512 * 1024;
 
 /// A PDF object.

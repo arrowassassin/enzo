@@ -450,6 +450,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "quire-library"
+version = "0.1.0"
+dependencies = [
+ "postcard",
+ "quire-doc",
+ "quire-fonts",
+ "quire-fs",
+ "quire-gfx",
+ "quire-layout",
+ "quire-qtx",
+ "serde",
+]
+
+[[package]]
 name = "quire-qtx"
 version = "0.1.0"
 dependencies = [

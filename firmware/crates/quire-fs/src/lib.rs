@@ -199,6 +199,8 @@ pub trait Fs {
     fn open(&self, path: &str) -> FsResult<Self::File>;
     /// Create or truncate for writing.
     fn create(&self, path: &str) -> FsResult<Self::Writer>;
+    /// Open for appending (created when missing).
+    fn append(&self, path: &str) -> FsResult<Self::Writer>;
     /// Whether a path exists.
     fn exists(&self, path: &str) -> bool;
     /// List a directory.
@@ -374,6 +376,14 @@ pub mod host {
                 std::fs::create_dir_all(parent).map_err(map)?;
             }
             Ok(HostWriter(std::io::BufWriter::new(std::fs::File::create(p).map_err(map)?)))
+        }
+        fn append(&self, path: &str) -> FsResult<HostWriter> {
+            let p = self.full(path);
+            if let Some(parent) = p.parent() {
+                std::fs::create_dir_all(parent).map_err(map)?;
+            }
+            let f = std::fs::OpenOptions::new().append(true).create(true).open(p).map_err(map)?;
+            Ok(HostWriter(std::io::BufWriter::new(f)))
         }
         fn exists(&self, path: &str) -> bool {
             self.full(path).exists()

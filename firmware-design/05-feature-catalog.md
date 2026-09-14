@@ -16,7 +16,8 @@ Feasibility notes reference the hardware sheet (02) and the format matrix (04). 
 | Markdown, HTML (single file), FB2 | T1 | Same HTML-strip engine; FB2 is simple XML |
 | CBZ comics and image folders (JPEG/PNG/BMP), fit-to-width, 2-bit dither, panel-by-panel zoom | T1 | Streaming decoders only, see 04 |
 | MOBI / AZW3 (KF7 and KF8, DRM-free) | T2 | On-device via PalmDOC/HUFF-CDIC + HTML strip; converter fallback |
-| PDF, DjVu, DOCX, RTF, CHM, AZW with DRM | via converter | See 04. PDF reflow and DjVu are not realistic on 380 KB RAM |
+| PDF on-device: text PDFs reflowed (columns, headings, hyphenation healed, outlines as TOC), scanned pages and figures as dithered images | T1 | *(proven)* streaming parser with xref streams, object streams, damaged-file reconstruction; bounded to the device memory; encrypted files refused like DRM; JPX/JBIG2/CCITT images and Type3-only text still go through the converter |
+| DjVu, DOCX, RTF, CHM, AZW with DRM | via converter | See 04 |
 | Position memory per book, resume on open, "quick resume" from sleep showing last page | T0 | |
 | Chapter navigation: TOC screen with nesting, prev/next chapter on long-press | T0 | *(proven)* |
 | Go to: percent, page, chapter | T1 | |
