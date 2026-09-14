@@ -348,7 +348,7 @@ pub fn decode_entities(s: &str) -> Cow<'_, str> {
     Cow::Owned(out)
 }
 
-fn named_entity(n: &str) -> Option<char> {
+pub(crate) fn named_entity(n: &str) -> Option<char> {
     Some(match n {
         "amp" => '&',
         "lt" => '<',

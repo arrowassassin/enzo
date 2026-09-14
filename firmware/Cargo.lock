@@ -408,7 +408,6 @@ dependencies = [
  "anyhow",
  "clap",
  "miniz_oxide 0.9.1",
- "quire-ui",
 ]
 
 [[package]]
@@ -518,6 +517,7 @@ dependencies = [
  "miniz_oxide 0.9.1",
  "postcard",
  "qrcodegen-no-heap",
+ "quire-dict",
  "quire-doc",
  "quire-fonts",
  "quire-fs",

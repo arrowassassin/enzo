@@ -11,7 +11,6 @@ quire-fs = { path = "../quire-fs" }
 quire-qtx = { path = "../quire-qtx" }
 quire-gfx = { path = "../quire-gfx", default-features = false }
 miniz_oxide = { workspace = true }
-pulldown-cmark = { workspace = true }
 serde = { workspace = true }
 postcard = { workspace = true }
 
