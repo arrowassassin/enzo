@@ -72,8 +72,12 @@ impl<E: Env> Screen<E> for DropScreen {
             WifiState::Connected { .. } | WifiState::Hotspot { .. } => {
                 let url = drop_url(cx);
                 // The QR pair: the page, and (for the hotspot) the network itself.
-                let qr = crate::qr::size(&url, 5).unwrap_or(0);
-                crate::qr::draw(f, &url, x, y, 5);
+                // Encode once, then draw (N2).
+                let code = crate::qr::Qr::encode(&url);
+                let qr = code.as_ref().map(|q| q.size_px(5)).unwrap_or(0);
+                if let Some(q) = &code {
+                    q.draw(f, x, y, 5);
+                }
                 if let WifiState::Hotspot { ssid, password, .. } = &wifi {
                     let wifi_qr = alloc::format!("WIFI:T:WPA;S:{ssid};P:{password};;");
                     crate::qr::draw(f, &wifi_qr, x + qr + 24, y, 5);

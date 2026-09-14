@@ -394,18 +394,27 @@ pub fn typographic_cover(f: &mut Frame, r: Rect, title: &str, author: &str) {
     f.pattern_rect(r, Pattern::Hatch { pitch: 6 });
     let afont = quire_fonts::ui::label();
     let small = r.w < 140;
-    let pad = if small { 6 } else { 10 };
+    // A small cell keeps its plate close to the hatch edge so a nine-letter word still
+    // fits on one line in the label face.
+    let pad = if small { 4 } else { 10 };
     let plate_w = r.w as i32 - 2 * pad;
     let text_w = plate_w - 2 * pad;
     let mut tfont = if small { afont } else { quire_fonts::ui::body() };
     if title.split_whitespace().any(|w| measure_text(tfont, w, TextStyle::INK) > text_w) {
         tfont = afont;
     }
+    // A word wider than the plate is shortened with an ellipsis rather than broken
+    // mid-word, so the plate never shows a stray syllable on its own line.
+    let title: String = title
+        .split_whitespace()
+        .map(|w| if measure_text(tfont, w, TextStyle::INK) > text_w { ellipsis(tfont, w, text_w) } else { String::from(w) })
+        .collect::<Vec<_>>()
+        .join(" ");
     let lh = line_h(tfont);
     let alh = line_h(afont);
     let top = r.y + (r.h as i32 / 6).min(40).max(pad);
     let room = r.bottom() - pad - top - 2 * pad;
-    let mut lines = wrap(tfont, title, text_w);
+    let mut lines = wrap(tfont, &title, text_w);
     let want_author = !author.is_empty();
     let author_h = if want_author { 6 + alh } else { 0 };
     // Lines that fit with the author; otherwise without it; never fewer than one.

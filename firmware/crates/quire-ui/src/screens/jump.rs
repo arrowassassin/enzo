@@ -326,8 +326,11 @@ pub fn draw_empty_home<E: Env>(cx: &mut Ctx<E>, f: &mut Frame) {
     draw_label(f, x, y + fl.ascent(), "Or drop your own", false);
     y += line_h(fl) + 8;
     let url = super::drop::drop_url(cx);
-    let qr = crate::qr::size(&url, 4).unwrap_or(0);
-    crate::qr::draw(f, &url, x, y, 4);
+    let code = crate::qr::Qr::encode(&url);
+    let qr = code.as_ref().map(|q| q.size_px(4)).unwrap_or(0);
+    if let Some(q) = &code {
+        q.draw(f, x, y, 4);
+    }
     draw_text(f, quire_fonts::ui::list_title(), x + qr + 12, y + 30, &url.replace("http://", ""), TextStyle::INK);
     draw_text(f, fl, x + qr + 12, y + 30 + line_h(fl) + 6, "Scan, then drag books onto the page.", TextStyle::INK);
     rail(f, ["Library", "Close", "Get", "Bookshop"], None);

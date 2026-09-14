@@ -195,7 +195,8 @@ impl<E: Env> Screen<E> for WordCursor {
         // labels are not drawn through it.
         let w = f.width() as i32;
         let h = f.height() as i32;
-        f.fill_rect(Rect::new(w - 40, CONTENT_TOP, 40, (h - RAIL_H - CONTENT_TOP).max(0) as u32), Ink::White);
+        let strip_top = cx.reader.as_ref().map(|r| r.spine_rect().y).unwrap_or(CONTENT_TOP).min(CONTENT_TOP);
+        f.fill_rect(Rect::new(w - 40, strip_top, 40, (h - RAIL_H - strip_top).max(0) as u32), Ink::White);
         if self.sel_end.is_some() {
             crate::widgets::side_labels(f, Some("Less"), Some("More"), true);
             rail(f, ["Less", "Cancel", "Save", "More"], None);

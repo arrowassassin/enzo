@@ -125,8 +125,11 @@ impl<E: Env> Screen<E> for FirstRun {
                 }
                 y += 16;
                 let url = super::drop::drop_url(cx);
-                let qr = crate::qr::size(&url, 4).unwrap_or(0);
-                crate::qr::draw(f, &url, widgets::INSET, y, 4);
+                let code = crate::qr::Qr::encode(&url);
+                let qr = code.as_ref().map(|q| q.size_px(4)).unwrap_or(0);
+                if let Some(q) = &code {
+                    q.draw(f, widgets::INSET, y, 4);
+                }
                 draw_text(f, fb, widgets::INSET + qr + 12, y + 30, &url.replace("http://", ""), TextStyle::INK);
                 draw_text(
                     f,

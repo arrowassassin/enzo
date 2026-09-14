@@ -31,8 +31,8 @@
 25-layout 2362c135a2197e84
 25-type 08f803ad1f21c1fc
 25-type-bigger 9902597b23f99bd3
-26-cursor 6c5949a9ae16a18d
-27-dictionary e70bc8c2866fdf5c
+26-cursor 9f42d1df0e5bbb70
+27-dictionary be5a8832ee75453b
 28-highlights 34898b39ece26043
 29-footnote ea762b7a1474bf86
 2A-endofbook 88061cea8a6e013b
@@ -47,10 +47,10 @@
 32-opds 50c68935bd98942f
 33-calibre 23cff29336c0a828
 34-sync 55a0f8774b538291
-35-bookshop 07b074a3729a3435
+35-bookshop 2c141e842735d431
 35-bookshop--1-37-search 86ee4ad41d559e23
 35-bookshop--2-37-search 86ee4ad41d559e23
-38-browse 2053f2b2eccf6a41
+38-browse ad52af7b3b2087b5
 39-downloads 33186e0ad8e04be6
 40-sleep 95fd3da70ccbc4c2
 40-sleep-blank 1bfb5c2b8d8beac5
@@ -123,7 +123,6 @@
 80-2048 9c4205696851305f
 80-2048--1-80-2048 872fc86c0f6f5fd9
 80-2048--2-80-2048 2a53b98a435fc465
-80-2048--3-80-paused 58d2091b2c2e2ba7
 80-2048-over d2b9bbac8d489c01
 80-chess 601f80c3f7cc1eab
 80-chess--1-80-chess 1c2210ca5630374f
@@ -131,6 +130,7 @@
 80-games ccdde851a9be5058
 80-minesweeper ac8a689b179ef630
 80-minesweeper--1-80-minesweeper 0e242dfe339ccedc
+80-paused 0c7a2949b3448577
 80-sudoku f725e0077f3f1ada
 80-sudoku--1-80-sudoku 0f66987305109748
 80-wordle 7030a63ea2784c99

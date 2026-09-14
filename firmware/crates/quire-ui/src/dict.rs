@@ -1,6 +1,9 @@
-//! StarDict dictionaries on the card (`/dict/<name>.ifo`, `.idx`, `.dict`, uncompressed):
-//! the idx is searched by binary search over the file itself, so a 5 MB index costs a few
-//! sector reads per lookup and no RAM.
+//! Dictionaries. The built-in WordNet lives in [`builtin`]; this module reads StarDict
+//! dictionaries on the card (`/dict/<name>.ifo`, `.idx`, `.dict`, uncompressed): the idx is
+//! searched by binary search over the file itself, so a 5 MB index costs a few sector reads
+//! per lookup and no RAM.
+
+pub mod builtin;
 
 use alloc::string::String;
 use alloc::vec::Vec;
