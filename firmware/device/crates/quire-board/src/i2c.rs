@@ -179,11 +179,7 @@ impl Imu {
     pub fn accel(&self, i2c: &mut Bus) -> Option<[i16; 3]> {
         let mut b = [0u8; 6];
         i2c.write_read(self.addr, &[imu::AX_L], &mut b).ok()?;
-        Some([
-            i16::from_le_bytes([b[0], b[1]]),
-            i16::from_le_bytes([b[2], b[3]]),
-            i16::from_le_bytes([b[4], b[5]]),
-        ])
+        Some([i16::from_le_bytes([b[0], b[1]]), i16::from_le_bytes([b[2], b[3]]), i16::from_le_bytes([b[4], b[5]])])
     }
 }
 

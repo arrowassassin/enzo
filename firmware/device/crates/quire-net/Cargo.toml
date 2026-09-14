@@ -1,0 +1,57 @@
+[package]
+name = "quire-net"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Quire network layer: Wi-Fi manager, embassy-net stack, mDNS, hotspot with DHCP and captive DNS, and the Drop page HTTP server"
+build = "build.rs"
+
+[dependencies]
+quire-fs = { path = "../../../crates/quire-fs" }
+quire-ui = { path = "../../../crates/quire-ui", default-features = false }
+quire-library = { path = "../../../crates/quire-library" }
+quire-gfx = { path = "../../../crates/quire-gfx", default-features = false }
+serde = { workspace = true }
+serde_json = { workspace = true }
+postcard = { workspace = true }
+heapless = { workspace = true }
+log = { workspace = true }
+critical-section = { workspace = true }
+static_cell = { workspace = true }
+embedded-io-async = { workspace = true }
+embassy-sync = { workspace = true }
+edge-mdns = { workspace = true }
+edge-captive = { workspace = true }
+edge-dhcp = { workspace = true }
+
+# Everything that needs the radio, the executor or the network stack.
+esp-hal = { workspace = true, optional = true }
+esp-radio = { workspace = true, optional = true }
+esp-alloc = { workspace = true, optional = true }
+embassy-net = { workspace = true, optional = true }
+embassy-time = { workspace = true, optional = true }
+embassy-futures = { workspace = true, optional = true }
+embassy-executor = { workspace = true, optional = true }
+picoserve = { workspace = true, optional = true }
+
+[build-dependencies]
+flate2 = "1.1.10"
+
+[dev-dependencies]
+critical-section = { version = "1.2", features = ["std"] }
+quire-fs = { path = "../../../crates/quire-fs", features = ["std"] }
+
+[features]
+default = ["hal"]
+# Off for host unit tests of the pure protocol code (`proto`).
+hal = [
+    "dep:esp-hal",
+    "dep:esp-radio",
+    "dep:esp-alloc",
+    "dep:embassy-net",
+    "dep:embassy-time",
+    "dep:embassy-futures",
+    "dep:embassy-executor",
+    "dep:picoserve",
+]

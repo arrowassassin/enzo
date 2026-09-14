@@ -53,13 +53,7 @@ pub struct RawDirectory(pub(crate) Handle);
 
 impl RawDirectory {
     /// Convert a raw directory into a droppable [`Directory`]
-    pub fn to_directory<
-        D,
-        T,
-        const MAX_DIRS: usize,
-        const MAX_FILES: usize,
-        const MAX_VOLUMES: usize,
-    >(
+    pub fn to_directory<D, T, const MAX_DIRS: usize, const MAX_FILES: usize, const MAX_VOLUMES: usize>(
         self,
         volume_mgr: &VolumeManager<D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>,
     ) -> Directory<'_, D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>
@@ -79,14 +73,8 @@ impl RawDirectory {
 /// If you drop a value of this type, it closes the directory automatically, but
 /// any error that may occur will be ignored. To handle potential errors, use
 /// the [`Directory::close`] method.
-pub struct Directory<
-    'a,
-    D,
-    T,
-    const MAX_DIRS: usize,
-    const MAX_FILES: usize,
-    const MAX_VOLUMES: usize,
-> where
+pub struct Directory<'a, D, T, const MAX_DIRS: usize, const MAX_FILES: usize, const MAX_VOLUMES: usize>
+where
     D: crate::BlockDevice,
     T: crate::TimeSource,
 {
@@ -101,14 +89,8 @@ where
     T: crate::TimeSource,
 {
     /// Create a new `Directory` from a `RawDirectory`
-    pub fn new(
-        raw_directory: RawDirectory,
-        volume_mgr: &'a VolumeManager<D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>,
-    ) -> Self {
-        Directory {
-            raw_directory,
-            volume_mgr,
-        }
+    pub fn new(raw_directory: RawDirectory, volume_mgr: &'a VolumeManager<D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>) -> Self {
+        Directory { raw_directory, volume_mgr }
     }
 
     /// Open a directory.
@@ -146,8 +128,7 @@ where
     where
         N: ToShortFileName,
     {
-        self.volume_mgr
-            .find_directory_entry(self.raw_directory, name)
+        self.volume_mgr.find_directory_entry(self.raw_directory, name)
     }
 
     /// Check whether a directory entry exists.
@@ -173,16 +154,11 @@ where
     ///
     /// See [`VolumeManager::iterate_dir_lfn`] for details, except the
     /// directory given is this directory.
-    pub fn iterate_dir_lfn<F>(
-        &self,
-        lfn_buffer: &mut LfnBuffer<'_>,
-        func: F,
-    ) -> Result<(), Error<D::Error>>
+    pub fn iterate_dir_lfn<F>(&self, lfn_buffer: &mut LfnBuffer<'_>, func: F) -> Result<(), Error<D::Error>>
     where
         F: FnMut(&DirEntry, Option<&str>) -> ControlFlow<()>,
     {
-        self.volume_mgr
-            .iterate_dir_lfn(self.raw_directory, lfn_buffer, func)
+        self.volume_mgr.iterate_dir_lfn(self.raw_directory, lfn_buffer, func)
     }
 
     /// Open a file.
@@ -197,9 +173,7 @@ where
     where
         N: super::ToShortFileName,
     {
-        let f = self
-            .volume_mgr
-            .open_file_in_dir(self.raw_directory, name, mode)?;
+        let f = self.volume_mgr.open_file_in_dir(self.raw_directory, name, mode)?;
         Ok(f.to_file(self.volume_mgr))
     }
 
@@ -211,11 +185,8 @@ where
         &self,
         name: &str,
         mode: crate::Mode,
-    ) -> Result<crate::File<'a, D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>, crate::Error<D::Error>>
-    {
-        let f = self
-            .volume_mgr
-            .open_long_name_file_in_dir(self.raw_directory, name, mode)?;
+    ) -> Result<crate::File<'a, D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>, crate::Error<D::Error>> {
+        let f = self.volume_mgr.open_long_name_file_in_dir(self.raw_directory, name, mode)?;
         Ok(f.to_file(self.volume_mgr))
     }
 
@@ -227,8 +198,7 @@ where
     where
         N: ToShortFileName,
     {
-        self.volume_mgr
-            .delete_entry_in_dir(self.raw_directory, name)
+        self.volume_mgr.delete_entry_in_dir(self.raw_directory, name)
     }
 
     /// Create a new empty directory.
@@ -247,9 +217,7 @@ where
     /// See [`VolumeManager::open_long_name_dir_in_dir`] for details, except
     /// the directory given is this directory.
     pub fn open_long_name_dir(&self, name: &str) -> Result<Self, Error<D::Error>> {
-        let d = self
-            .volume_mgr
-            .open_long_name_dir_in_dir(self.raw_directory, name)?;
+        let d = self.volume_mgr.open_long_name_dir_in_dir(self.raw_directory, name)?;
         Ok(d.to_directory(self.volume_mgr))
     }
 
@@ -259,8 +227,7 @@ where
     /// See [`VolumeManager::find_long_name_entry_in_dir`] for details, except
     /// the directory given is this directory.
     pub fn find_long_name_entry(&self, name: &str) -> Result<DirEntry, Error<D::Error>> {
-        self.volume_mgr
-            .find_long_name_entry_in_dir(self.raw_directory, name)
+        self.volume_mgr.find_long_name_entry_in_dir(self.raw_directory, name)
     }
 
     /// Create a new empty directory with a long file name.
@@ -268,8 +235,7 @@ where
     /// See [`VolumeManager::make_long_name_dir_in_dir`] for details, except
     /// the directory given is this directory.
     pub fn make_long_name_dir_in_dir(&self, name: &str) -> Result<(), Error<D::Error>> {
-        self.volume_mgr
-            .make_long_name_dir_in_dir(self.raw_directory, name)
+        self.volume_mgr.make_long_name_dir_in_dir(self.raw_directory, name)
     }
 
     /// Delete a file or empty directory by its long file name.
@@ -277,8 +243,7 @@ where
     /// See [`VolumeManager::delete_long_name_entry_in_dir`] for details,
     /// except the directory given is this directory.
     pub fn delete_long_name_entry_in_dir(&self, name: &str) -> Result<(), Error<D::Error>> {
-        self.volume_mgr
-            .delete_long_name_entry_in_dir(self.raw_directory, name)
+        self.volume_mgr.delete_long_name_entry_in_dir(self.raw_directory, name)
     }
 
     /// Rename an entry in this directory.
@@ -286,8 +251,7 @@ where
     /// See [`VolumeManager::rename_long_name_in_dir`] for details, except the
     /// directory given is this directory.
     pub fn rename_long_name_in_dir(&self, from: &str, to: &str) -> Result<(), Error<D::Error>> {
-        self.volume_mgr
-            .rename_long_name_in_dir(self.raw_directory, from, to)
+        self.volume_mgr.rename_long_name_in_dir(self.raw_directory, from, to)
     }
 
     /// Convert back to a raw directory
@@ -319,8 +283,8 @@ where
     }
 }
 
-impl<'a, D, T, const MAX_DIRS: usize, const MAX_FILES: usize, const MAX_VOLUMES: usize>
-    core::fmt::Debug for Directory<'a, D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>
+impl<'a, D, T, const MAX_DIRS: usize, const MAX_FILES: usize, const MAX_VOLUMES: usize> core::fmt::Debug
+    for Directory<'a, D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>
 where
     D: crate::BlockDevice,
     T: crate::TimeSource,
@@ -331,8 +295,8 @@ where
 }
 
 #[cfg(feature = "defmt-log")]
-impl<'a, D, T, const MAX_DIRS: usize, const MAX_FILES: usize, const MAX_VOLUMES: usize>
-    defmt::Format for Directory<'a, D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>
+impl<'a, D, T, const MAX_DIRS: usize, const MAX_FILES: usize, const MAX_VOLUMES: usize> defmt::Format
+    for Directory<'a, D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>
 where
     D: crate::BlockDevice,
     T: crate::TimeSource,
@@ -387,16 +351,7 @@ impl DirEntry {
         entry_block: BlockIdx,
         entry_offset: u32,
     ) -> Self {
-        Self {
-            name,
-            mtime: ctime,
-            ctime,
-            attributes,
-            cluster,
-            size: 0,
-            entry_block,
-            entry_offset,
-        }
+        Self { name, mtime: ctime, ctime, attributes, cluster, size: 0, entry_block, entry_offset }
     }
 }
 

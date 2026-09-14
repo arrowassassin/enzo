@@ -64,32 +64,15 @@ fn list_dir(directory: Directory<'_>, path: &str) -> Result<(), Error> {
     println!("Listing {}", path);
     let mut children = Vec::new();
     directory.iterate_dir(|entry| {
-        println!(
-            "{:12} {:9} {} {}",
-            entry.name,
-            entry.size,
-            entry.mtime,
-            if entry.attributes.is_directory() {
-                "<DIR>"
-            } else {
-                ""
-            }
-        );
-        if entry.attributes.is_directory()
-            && entry.name != ShortFileName::parent_dir()
-            && entry.name != ShortFileName::this_dir()
-        {
+        println!("{:12} {:9} {} {}", entry.name, entry.size, entry.mtime, if entry.attributes.is_directory() { "<DIR>" } else { "" });
+        if entry.attributes.is_directory() && entry.name != ShortFileName::parent_dir() && entry.name != ShortFileName::this_dir() {
             children.push(entry.name.clone());
         }
         ControlFlow::Continue(())
     })?;
     for child_name in children {
         let child_dir = directory.open_dir(&child_name)?;
-        let child_path = if path == "/" {
-            format!("/{}", child_name)
-        } else {
-            format!("{}/{}", path, child_name)
-        };
+        let child_path = if path == "/" { format!("/{}", child_name) } else { format!("{}/{}", path, child_name) };
         list_dir(child_dir, &child_path)?;
     }
     Ok(())

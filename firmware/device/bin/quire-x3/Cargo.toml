@@ -28,8 +28,9 @@ embedded-hal.workspace = true
 heapless.workspace = true
 nb.workspace = true
 quire-board = { path = "../../crates/quire-board" }
+quire-net = { path = "../../crates/quire-net" }
 quire-epd = { path = "../../crates/quire-epd" }
-quire-ui = { path = "../../../crates/quire-ui" }
+quire-ui = { path = "../../../crates/quire-ui", default-features = false }
 quire-gfx = { path = "../../../crates/quire-gfx", default-features = false }
 quire-fs = { path = "../../../crates/quire-fs" }
 quire-library = { path = "../../../crates/quire-library" }

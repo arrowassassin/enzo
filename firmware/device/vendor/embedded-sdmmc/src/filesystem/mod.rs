@@ -21,9 +21,7 @@ pub use self::directory::{DirEntry, Directory, RawDirectory};
 pub use self::filename::{FilenameError, LfnBuffer, ShortFileName, ToShortFileName};
 pub use self::files::{File, FileError, Mode, RawFile};
 pub use self::handles::{Handle, HandleGenerator};
-pub use self::longname::{
-    LFN_UNITS_PER_ENTRY, LongName, MAX_LFN_ENTRIES, MAX_LFN_UNITS, ShortNameBasis, eq_ignore_case,
-};
+pub use self::longname::{LFN_UNITS_PER_ENTRY, LongName, MAX_LFN_ENTRIES, MAX_LFN_UNITS, ShortNameBasis, eq_ignore_case};
 pub use self::timestamp::{TimeSource, Timestamp};
 
 pub(crate) use self::directory::DirectoryInfo;

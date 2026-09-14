@@ -65,9 +65,7 @@ pub struct RamDisk<T> {
 impl<T> RamDisk<T> {
     #[allow(dead_code)]
     pub fn new(contents: T) -> RamDisk<T> {
-        RamDisk {
-            contents: std::cell::RefCell::new(contents),
-        }
+        RamDisk { contents: std::cell::RefCell::new(contents) }
     }
 
     /// Get the disk contents back, e.g. to hand them to `fsck.fat`.
@@ -93,9 +91,7 @@ where
             if end_offset > contents.len() {
                 return Err(Error::OutOfBounds(block_idx));
             }
-            block
-                .as_mut_slice()
-                .copy_from_slice(&contents[start_offset..end_offset]);
+            block.as_mut_slice().copy_from_slice(&contents[start_offset..end_offset]);
             block_idx.0 += 1;
         }
         Ok(())

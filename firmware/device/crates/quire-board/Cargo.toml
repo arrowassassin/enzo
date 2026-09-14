@@ -9,8 +9,9 @@ description = "Xteink X3 board support: keys, SD card filesystem, I²C periphera
 [dependencies]
 quire-fs = { path = "../../../crates/quire-fs" }
 quire-gfx = { path = "../../../crates/quire-gfx", default-features = false }
-quire-ui = { path = "../../../crates/quire-ui" }
+quire-ui = { path = "../../../crates/quire-ui", default-features = false }
 quire-library = { path = "../../../crates/quire-library" }
+quire-net = { path = "../quire-net", default-features = false }
 log = { workspace = true }
 heapless = { workspace = true }
 embedded-hal = { workspace = true }

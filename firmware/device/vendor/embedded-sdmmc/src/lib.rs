@@ -101,8 +101,8 @@ pub use crate::fat::{FatVolume, VolumeName};
 
 #[doc(inline)]
 pub use crate::filesystem::{
-    Attributes, ClusterId, DirEntry, Directory, File, FilenameError, LfnBuffer, LongName,
-    MAX_FILE_SIZE, Mode, RawDirectory, RawFile, ShortFileName, TimeSource, Timestamp,
+    Attributes, ClusterId, DirEntry, Directory, File, FilenameError, LfnBuffer, LongName, MAX_FILE_SIZE, Mode, RawDirectory, RawFile,
+    ShortFileName, TimeSource, Timestamp,
 };
 
 use filesystem::DirectoryInfo;
@@ -269,13 +269,8 @@ impl<E: core::error::Error + 'static> embedded_io::Error for Error<E> {
             | Error::NotEnoughSpace
             | Error::AllocationError
             | Error::LockError => ErrorKind::Other,
-            Error::NoSuchVolume
-            | Error::FilenameError(_)
-            | Error::BadHandle
-            | Error::InvalidOffset => ErrorKind::InvalidInput,
-            Error::TooManyOpenVolumes | Error::TooManyOpenDirs | Error::TooManyOpenFiles => {
-                ErrorKind::OutOfMemory
-            }
+            Error::NoSuchVolume | Error::FilenameError(_) | Error::BadHandle | Error::InvalidOffset => ErrorKind::InvalidInput,
+            Error::TooManyOpenVolumes | Error::TooManyOpenDirs | Error::TooManyOpenFiles => ErrorKind::OutOfMemory,
             Error::NotFound => ErrorKind::NotFound,
             Error::OpenedDirAsFile
             | Error::OpenedFileAsDir
@@ -306,13 +301,7 @@ pub struct RawVolume(Handle);
 
 impl RawVolume {
     /// Convert a raw volume into a droppable [`Volume`]
-    pub fn to_volume<
-        D,
-        T,
-        const MAX_DIRS: usize,
-        const MAX_FILES: usize,
-        const MAX_VOLUMES: usize,
-    >(
+    pub fn to_volume<D, T, const MAX_DIRS: usize, const MAX_FILES: usize, const MAX_VOLUMES: usize>(
         self,
         volume_mgr: &VolumeManager<D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>,
     ) -> Volume<'_, D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>
@@ -340,11 +329,7 @@ where
 {
     /// Create a new block cache
     pub fn new(block_device: D) -> Self {
-        BlockCache {
-            block_device,
-            block: [Block::new()],
-            block_idx: None,
-        }
+        BlockCache { block_device, block: [Block::new()], block_idx: None }
     }
 
     /// Read a block, and return a reference to it.
@@ -369,20 +354,14 @@ where
 
     /// Write back a block you read with [`Self::read_mut`] and then modified.
     pub fn write_back(&mut self) -> Result<(), D::Error> {
-        self.block_device.write(
-            &self.block,
-            self.block_idx.expect("write_back with no read"),
-        )
+        self.block_device.write(&self.block, self.block_idx.expect("write_back with no read"))
     }
 
     /// Write back a block you read with [`Self::read_mut`] and then modified, but to two locations.
     ///
     /// This is useful for updating two File Allocation Tables.
     pub fn write_back_with_duplicate(&mut self, duplicate: BlockIdx) -> Result<(), D::Error> {
-        self.block_device.write(
-            &self.block,
-            self.block_idx.expect("write_back with no read"),
-        )?;
+        self.block_device.write(&self.block, self.block_idx.expect("write_back with no read"))?;
         self.block_device.write(&self.block, duplicate)?;
         Ok(())
     }
@@ -425,30 +404,21 @@ where
     volume_mgr: &'a VolumeManager<D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>,
 }
 
-impl<'a, D, T, const MAX_DIRS: usize, const MAX_FILES: usize, const MAX_VOLUMES: usize>
-    Volume<'a, D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>
+impl<'a, D, T, const MAX_DIRS: usize, const MAX_FILES: usize, const MAX_VOLUMES: usize> Volume<'a, D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>
 where
     D: crate::BlockDevice,
     T: crate::TimeSource,
 {
     /// Create a new `Volume` from a `RawVolume`
-    pub fn new(
-        raw_volume: RawVolume,
-        volume_mgr: &'a VolumeManager<D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>,
-    ) -> Self {
-        Volume {
-            raw_volume,
-            volume_mgr,
-        }
+    pub fn new(raw_volume: RawVolume, volume_mgr: &'a VolumeManager<D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>) -> Self {
+        Volume { raw_volume, volume_mgr }
     }
 
     /// Open the volume's root directory.
     ///
     /// You can then read the directory entries with `iterate_dir`, or you can
     /// use `open_file_in_dir`.
-    pub fn open_root_dir(
-        &self,
-    ) -> Result<crate::Directory<'a, D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>, Error<D::Error>> {
+    pub fn open_root_dir(&self) -> Result<crate::Directory<'a, D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>, Error<D::Error>> {
         let d = self.volume_mgr.open_root_dir(self.raw_volume)?;
         Ok(d.to_directory(self.volume_mgr))
     }
@@ -482,8 +452,8 @@ where
     }
 }
 
-impl<'a, D, T, const MAX_DIRS: usize, const MAX_FILES: usize, const MAX_VOLUMES: usize>
-    core::fmt::Debug for Volume<'a, D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>
+impl<'a, D, T, const MAX_DIRS: usize, const MAX_FILES: usize, const MAX_VOLUMES: usize> core::fmt::Debug
+    for Volume<'a, D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>
 where
     D: crate::BlockDevice,
     T: crate::TimeSource,
@@ -494,8 +464,8 @@ where
 }
 
 #[cfg(feature = "defmt-log")]
-impl<'a, D, T, const MAX_DIRS: usize, const MAX_FILES: usize, const MAX_VOLUMES: usize>
-    defmt::Format for Volume<'a, D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>
+impl<'a, D, T, const MAX_DIRS: usize, const MAX_FILES: usize, const MAX_VOLUMES: usize> defmt::Format
+    for Volume<'a, D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>
 where
     D: crate::BlockDevice,
     T: crate::TimeSource,

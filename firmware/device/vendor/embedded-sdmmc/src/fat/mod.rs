@@ -111,11 +111,7 @@ mod test {
 
         let results = [
             Expected::Short(DirEntry {
-                name: unsafe {
-                    VolumeName::create_from_str("boot")
-                        .unwrap()
-                        .to_short_filename()
-                },
+                name: unsafe { VolumeName::create_from_str("boot").unwrap().to_short_filename() },
                 mtime: Timestamp::from_calendar(2015, 11, 21, 19, 35, 18).unwrap(),
                 ctime: Timestamp::from_calendar(2015, 11, 21, 19, 35, 18).unwrap(),
                 attributes: Attributes::create_from_fat(Attributes::VOLUME),
@@ -129,8 +125,8 @@ mod test {
                 1,
                 0x47,
                 [
-                    'o' as u16, 'v' as u16, 'e' as u16, 'r' as u16, 'l' as u16, 'a' as u16,
-                    'y' as u16, 's' as u16, 0x0000, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,
+                    'o' as u16, 'v' as u16, 'e' as u16, 'r' as u16, 'l' as u16, 'a' as u16, 'y' as u16, 's' as u16, 0x0000, 0xFFFF, 0xFFFF,
+                    0xFFFF, 0xFFFF,
                 ],
             ),
             Expected::Short(DirEntry {
@@ -148,8 +144,8 @@ mod test {
                 2,
                 0x79,
                 [
-                    '-' as u16, 'p' as u16, 'l' as u16, 'u' as u16, 's' as u16, '.' as u16,
-                    'd' as u16, 't' as u16, 'b' as u16, 0x0000, 0xFFFF, 0xFFFF, 0xFFFF,
+                    '-' as u16, 'p' as u16, 'l' as u16, 'u' as u16, 's' as u16, '.' as u16, 'd' as u16, 't' as u16, 'b' as u16, 0x0000,
+                    0xFFFF, 0xFFFF, 0xFFFF,
                 ],
             ),
             Expected::Lfn(
@@ -157,9 +153,8 @@ mod test {
                 1,
                 0x79,
                 [
-                    'b' as u16, 'c' as u16, 'm' as u16, '2' as u16, '7' as u16, '0' as u16,
-                    '8' as u16, '-' as u16, 'r' as u16, 'p' as u16, 'i' as u16, '-' as u16,
-                    'b' as u16,
+                    'b' as u16, 'c' as u16, 'm' as u16, '2' as u16, '7' as u16, '0' as u16, '8' as u16, '-' as u16, 'r' as u16, 'p' as u16,
+                    'i' as u16, '-' as u16, 'b' as u16,
                 ],
             ),
             Expected::Short(DirEntry {
@@ -177,9 +172,8 @@ mod test {
                 1,
                 0x12,
                 [
-                    'C' as u16, 'O' as u16, 'P' as u16, 'Y' as u16, 'I' as u16, 'N' as u16,
-                    'G' as u16, '.' as u16, 'l' as u16, 'i' as u16, 'n' as u16, 'u' as u16,
-                    'x' as u16,
+                    'C' as u16, 'O' as u16, 'P' as u16, 'Y' as u16, 'I' as u16, 'N' as u16, 'G' as u16, '.' as u16, 'l' as u16, 'i' as u16,
+                    'n' as u16, 'u' as u16, 'x' as u16,
                 ],
             ),
             Expected::Short(DirEntry {
@@ -217,9 +211,8 @@ mod test {
                 1,
                 0x67,
                 [
-                    'L' as u16, 'I' as u16, 'C' as u16, 'E' as u16, 'N' as u16, 'C' as u16,
-                    'E' as u16, '.' as u16, 'b' as u16, 'r' as u16, 'o' as u16, 'a' as u16,
-                    'd' as u16,
+                    'L' as u16, 'I' as u16, 'C' as u16, 'E' as u16, 'N' as u16, 'C' as u16, 'E' as u16, '.' as u16, 'b' as u16, 'r' as u16,
+                    'o' as u16, 'a' as u16, 'd' as u16,
                 ],
             ),
             Expected::Short(DirEntry {
@@ -237,8 +230,8 @@ mod test {
                 2,
                 0x19,
                 [
-                    '-' as u16, 'b' as u16, '.' as u16, 'd' as u16, 't' as u16, 'b' as u16, 0x0000,
-                    0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,
+                    '-' as u16, 'b' as u16, '.' as u16, 'd' as u16, 't' as u16, 'b' as u16, 0x0000, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,
+                    0xFFFF,
                 ],
             ),
             Expected::Lfn(
@@ -246,9 +239,8 @@ mod test {
                 1,
                 0x19,
                 [
-                    'b' as u16, 'c' as u16, 'm' as u16, '2' as u16, '7' as u16, '0' as u16,
-                    '9' as u16, '-' as u16, 'r' as u16, 'p' as u16, 'i' as u16, '-' as u16,
-                    '2' as u16,
+                    'b' as u16, 'c' as u16, 'm' as u16, '2' as u16, '7' as u16, '0' as u16, '9' as u16, '-' as u16, 'r' as u16, 'p' as u16,
+                    'i' as u16, '-' as u16, '2' as u16,
                 ],
             ),
             Expected::Short(DirEntry {
@@ -265,19 +257,15 @@ mod test {
                 true,
                 2,
                 0x59,
-                [
-                    '.' as u16, 'd' as u16, 't' as u16, 'b' as u16, 0x0000, 0xFFFF, 0xFFFF, 0xFFFF,
-                    0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,
-                ],
+                ['.' as u16, 'd' as u16, 't' as u16, 'b' as u16, 0x0000, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF],
             ),
             Expected::Lfn(
                 false,
                 1,
                 0x59,
                 [
-                    'b' as u16, 'c' as u16, 'm' as u16, '2' as u16, '7' as u16, '0' as u16,
-                    '8' as u16, '-' as u16, 'r' as u16, 'p' as u16, 'i' as u16, '-' as u16,
-                    'b' as u16,
+                    'b' as u16, 'c' as u16, 'm' as u16, '2' as u16, '7' as u16, '0' as u16, '8' as u16, '-' as u16, 'r' as u16, 'p' as u16,
+                    'i' as u16, '-' as u16, 'b' as u16,
                 ],
             ),
         ];
@@ -287,8 +275,7 @@ mod test {
             let on_disk_entry = OnDiskDirEntry::new(part);
             match expected {
                 Expected::Lfn(start, index, csum, contents) if on_disk_entry.is_lfn() => {
-                    let (calc_start, calc_index, calc_csum, calc_contents) =
-                        on_disk_entry.lfn_contents().unwrap();
+                    let (calc_start, calc_index, calc_csum, calc_contents) = on_disk_entry.lfn_contents().unwrap();
                     assert_eq!(*start, calc_start);
                     assert_eq!(*index, calc_index);
                     assert_eq!(*contents, calc_contents);
@@ -299,10 +286,7 @@ mod test {
                     assert_eq!(*expected_entry, parsed_entry);
                 }
                 _ => {
-                    panic!(
-                        "Bad dir entry, expected:\n{:#?}\nhad\n{:#?}",
-                        expected, on_disk_entry
-                    );
+                    panic!("Bad dir entry, expected:\n{:#?}\nhad\n{:#?}", expected, on_disk_entry);
                 }
             }
         }

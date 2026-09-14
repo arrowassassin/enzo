@@ -56,11 +56,7 @@ impl Timestamp {
         let seconds = (u16::from(self.seconds / 2)) & 0x1F;
         data[..2].copy_from_slice(&(hours | minutes | seconds).to_le_bytes()[..]);
 
-        let year = if self.year_since_1970 < 10 {
-            0
-        } else {
-            (u16::from(self.year_since_1970 - 10) << 9) & 0xFE00
-        };
+        let year = if self.year_since_1970 < 10 { 0 } else { (u16::from(self.year_since_1970 - 10) << 9) & 0xFE00 };
         let month = (u16::from(self.zero_indexed_month + 1) << 5) & 0x01E0;
         let day = u16::from(self.zero_indexed_day + 1) & 0x001F;
         data[2..].copy_from_slice(&(year | month | day).to_le_bytes()[..]);
@@ -71,14 +67,7 @@ impl Timestamp {
     ///
     /// Values should be given as you'd write then (i.e. 1980, 01, 01, 13, 30,
     /// 05) is 1980-Jan-01, 1:30:05pm.
-    pub fn from_calendar(
-        year: u16,
-        month: u8,
-        day: u8,
-        hours: u8,
-        minutes: u8,
-        seconds: u8,
-    ) -> Result<Timestamp, &'static str> {
+    pub fn from_calendar(year: u16, month: u8, day: u8, hours: u8, minutes: u8, seconds: u8) -> Result<Timestamp, &'static str> {
         Ok(Timestamp {
             year_since_1970: if (1970..=2097).contains(&year) {
                 (year - 1970) as u8

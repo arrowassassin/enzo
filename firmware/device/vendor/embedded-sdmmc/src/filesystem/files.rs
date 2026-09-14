@@ -58,21 +58,14 @@ where
     volume_mgr: &'a VolumeManager<D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>,
 }
 
-impl<'a, D, T, const MAX_DIRS: usize, const MAX_FILES: usize, const MAX_VOLUMES: usize>
-    File<'a, D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>
+impl<'a, D, T, const MAX_DIRS: usize, const MAX_FILES: usize, const MAX_VOLUMES: usize> File<'a, D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>
 where
     D: crate::BlockDevice,
     T: crate::TimeSource,
 {
     /// Create a new `File` from a `RawFile`
-    pub fn new(
-        raw_file: RawFile,
-        volume_mgr: &'a VolumeManager<D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>,
-    ) -> Self {
-        File {
-            raw_file,
-            volume_mgr,
-        }
+    pub fn new(raw_file: RawFile, volume_mgr: &'a VolumeManager<D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>) -> Self {
+        File { raw_file, volume_mgr }
     }
 
     /// Read from the file
@@ -98,9 +91,7 @@ where
     /// See [`VolumeManager::file_eof`] for details, except the file given is this
     /// file.
     pub fn is_eof(&self) -> bool {
-        self.volume_mgr
-            .file_eof(self.raw_file)
-            .expect("Corrupt file ID")
+        self.volume_mgr.file_eof(self.raw_file).expect("Corrupt file ID")
     }
 
     /// Seek a file with an offset from the current position.
@@ -108,8 +99,7 @@ where
     /// See [`VolumeManager::file_seek_from_current`] for details, except the
     /// file given is this file.
     pub fn seek_from_current(&self, offset: i32) -> Result<(), crate::Error<D::Error>> {
-        self.volume_mgr
-            .file_seek_from_current(self.raw_file, offset)
+        self.volume_mgr.file_seek_from_current(self.raw_file, offset)
     }
 
     /// Seek a file with an offset from the start of the file.
@@ -133,9 +123,7 @@ where
     /// See [`VolumeManager::file_length`] for details, except the file given
     /// is this file.
     pub fn length(&self) -> u32 {
-        self.volume_mgr
-            .file_length(self.raw_file)
-            .expect("Corrupt file ID")
+        self.volume_mgr.file_length(self.raw_file).expect("Corrupt file ID")
     }
 
     /// Get the current offset of a file
@@ -143,9 +131,7 @@ where
     /// See [`VolumeManager::file_offset`] for details, except the file given
     /// is this file.
     pub fn offset(&self) -> u32 {
-        self.volume_mgr
-            .file_offset(self.raw_file)
-            .expect("Corrupt file ID")
+        self.volume_mgr.file_offset(self.raw_file).expect("Corrupt file ID")
     }
 
     /// Convert back to a raw file
@@ -185,8 +171,8 @@ where
     }
 }
 
-impl<'a, D, T, const MAX_DIRS: usize, const MAX_FILES: usize, const MAX_VOLUMES: usize>
-    core::fmt::Debug for File<'a, D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>
+impl<'a, D, T, const MAX_DIRS: usize, const MAX_FILES: usize, const MAX_VOLUMES: usize> core::fmt::Debug
+    for File<'a, D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>
 where
     D: crate::BlockDevice,
     T: crate::TimeSource,
@@ -196,41 +182,22 @@ where
     }
 }
 
-impl<
-    D: BlockDevice,
-    T: TimeSource,
-    const MAX_DIRS: usize,
-    const MAX_FILES: usize,
-    const MAX_VOLUMES: usize,
-> ErrorType for File<'_, D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>
+impl<D: BlockDevice, T: TimeSource, const MAX_DIRS: usize, const MAX_FILES: usize, const MAX_VOLUMES: usize> ErrorType
+    for File<'_, D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>
 {
     type Error = crate::Error<D::Error>;
 }
 
-impl<
-    D: BlockDevice,
-    T: TimeSource,
-    const MAX_DIRS: usize,
-    const MAX_FILES: usize,
-    const MAX_VOLUMES: usize,
-> Read for File<'_, D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>
+impl<D: BlockDevice, T: TimeSource, const MAX_DIRS: usize, const MAX_FILES: usize, const MAX_VOLUMES: usize> Read
+    for File<'_, D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>
 {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
-        if buf.is_empty() {
-            Ok(0)
-        } else {
-            File::read(self, buf)
-        }
+        if buf.is_empty() { Ok(0) } else { File::read(self, buf) }
     }
 }
 
-impl<
-    D: BlockDevice,
-    T: TimeSource,
-    const MAX_DIRS: usize,
-    const MAX_FILES: usize,
-    const MAX_VOLUMES: usize,
-> Write for File<'_, D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>
+impl<D: BlockDevice, T: TimeSource, const MAX_DIRS: usize, const MAX_FILES: usize, const MAX_VOLUMES: usize> Write
+    for File<'_, D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>
 {
     fn write(&mut self, buf: &[u8]) -> Result<usize, Self::Error> {
         if buf.is_empty() {
@@ -246,33 +213,22 @@ impl<
     }
 }
 
-impl<
-    D: BlockDevice,
-    T: TimeSource,
-    const MAX_DIRS: usize,
-    const MAX_FILES: usize,
-    const MAX_VOLUMES: usize,
-> Seek for File<'_, D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>
+impl<D: BlockDevice, T: TimeSource, const MAX_DIRS: usize, const MAX_FILES: usize, const MAX_VOLUMES: usize> Seek
+    for File<'_, D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>
 {
     fn seek(&mut self, pos: SeekFrom) -> Result<u64, Self::Error> {
         match pos {
-            SeekFrom::Start(offset) => {
-                self.seek_from_start(offset.try_into().map_err(|_| Error::InvalidOffset)?)?
-            }
-            SeekFrom::End(offset) => {
-                self.seek_from_end((-offset).try_into().map_err(|_| Error::InvalidOffset)?)?
-            }
-            SeekFrom::Current(offset) => {
-                self.seek_from_current(offset.try_into().map_err(|_| Error::InvalidOffset)?)?
-            }
+            SeekFrom::Start(offset) => self.seek_from_start(offset.try_into().map_err(|_| Error::InvalidOffset)?)?,
+            SeekFrom::End(offset) => self.seek_from_end((-offset).try_into().map_err(|_| Error::InvalidOffset)?)?,
+            SeekFrom::Current(offset) => self.seek_from_current(offset.try_into().map_err(|_| Error::InvalidOffset)?)?,
         }
         Ok(self.offset().into())
     }
 }
 
 #[cfg(feature = "defmt-log")]
-impl<'a, D, T, const MAX_DIRS: usize, const MAX_FILES: usize, const MAX_VOLUMES: usize>
-    defmt::Format for File<'a, D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>
+impl<'a, D, T, const MAX_DIRS: usize, const MAX_FILES: usize, const MAX_VOLUMES: usize> defmt::Format
+    for File<'a, D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>
 where
     D: crate::BlockDevice,
     T: crate::TimeSource,

@@ -10,13 +10,11 @@ use byteorder::{ByteOrder, LittleEndian};
 use heapless::Vec;
 
 use crate::{
-    Block, BlockCache, BlockCount, BlockDevice, BlockIdx, Error, PARTITION_ID_FAT16,
-    PARTITION_ID_FAT16_LBA, PARTITION_ID_FAT16_SMALL, PARTITION_ID_FAT32_CHS_LBA,
-    PARTITION_ID_FAT32_LBA, RawVolume, ShortFileName, Volume, VolumeIdx, VolumeInfo, VolumeType,
-    debug, fat,
+    Block, BlockCache, BlockCount, BlockDevice, BlockIdx, Error, PARTITION_ID_FAT16, PARTITION_ID_FAT16_LBA, PARTITION_ID_FAT16_SMALL,
+    PARTITION_ID_FAT32_CHS_LBA, PARTITION_ID_FAT32_LBA, RawVolume, ShortFileName, Volume, VolumeIdx, VolumeInfo, VolumeType, debug, fat,
     filesystem::{
-        Attributes, ClusterId, DirEntry, DirectoryInfo, FileInfo, HandleGenerator, LfnBuffer,
-        LongName, MAX_FILE_SIZE, Mode, RawDirectory, RawFile, TimeSource, ToShortFileName,
+        Attributes, ClusterId, DirEntry, DirectoryInfo, FileInfo, HandleGenerator, LfnBuffer, LongName, MAX_FILE_SIZE, Mode, RawDirectory,
+        RawFile, TimeSource, ToShortFileName,
     },
     trace,
 };
@@ -27,13 +25,8 @@ use crate::{
 /// Tracks which files and directories are open, to prevent you from deleting
 /// a file or directory you currently have open.
 #[derive(Debug)]
-pub struct VolumeManager<
-    D,
-    T,
-    const MAX_DIRS: usize = 4,
-    const MAX_FILES: usize = 4,
-    const MAX_VOLUMES: usize = 1,
-> where
+pub struct VolumeManager<D, T, const MAX_DIRS: usize = 4, const MAX_FILES: usize = 4, const MAX_VOLUMES: usize = 1>
+where
     D: BlockDevice,
     T: TimeSource,
 {
@@ -60,8 +53,7 @@ where
     }
 }
 
-impl<D, T, const MAX_DIRS: usize, const MAX_FILES: usize, const MAX_VOLUMES: usize>
-    VolumeManager<D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>
+impl<D, T, const MAX_DIRS: usize, const MAX_FILES: usize, const MAX_VOLUMES: usize> VolumeManager<D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>
 where
     D: BlockDevice,
     T: TimeSource,
@@ -101,10 +93,7 @@ where
     ///
     /// We do not support GUID Partition Table disks. Nor do we support any
     /// concept of drive letters - that is for a higher layer to handle.
-    pub fn open_volume(
-        &self,
-        volume_idx: VolumeIdx,
-    ) -> Result<Volume<'_, D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>, Error<D::Error>> {
+    pub fn open_volume(&self, volume_idx: VolumeIdx) -> Result<Volume<'_, D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>, Error<D::Error>> {
         let v = self.open_raw_volume(volume_idx)?;
         Ok(v.to_volume(self))
     }
@@ -152,28 +141,17 @@ where
 
         let (part_type, lba_start, num_blocks) = {
             trace!("Reading partition table");
-            let block = data
-                .block_cache
-                .read(BlockIdx(0))
-                .map_err(Error::DeviceError)?;
+            let block = data.block_cache.read(BlockIdx(0)).map_err(Error::DeviceError)?;
             // We only support Master Boot Record (MBR) partitioned cards, not
             // GUID Partition Table (GPT)
             if LittleEndian::read_u16(&block[FOOTER_START..FOOTER_START + 2]) != FOOTER_VALUE {
                 return Err(Error::FormatError("Invalid MBR signature"));
             }
             let partition = match volume_idx {
-                VolumeIdx(0) => {
-                    &block[PARTITION1_START..(PARTITION1_START + PARTITION_INFO_LENGTH)]
-                }
-                VolumeIdx(1) => {
-                    &block[PARTITION2_START..(PARTITION2_START + PARTITION_INFO_LENGTH)]
-                }
-                VolumeIdx(2) => {
-                    &block[PARTITION3_START..(PARTITION3_START + PARTITION_INFO_LENGTH)]
-                }
-                VolumeIdx(3) => {
-                    &block[PARTITION4_START..(PARTITION4_START + PARTITION_INFO_LENGTH)]
-                }
+                VolumeIdx(0) => &block[PARTITION1_START..(PARTITION1_START + PARTITION_INFO_LENGTH)],
+                VolumeIdx(1) => &block[PARTITION2_START..(PARTITION2_START + PARTITION_INFO_LENGTH)],
+                VolumeIdx(2) => &block[PARTITION3_START..(PARTITION3_START + PARTITION_INFO_LENGTH)],
+                VolumeIdx(3) => &block[PARTITION4_START..(PARTITION4_START + PARTITION_INFO_LENGTH)],
                 _ => {
                     return Err(Error::NoSuchVolume);
                 }
@@ -182,17 +160,9 @@ where
             if (partition[PARTITION_INFO_STATUS_INDEX] & 0x7F) != 0x00 {
                 return Err(Error::FormatError("Invalid partition status"));
             }
-            let lba_start = LittleEndian::read_u32(
-                &partition[PARTITION_INFO_LBA_START_INDEX..(PARTITION_INFO_LBA_START_INDEX + 4)],
-            );
-            let num_blocks = LittleEndian::read_u32(
-                &partition[PARTITION_INFO_NUM_BLOCKS_INDEX..(PARTITION_INFO_NUM_BLOCKS_INDEX + 4)],
-            );
-            (
-                partition[PARTITION_INFO_TYPE_INDEX],
-                BlockIdx(lba_start),
-                BlockCount(num_blocks),
-            )
+            let lba_start = LittleEndian::read_u32(&partition[PARTITION_INFO_LBA_START_INDEX..(PARTITION_INFO_LBA_START_INDEX + 4)]);
+            let num_blocks = LittleEndian::read_u32(&partition[PARTITION_INFO_NUM_BLOCKS_INDEX..(PARTITION_INFO_NUM_BLOCKS_INDEX + 4)]);
+            (partition[PARTITION_INFO_TYPE_INDEX], BlockIdx(lba_start), BlockCount(num_blocks))
         };
         match part_type {
             PARTITION_ID_FAT32_CHS_LBA
@@ -202,11 +172,7 @@ where
             | PARTITION_ID_FAT16_SMALL => {
                 let volume = fat::parse_volume(&mut data.block_cache, lba_start, num_blocks)?;
                 let id = RawVolume(data.id_generator.generate());
-                let info = VolumeInfo {
-                    raw_volume: id,
-                    idx: volume_idx,
-                    volume_type: volume,
-                };
+                let info = VolumeInfo { raw_volume: id, idx: volume_idx, volume_type: volume };
                 // We already checked for space
                 data.open_volumes.push(info).unwrap();
                 Ok(id)
@@ -238,15 +204,9 @@ where
         let mut data = self.data.try_borrow_mut().map_err(|_| Error::LockError)?;
 
         let directory_id = RawDirectory(data.id_generator.generate());
-        let dir_info = DirectoryInfo {
-            raw_volume: volume,
-            cluster: ClusterId::ROOT_DIR,
-            raw_directory: directory_id,
-        };
+        let dir_info = DirectoryInfo { raw_volume: volume, cluster: ClusterId::ROOT_DIR, raw_directory: directory_id };
 
-        data.open_dirs
-            .push(dir_info)
-            .map_err(|_| Error::TooManyOpenDirs)?;
+        data.open_dirs.push(dir_info).map_err(|_| Error::TooManyOpenDirs)?;
 
         debug!("Opened root on {:?}, got {:?}", volume, directory_id);
 
@@ -270,11 +230,7 @@ where
     ///
     /// If you want a directory handle that closes itself on drop, see
     /// [`Directory`](crate::Directory).
-    pub fn open_dir<N>(
-        &self,
-        parent_dir: RawDirectory,
-        name: N,
-    ) -> Result<RawDirectory, Error<D::Error>>
+    pub fn open_dir<N>(&self, parent_dir: RawDirectory, name: N) -> Result<RawDirectory, Error<D::Error>>
     where
         N: ToShortFileName,
     {
@@ -301,9 +257,7 @@ where
                 cluster: data.open_dirs[parent_dir_idx].cluster,
             };
 
-            data.open_dirs
-                .push(dir_info)
-                .map_err(|_| Error::TooManyOpenDirs)?;
+            data.open_dirs.push(dir_info).map_err(|_| Error::TooManyOpenDirs)?;
 
             return Ok(directory_id);
         }
@@ -311,11 +265,7 @@ where
         // ok we'll actually look for the directory then
 
         let dir_entry = match &data.open_volumes[volume_idx].volume_type {
-            VolumeType::Fat(fat) => fat.find_directory_entry(
-                &mut data.block_cache,
-                &data.open_dirs[parent_dir_idx],
-                &short_file_name,
-            )?,
+            VolumeType::Fat(fat) => fat.find_directory_entry(&mut data.block_cache, &data.open_dirs[parent_dir_idx], &short_file_name)?,
         };
 
         debug!("Found dir entry: {:?}", dir_entry);
@@ -329,15 +279,10 @@ where
 
         // Remember this open directory.
         let directory_id = RawDirectory(data.id_generator.generate());
-        let dir_info = DirectoryInfo {
-            raw_directory: directory_id,
-            raw_volume: data.open_volumes[volume_idx].raw_volume,
-            cluster: dir_entry.cluster,
-        };
+        let dir_info =
+            DirectoryInfo { raw_directory: directory_id, raw_volume: data.open_volumes[volume_idx].raw_volume, cluster: dir_entry.cluster };
 
-        data.open_dirs
-            .push(dir_info)
-            .map_err(|_| Error::TooManyOpenDirs)?;
+        data.open_dirs.push(dir_info).map_err(|_| Error::TooManyOpenDirs)?;
 
         Ok(directory_id)
     }
@@ -411,11 +356,7 @@ where
     ///
     /// The file length and last update time may be wrong for any currently
     /// open files that have not been flushed.
-    pub fn find_directory_entry<N>(
-        &self,
-        directory: RawDirectory,
-        name: N,
-    ) -> Result<DirEntry, Error<D::Error>>
+    pub fn find_directory_entry<N>(&self, directory: RawDirectory, name: N) -> Result<DirEntry, Error<D::Error>>
     where
         N: ToShortFileName,
     {
@@ -427,11 +368,7 @@ where
         match &data.open_volumes[volume_idx].volume_type {
             VolumeType::Fat(fat) => {
                 let sfn = name.to_short_filename().map_err(Error::FilenameError)?;
-                fat.find_directory_entry(
-                    &mut data.block_cache,
-                    &data.open_dirs[directory_idx],
-                    &sfn,
-                )
+                fat.find_directory_entry(&mut data.block_cache, &data.open_dirs[directory_idx], &sfn)
             }
         }
     }
@@ -452,11 +389,7 @@ where
     ///
     /// The file length and last update time may be wrong for any currently
     /// open files that have not been flushed.
-    pub fn iterate_dir<F>(
-        &self,
-        directory: RawDirectory,
-        mut func: F,
-    ) -> Result<(), Error<D::Error>>
+    pub fn iterate_dir<F>(&self, directory: RawDirectory, mut func: F) -> Result<(), Error<D::Error>>
     where
         F: FnMut(&DirEntry) -> ControlFlow<()>,
     {
@@ -467,18 +400,10 @@ where
         let volume_idx = data.get_volume_by_id(data.open_dirs[directory_idx].raw_volume)?;
         match &data.open_volumes[volume_idx].volume_type {
             VolumeType::Fat(fat) => {
-                fat.iterate_dir(
-                    &mut data.block_cache,
-                    &data.open_dirs[directory_idx],
-                    |de| {
-                        // Hide all the LFN directory entries
-                        if !de.attributes.is_lfn() {
-                            func(de)
-                        } else {
-                            ControlFlow::Continue(())
-                        }
-                    },
-                )
+                fat.iterate_dir(&mut data.block_cache, &data.open_dirs[directory_idx], |de| {
+                    // Hide all the LFN directory entries
+                    if !de.attributes.is_lfn() { func(de) } else { ControlFlow::Continue(()) }
+                })
             }
         }
     }
@@ -503,12 +428,7 @@ where
     ///
     /// The file length and last update time may be wrong for any currently
     /// open files that have not been flushed.
-    pub fn iterate_dir_lfn<F>(
-        &self,
-        directory: RawDirectory,
-        lfn_buffer: &mut LfnBuffer<'_>,
-        func: F,
-    ) -> Result<(), Error<D::Error>>
+    pub fn iterate_dir_lfn<F>(&self, directory: RawDirectory, lfn_buffer: &mut LfnBuffer<'_>, func: F) -> Result<(), Error<D::Error>>
     where
         F: FnMut(&DirEntry, Option<&str>) -> ControlFlow<()>,
     {
@@ -521,12 +441,7 @@ where
         match &data.open_volumes[volume_idx].volume_type {
             VolumeType::Fat(fat) => {
                 // This API doesn't care about the on-disk directory entry, so we discard it
-                fat.iterate_dir_lfn(
-                    &mut data.block_cache,
-                    lfn_buffer,
-                    &data.open_dirs[directory_idx],
-                    func,
-                )
+                fat.iterate_dir_lfn(&mut data.block_cache, lfn_buffer, &data.open_dirs[directory_idx], func)
             }
         }
     }
@@ -544,12 +459,7 @@ where
     ///
     /// If you want a file handle that closes itself on drop, see
     /// [`File`](crate::File).
-    pub fn open_file_in_dir<N>(
-        &self,
-        directory: RawDirectory,
-        name: N,
-        mode: Mode,
-    ) -> Result<RawFile, Error<D::Error>>
+    pub fn open_file_in_dir<N>(&self, directory: RawDirectory, name: N, mode: Mode) -> Result<RawFile, Error<D::Error>>
     where
         N: ToShortFileName,
     {
@@ -568,11 +478,7 @@ where
         let sfn = name.to_short_filename().map_err(Error::FilenameError)?;
 
         let dir_entry = match &volume_info.volume_type {
-            VolumeType::Fat(fat) => fat.find_directory_entry(
-                &mut data.block_cache,
-                &data.open_dirs[directory_idx],
-                &sfn,
-            ),
+            VolumeType::Fat(fat) => fat.find_directory_entry(&mut data.block_cache, &data.open_dirs[directory_idx], &sfn),
         };
 
         let dir_entry = match dir_entry {
@@ -613,13 +519,7 @@ where
                 let att = Attributes::create_from_fat(0);
                 let volume_idx = data.get_volume_by_id(volume_id)?;
                 let entry = match &mut data.open_volumes[volume_idx].volume_type {
-                    VolumeType::Fat(fat) => fat.write_new_directory_entry(
-                        &mut data.block_cache,
-                        &self.time_source,
-                        cluster,
-                        sfn,
-                        att,
-                    )?,
+                    VolumeType::Fat(fat) => fat.write_new_directory_entry(&mut data.block_cache, &self.time_source, cluster, sfn, att)?,
                 };
 
                 let file_id = RawFile(data.id_generator.generate());
@@ -696,10 +596,7 @@ where
                             dirty: false,
                         };
                         match &mut data.open_volumes[volume_idx].volume_type {
-                            VolumeType::Fat(fat) => fat.truncate_cluster_chain(
-                                &mut data.block_cache,
-                                file.entry.cluster,
-                            )?,
+                            VolumeType::Fat(fat) => fat.truncate_cluster_chain(&mut data.block_cache, file.entry.cluster)?,
                         };
                         file.update_length(0);
                         match &data.open_volumes[volume_idx].volume_type {
@@ -745,12 +642,7 @@ where
     ///
     /// If you want a file handle that closes itself on drop, see
     /// [`File`](crate::File).
-    pub fn open_long_name_file_in_dir(
-        &self,
-        directory: RawDirectory,
-        name: &str,
-        mode: Mode,
-    ) -> Result<RawFile, Error<D::Error>> {
+    pub fn open_long_name_file_in_dir(&self, directory: RawDirectory, name: &str, mode: Mode) -> Result<RawFile, Error<D::Error>> {
         let lfn = LongName::new(name).map_err(Error::FilenameError)?;
 
         let mut data = self.data.try_borrow_mut().map_err(|_| Error::LockError)?;
@@ -766,11 +658,7 @@ where
         let volume_idx = data.get_volume_by_id(volume_id)?;
 
         let dir_entry = match &data.open_volumes[volume_idx].volume_type {
-            VolumeType::Fat(fat) => fat.find_entry_by_long_name(
-                &mut data.block_cache,
-                &data.open_dirs[directory_idx],
-                &lfn,
-            ),
+            VolumeType::Fat(fat) => fat.find_entry_by_long_name(&mut data.block_cache, &data.open_dirs[directory_idx], &lfn),
         };
 
         let dir_entry = match dir_entry {
@@ -801,13 +689,7 @@ where
                 let att = Attributes::create_from_fat(0);
                 let now = self.time_source.get_timestamp();
                 let entry = match &mut data.open_volumes[volume_idx].volume_type {
-                    VolumeType::Fat(fat) => fat.create_long_name_entry(
-                        &mut data.block_cache,
-                        &dir_info,
-                        &lfn,
-                        att,
-                        now,
-                    )?,
+                    VolumeType::Fat(fat) => fat.create_long_name_entry(&mut data.block_cache, &dir_info, &lfn, att, now)?,
                 };
 
                 let file_id = RawFile(data.id_generator.generate());
@@ -841,11 +723,7 @@ where
     ///
     /// Any long file name entries belonging to the entry are removed as well,
     /// and the entry's clusters are freed.
-    pub fn delete_entry_in_dir<N>(
-        &self,
-        directory: RawDirectory,
-        name: N,
-    ) -> Result<(), Error<D::Error>>
+    pub fn delete_entry_in_dir<N>(&self, directory: RawDirectory, name: N) -> Result<(), Error<D::Error>>
     where
         N: ToShortFileName,
     {
@@ -857,9 +735,7 @@ where
         let sfn = name.to_short_filename().map_err(Error::FilenameError)?;
 
         let dir_entry = match &data.open_volumes[volume_idx].volume_type {
-            VolumeType::Fat(fat) => {
-                fat.find_directory_entry(&mut data.block_cache, &data.open_dirs[dir_idx], &sfn)?
-            }
+            VolumeType::Fat(fat) => fat.find_directory_entry(&mut data.block_cache, &data.open_dirs[dir_idx], &sfn)?,
         };
         data.delete_entry(dir_idx, volume_idx, &dir_entry)
     }
@@ -868,10 +744,7 @@ where
     ///
     /// Will look in the filesystem metadata for a volume label, and if
     /// nothing is found, will search the root directory for a volume label.
-    pub fn get_root_volume_label(
-        &self,
-        raw_volume: RawVolume,
-    ) -> Result<Option<crate::VolumeName>, Error<D::Error>> {
+    pub fn get_root_volume_label(&self, raw_volume: RawVolume) -> Result<Option<crate::VolumeName>, Error<D::Error>> {
         debug!("Reading volume label for {:?}", raw_volume);
         // prefer the one in the BPB - it's easier to get
         let data = self.data.try_borrow().map_err(|_| Error::LockError)?;
@@ -879,10 +752,7 @@ where
         match &data.open_volumes[volume_idx].volume_type {
             VolumeType::Fat(fat) => {
                 if !fat.name.name().is_empty() {
-                    debug!(
-                        "Got volume label {:?} for {:?} from BPB",
-                        fat.name, raw_volume
-                    );
+                    debug!("Got volume label {:?} for {:?} from BPB", fat.name, raw_volume);
                     return Ok(Some(fat.name.clone()));
                 }
             }
@@ -893,9 +763,7 @@ where
         let root_dir = self.open_root_dir(raw_volume)?.to_directory(self);
         let mut maybe_volume_name = None;
         root_dir.iterate_dir(|de| {
-            if maybe_volume_name.is_none()
-                && de.attributes == Attributes::create_from_fat(Attributes::VOLUME)
-            {
+            if maybe_volume_name.is_none() && de.attributes == Attributes::create_from_fat(Attributes::VOLUME) {
                 maybe_volume_name = Some(unsafe { de.name.to_volume_label() });
                 ControlFlow::Break(())
             } else {
@@ -903,10 +771,7 @@ where
             }
         })?;
 
-        debug!(
-            "Got volume label {:?} for {:?} from root",
-            maybe_volume_name, raw_volume
-        );
+        debug!("Got volume label {:?} for {:?} from root", maybe_volume_name, raw_volume);
 
         Ok(maybe_volume_name)
     }
@@ -941,21 +806,13 @@ where
             )?;
             data.open_files[file_idx].current_cluster = current_cluster;
             trace!("Reading file ID {:?}", file);
-            let block = data
-                .block_cache
-                .read(block_idx)
-                .map_err(Error::DeviceError)?;
-            let to_copy = block_avail
-                .min(space)
-                .min(data.open_files[file_idx].left() as usize);
+            let block = data.block_cache.read(block_idx).map_err(Error::DeviceError)?;
+            let to_copy = block_avail.min(space).min(data.open_files[file_idx].left() as usize);
             assert!(to_copy != 0);
-            buffer[read..read + to_copy]
-                .copy_from_slice(&block[block_offset..block_offset + to_copy]);
+            buffer[read..read + to_copy].copy_from_slice(&block[block_offset..block_offset + to_copy]);
             read += to_copy;
             space -= to_copy;
-            data.open_files[file_idx]
-                .seek_from_current(to_copy as i32)
-                .unwrap();
+            data.open_files[file_idx].seek_from_current(to_copy as i32).unwrap();
         }
         Ok(read)
     }
@@ -991,16 +848,10 @@ where
 
         if data.open_files[file_idx].entry.cluster.0 < fat::RESERVED_ENTRIES {
             // file doesn't have a valid allocated cluster (possible zero-length file), allocate one
-            data.open_files[file_idx].entry.cluster =
-                match data.open_volumes[volume_idx].volume_type {
-                    VolumeType::Fat(ref mut fat) => {
-                        fat.alloc_cluster(&mut data.block_cache, None, false)?
-                    }
-                };
-            debug!(
-                "Alloc first cluster {:?}",
-                data.open_files[file_idx].entry.cluster
-            );
+            data.open_files[file_idx].entry.cluster = match data.open_volumes[volume_idx].volume_type {
+                VolumeType::Fat(ref mut fat) => fat.alloc_cluster(&mut data.block_cache, None, false)?,
+            };
+            debug!("Alloc first cluster {:?}", data.open_files[file_idx].entry.cluster);
         }
 
         // Clone this so we can touch our other structures.
@@ -1008,65 +859,46 @@ where
 
         if (data.open_files[file_idx].current_cluster.1) < data.open_files[file_idx].entry.cluster {
             debug!("Rewinding to start");
-            data.open_files[file_idx].current_cluster =
-                (0, data.open_files[file_idx].entry.cluster);
+            data.open_files[file_idx].current_cluster = (0, data.open_files[file_idx].entry.cluster);
         }
         let bytes_until_max =
-            usize::try_from(MAX_FILE_SIZE - data.open_files[file_idx].current_offset)
-                .map_err(|_| Error::ConversionError)?;
+            usize::try_from(MAX_FILE_SIZE - data.open_files[file_idx].current_offset).map_err(|_| Error::ConversionError)?;
         let bytes_to_write = core::cmp::min(buffer.len(), bytes_until_max);
         let mut written = 0;
 
         while written < bytes_to_write {
             let mut current_cluster = data.open_files[file_idx].current_cluster;
-            debug!(
-                "Have written bytes {}/{}, finding cluster {:?}",
-                written, bytes_to_write, current_cluster
-            );
+            debug!("Have written bytes {}/{}, finding cluster {:?}", written, bytes_to_write, current_cluster);
             let current_offset = data.open_files[file_idx].current_offset;
-            let (block_idx, block_offset, block_avail) = match data.find_data_on_disk(
-                volume_idx,
-                &mut current_cluster,
-                data.open_files[file_idx].entry.cluster,
-                current_offset,
-            ) {
-                Ok(vars) => {
-                    debug!(
-                        "Found block_idx={:?}, block_offset={:?}, block_avail={}",
-                        vars.0, vars.1, vars.2
-                    );
-                    vars
-                }
-                Err(Error::EndOfFile) => {
-                    debug!("Extending file");
-                    match data.open_volumes[volume_idx].volume_type {
-                        VolumeType::Fat(ref mut fat) => {
-                            if fat
-                                .alloc_cluster(
-                                    &mut data.block_cache,
-                                    Some(current_cluster.1),
-                                    false,
-                                )
-                                .is_err()
-                            {
-                                return Err(Error::DiskFull);
+            let (block_idx, block_offset, block_avail) =
+                match data.find_data_on_disk(volume_idx, &mut current_cluster, data.open_files[file_idx].entry.cluster, current_offset) {
+                    Ok(vars) => {
+                        debug!("Found block_idx={:?}, block_offset={:?}, block_avail={}", vars.0, vars.1, vars.2);
+                        vars
+                    }
+                    Err(Error::EndOfFile) => {
+                        debug!("Extending file");
+                        match data.open_volumes[volume_idx].volume_type {
+                            VolumeType::Fat(ref mut fat) => {
+                                if fat.alloc_cluster(&mut data.block_cache, Some(current_cluster.1), false).is_err() {
+                                    return Err(Error::DiskFull);
+                                }
+                                debug!("Allocated new FAT cluster, finding offsets...");
+                                let new_offset = data
+                                    .find_data_on_disk(
+                                        volume_idx,
+                                        &mut current_cluster,
+                                        data.open_files[file_idx].entry.cluster,
+                                        data.open_files[file_idx].current_offset,
+                                    )
+                                    .map_err(|_| Error::AllocationError)?;
+                                debug!("New offset {:?}", new_offset);
+                                new_offset
                             }
-                            debug!("Allocated new FAT cluster, finding offsets...");
-                            let new_offset = data
-                                .find_data_on_disk(
-                                    volume_idx,
-                                    &mut current_cluster,
-                                    data.open_files[file_idx].entry.cluster,
-                                    data.open_files[file_idx].current_offset,
-                                )
-                                .map_err(|_| Error::AllocationError)?;
-                            debug!("New offset {:?}", new_offset);
-                            new_offset
                         }
                     }
-                }
-                Err(e) => return Err(e),
-            };
+                    Err(e) => return Err(e),
+                };
             let to_copy = core::cmp::min(block_avail, bytes_to_write - written);
             let block = if (block_offset == 0) && (to_copy == block_avail) {
                 // we're replacing the whole Block, so the previous contents
@@ -1074,12 +906,9 @@ where
                 data.block_cache.blank_mut(block_idx)
             } else {
                 debug!("Reading for partial block write");
-                data.block_cache
-                    .read_mut(block_idx)
-                    .map_err(Error::DeviceError)?
+                data.block_cache.read_mut(block_idx).map_err(Error::DeviceError)?
             };
-            block[block_offset..block_offset + to_copy]
-                .copy_from_slice(&buffer[written..written + to_copy]);
+            block[block_offset..block_offset + to_copy].copy_from_slice(&buffer[written..written + to_copy]);
             debug!("Writing block {:?}", block_idx);
             data.block_cache.write_back()?;
             written += to_copy;
@@ -1091,9 +920,7 @@ where
                 // We made it longer
                 data.open_files[file_idx].update_length(new_offset);
             }
-            data.open_files[file_idx]
-                .seek_from_start(new_offset)
-                .unwrap();
+            data.open_files[file_idx].seek_from_start(new_offset).unwrap();
             // Entry update deferred to file close, for performance.
         }
         data.open_files[file_idx].entry.attributes.set_archive(true);
@@ -1135,10 +962,7 @@ where
                         // If you have a length, you must have a cluster
                         assert!(data.open_files[file_id].entry.cluster.0 != 0);
                     }
-                    fat.write_entry_to_disk(
-                        &mut data.block_cache,
-                        &data.open_files[file_id].entry,
-                    )?;
+                    fat.write_entry_to_disk(&mut data.block_cache, &data.open_files[file_id].entry)?;
                 }
             };
         }
@@ -1177,9 +1001,7 @@ where
     pub fn file_seek_from_start(&self, file: RawFile, offset: u32) -> Result<(), Error<D::Error>> {
         let mut data = self.data.try_borrow_mut().map_err(|_| Error::LockError)?;
         let file_idx = data.get_file_by_id(file)?;
-        data.open_files[file_idx]
-            .seek_from_start(offset)
-            .map_err(|_| Error::InvalidOffset)?;
+        data.open_files[file_idx].seek_from_start(offset).map_err(|_| Error::InvalidOffset)?;
         Ok(())
     }
 
@@ -1190,16 +1012,10 @@ where
     /// Note that the offset is only a `i32`, therefore we can only handle
     /// seeks that are up to 2 GiB before or after the current position. If
     /// this is a problem, seek in multiple steps.
-    pub fn file_seek_from_current(
-        &self,
-        file: RawFile,
-        offset: i32,
-    ) -> Result<(), Error<D::Error>> {
+    pub fn file_seek_from_current(&self, file: RawFile, offset: i32) -> Result<(), Error<D::Error>> {
         let mut data = self.data.try_borrow_mut().map_err(|_| Error::LockError)?;
         let file_idx = data.get_file_by_id(file)?;
-        data.open_files[file_idx]
-            .seek_from_current(offset)
-            .map_err(|_| Error::InvalidOffset)?;
+        data.open_files[file_idx].seek_from_current(offset).map_err(|_| Error::InvalidOffset)?;
         Ok(())
     }
 
@@ -1213,9 +1029,7 @@ where
     pub fn file_seek_from_end(&self, file: RawFile, offset: u32) -> Result<(), Error<D::Error>> {
         let mut data = self.data.try_borrow_mut().map_err(|_| Error::LockError)?;
         let file_idx = data.get_file_by_id(file)?;
-        data.open_files[file_idx]
-            .seek_from_end(offset)
-            .map_err(|_| Error::InvalidOffset)?;
+        data.open_files[file_idx].seek_from_end(offset).map_err(|_| Error::InvalidOffset)?;
         Ok(())
     }
 
@@ -1243,11 +1057,7 @@ where
     ///
     /// The directory will be empty (apart from any mandatory entries, such as
     /// the the `.` and `..` entries on FAT filesystems).
-    pub fn make_dir_in_dir<N>(
-        &self,
-        directory: RawDirectory,
-        name: N,
-    ) -> Result<(), Error<D::Error>>
+    pub fn make_dir_in_dir<N>(&self, directory: RawDirectory, name: N) -> Result<(), Error<D::Error>>
     where
         N: ToShortFileName,
     {
@@ -1267,16 +1077,11 @@ where
         let sfn = name.to_short_filename().map_err(Error::FilenameError)?;
 
         debug!("Creating directory '{}'", sfn);
-        debug!(
-            "Parent dir is in cluster {:?}",
-            parent_directory_info.cluster
-        );
+        debug!("Parent dir is in cluster {:?}", parent_directory_info.cluster);
 
         // Does an entry exist with this name?
         let maybe_dir_entry = match &volume_info.volume_type {
-            VolumeType::Fat(fat) => {
-                fat.find_directory_entry(&mut data.block_cache, parent_directory_info, &sfn)
-            }
+            VolumeType::Fat(fat) => fat.find_directory_entry(&mut data.block_cache, parent_directory_info, &sfn),
         };
 
         match maybe_dir_entry {
@@ -1301,13 +1106,7 @@ where
         match &mut data.open_volumes[volume_idx].volume_type {
             VolumeType::Fat(fat) => {
                 debug!("Making dir entry");
-                fat.make_dir(
-                    &mut data.block_cache,
-                    &self.time_source,
-                    parent_directory_info.cluster,
-                    sfn,
-                    att,
-                )?;
+                fat.make_dir(&mut data.block_cache, &self.time_source, parent_directory_info.cluster, sfn, att)?;
             }
         };
 
@@ -1321,8 +1120,7 @@ where
 //
 // ****************************************************************************
 
-impl<D, T, const MAX_DIRS: usize, const MAX_FILES: usize, const MAX_VOLUMES: usize>
-    VolumeManager<D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>
+impl<D, T, const MAX_DIRS: usize, const MAX_FILES: usize, const MAX_VOLUMES: usize> VolumeManager<D, T, MAX_DIRS, MAX_FILES, MAX_VOLUMES>
 where
     D: BlockDevice,
     T: TimeSource,
@@ -1341,11 +1139,7 @@ where
     ///
     /// The file length and last update time may be wrong for any currently
     /// open files that have not been flushed.
-    pub fn find_long_name_entry_in_dir(
-        &self,
-        directory: RawDirectory,
-        name: &str,
-    ) -> Result<DirEntry, Error<D::Error>> {
+    pub fn find_long_name_entry_in_dir(&self, directory: RawDirectory, name: &str) -> Result<DirEntry, Error<D::Error>> {
         let lfn = LongName::new(name).map_err(Error::FilenameError)?;
         let mut data = self.data.try_borrow_mut().map_err(|_| Error::LockError)?;
         let data = data.deref_mut();
@@ -1353,11 +1147,7 @@ where
         let directory_idx = data.get_dir_by_id(directory)?;
         let volume_idx = data.get_volume_by_id(data.open_dirs[directory_idx].raw_volume)?;
         match &data.open_volumes[volume_idx].volume_type {
-            VolumeType::Fat(fat) => fat.find_entry_by_long_name(
-                &mut data.block_cache,
-                &data.open_dirs[directory_idx],
-                &lfn,
-            ),
+            VolumeType::Fat(fat) => fat.find_entry_by_long_name(&mut data.block_cache, &data.open_dirs[directory_idx], &lfn),
         }
     }
 
@@ -1375,11 +1165,7 @@ where
     /// resources.
     ///
     /// </div>
-    pub fn open_long_name_dir_in_dir(
-        &self,
-        parent_dir: RawDirectory,
-        name: &str,
-    ) -> Result<RawDirectory, Error<D::Error>> {
+    pub fn open_long_name_dir_in_dir(&self, parent_dir: RawDirectory, name: &str) -> Result<RawDirectory, Error<D::Error>> {
         if name.is_empty() || name == "." || name == ".." {
             return self.open_dir(parent_dir, name);
         }
@@ -1396,11 +1182,7 @@ where
         let volume_idx = data.get_volume_by_id(data.open_dirs[parent_dir_idx].raw_volume)?;
 
         let dir_entry = match &data.open_volumes[volume_idx].volume_type {
-            VolumeType::Fat(fat) => fat.find_entry_by_long_name(
-                &mut data.block_cache,
-                &data.open_dirs[parent_dir_idx],
-                &lfn,
-            )?,
+            VolumeType::Fat(fat) => fat.find_entry_by_long_name(&mut data.block_cache, &data.open_dirs[parent_dir_idx], &lfn)?,
         };
 
         debug!("Found dir entry: {:?}", dir_entry);
@@ -1410,15 +1192,10 @@ where
         }
 
         let directory_id = RawDirectory(data.id_generator.generate());
-        let dir_info = DirectoryInfo {
-            raw_directory: directory_id,
-            raw_volume: data.open_volumes[volume_idx].raw_volume,
-            cluster: dir_entry.cluster,
-        };
+        let dir_info =
+            DirectoryInfo { raw_directory: directory_id, raw_volume: data.open_volumes[volume_idx].raw_volume, cluster: dir_entry.cluster };
 
-        data.open_dirs
-            .push(dir_info)
-            .map_err(|_| Error::TooManyOpenDirs)?;
+        data.open_dirs.push(dir_info).map_err(|_| Error::TooManyOpenDirs)?;
 
         Ok(directory_id)
     }
@@ -1427,11 +1204,7 @@ where
     ///
     /// The directory gets a unique 8.3 short name (with a numeric tail if
     /// needed), the long name entries and the mandatory `.` and `..` entries.
-    pub fn make_long_name_dir_in_dir(
-        &self,
-        directory: RawDirectory,
-        name: &str,
-    ) -> Result<(), Error<D::Error>> {
+    pub fn make_long_name_dir_in_dir(&self, directory: RawDirectory, name: &str) -> Result<(), Error<D::Error>> {
         let lfn = LongName::new(name).map_err(Error::FilenameError)?;
 
         let mut data = self.data.try_borrow_mut().map_err(|_| Error::LockError)?;
@@ -1444,9 +1217,7 @@ where
         debug!("Creating directory '{}'", lfn.as_str());
 
         let existing = match &data.open_volumes[volume_idx].volume_type {
-            VolumeType::Fat(fat) => {
-                fat.find_entry_by_long_name(&mut data.block_cache, &parent_info, &lfn)
-            }
+            VolumeType::Fat(fat) => fat.find_entry_by_long_name(&mut data.block_cache, &parent_info, &lfn),
         };
         match existing {
             Ok(entry) if entry.attributes.is_directory() => return Err(Error::DirAlreadyExists),
@@ -1459,8 +1230,7 @@ where
         let now = self.time_source.get_timestamp();
         match &mut data.open_volumes[volume_idx].volume_type {
             VolumeType::Fat(fat) => {
-                let mut entry =
-                    fat.create_long_name_entry(&mut data.block_cache, &parent_info, &lfn, att, now)?;
+                let mut entry = fat.create_long_name_entry(&mut data.block_cache, &parent_info, &lfn, att, now)?;
                 fat.init_new_directory(&mut data.block_cache, &mut entry, parent_info.cluster, now)?;
             }
         }
@@ -1474,11 +1244,7 @@ where
     /// unused, and the file's (or directory's) clusters are returned to the
     /// free pool. Deleting a directory which still has entries in it fails
     /// with [`Error::DeleteNonEmptyDir`].
-    pub fn delete_long_name_entry_in_dir(
-        &self,
-        directory: RawDirectory,
-        name: &str,
-    ) -> Result<(), Error<D::Error>> {
+    pub fn delete_long_name_entry_in_dir(&self, directory: RawDirectory, name: &str) -> Result<(), Error<D::Error>> {
         let lfn = LongName::new(name).map_err(Error::FilenameError)?;
 
         let mut data = self.data.try_borrow_mut().map_err(|_| Error::LockError)?;
@@ -1487,9 +1253,7 @@ where
         let dir_idx = data.get_dir_by_id(directory)?;
         let volume_idx = data.get_volume_by_id(data.open_dirs[dir_idx].raw_volume)?;
         let dir_entry = match &data.open_volumes[volume_idx].volume_type {
-            VolumeType::Fat(fat) => {
-                fat.find_entry_by_long_name(&mut data.block_cache, &data.open_dirs[dir_idx], &lfn)?
-            }
+            VolumeType::Fat(fat) => fat.find_entry_by_long_name(&mut data.block_cache, &data.open_dirs[dir_idx], &lfn)?,
         };
         data.delete_entry(dir_idx, volume_idx, &dir_entry)
     }
@@ -1501,12 +1265,7 @@ where
     /// are rewritten (with a freshly chosen unique short name for `to`).
     /// Changing only the case of a name is allowed. The entry must not be
     /// open.
-    pub fn rename_long_name_in_dir(
-        &self,
-        directory: RawDirectory,
-        from: &str,
-        to: &str,
-    ) -> Result<(), Error<D::Error>> {
+    pub fn rename_long_name_in_dir(&self, directory: RawDirectory, from: &str, to: &str) -> Result<(), Error<D::Error>> {
         let from = LongName::new(from).map_err(Error::FilenameError)?;
         let to = LongName::new(to).map_err(Error::FilenameError)?;
 
@@ -1525,13 +1284,7 @@ where
     /// this is a plain rename. Moving a directory into itself or one of its
     /// descendants fails with [`Error::Unsupported`], as does moving between
     /// volumes. The entry must not be an open file.
-    pub fn move_long_name(
-        &self,
-        dir_from: RawDirectory,
-        from: &str,
-        dir_to: RawDirectory,
-        to: &str,
-    ) -> Result<(), Error<D::Error>> {
+    pub fn move_long_name(&self, dir_from: RawDirectory, from: &str, dir_to: RawDirectory, to: &str) -> Result<(), Error<D::Error>> {
         let from = LongName::new(from).map_err(Error::FilenameError)?;
         let to = LongName::new(to).map_err(Error::FilenameError)?;
 
@@ -1592,9 +1345,7 @@ where
             }
             Mode::ReadWriteTruncate => {
                 match &mut data.open_volumes[volume_idx].volume_type {
-                    VolumeType::Fat(fat) => {
-                        fat.truncate_cluster_chain(&mut data.block_cache, file.entry.cluster)?
-                    }
+                    VolumeType::Fat(fat) => fat.truncate_cluster_chain(&mut data.block_cache, file.entry.cluster)?,
                 };
                 file.update_length(0);
                 match &data.open_volumes[volume_idx].volume_type {
@@ -1616,8 +1367,7 @@ where
     }
 }
 
-impl<D, const MAX_DIRS: usize, const MAX_FILES: usize, const MAX_VOLUMES: usize>
-    VolumeManagerData<D, MAX_DIRS, MAX_FILES, MAX_VOLUMES>
+impl<D, const MAX_DIRS: usize, const MAX_FILES: usize, const MAX_VOLUMES: usize> VolumeManagerData<D, MAX_DIRS, MAX_FILES, MAX_VOLUMES>
 where
     D: BlockDevice,
     <D as BlockDevice>::Error: core::error::Error,
@@ -1627,33 +1377,19 @@ where
     ///
     /// Refuses to delete open files, open directories and non-empty
     /// directories.
-    fn delete_entry(
-        &mut self,
-        dir_idx: usize,
-        volume_idx: usize,
-        dir_entry: &DirEntry,
-    ) -> Result<(), Error<D::Error>> {
-        if dir_entry.name == ShortFileName::this_dir()
-            || dir_entry.name == ShortFileName::parent_dir()
-        {
+    fn delete_entry(&mut self, dir_idx: usize, volume_idx: usize, dir_entry: &DirEntry) -> Result<(), Error<D::Error>> {
+        if dir_entry.name == ShortFileName::this_dir() || dir_entry.name == ShortFileName::parent_dir() {
             return Err(Error::FilenameError(crate::FilenameError::InvalidCharacter));
         }
         let raw_volume = self.open_dirs[dir_idx].raw_volume;
         if dir_entry.attributes.is_directory() {
-            if self
-                .open_dirs
-                .iter()
-                .any(|dir_info| dir_info.cluster == dir_entry.cluster)
-            {
+            if self.open_dirs.iter().any(|dir_info| dir_info.cluster == dir_entry.cluster) {
                 // Subdirectory is already open.
                 return Err(Error::DirAlreadyOpen);
             }
             // Can only delete directories that are already empty.
-            let sub_dir_info = DirectoryInfo {
-                raw_directory: RawDirectory(self.id_generator.generate()),
-                raw_volume,
-                cluster: dir_entry.cluster,
-            };
+            let sub_dir_info =
+                DirectoryInfo { raw_directory: RawDirectory(self.id_generator.generate()), raw_volume, cluster: dir_entry.cluster };
             let empty = match &self.open_volumes[volume_idx].volume_type {
                 VolumeType::Fat(fat) => fat.dir_is_empty(&mut self.block_cache, &sub_dir_info)?,
             };
@@ -1697,9 +1433,7 @@ where
         let same_dir = from_info.cluster == to_info.cluster;
 
         let entry = match &self.open_volumes[volume_idx].volume_type {
-            VolumeType::Fat(fat) => {
-                fat.find_entry_by_long_name(&mut self.block_cache, &from_info, from)?
-            }
+            VolumeType::Fat(fat) => fat.find_entry_by_long_name(&mut self.block_cache, &from_info, from)?,
         };
         if entry.name == ShortFileName::this_dir() || entry.name == ShortFileName::parent_dir() {
             return Err(Error::FilenameError(crate::FilenameError::InvalidCharacter));
@@ -1714,11 +1448,7 @@ where
             VolumeType::Fat(fat) => fat.find_entry_by_long_name(&mut self.block_cache, &to_info, to),
         };
         match existing {
-            Ok(other)
-                if same_dir
-                    && other.entry_block == entry.entry_block
-                    && other.entry_offset == entry.entry_offset =>
-            {
+            Ok(other) if same_dir && other.entry_block == entry.entry_block && other.entry_offset == entry.entry_offset => {
                 // Only the case is changing
             }
             Ok(other) if other.attributes.is_directory() => return Err(Error::DirAlreadyExists),
@@ -1743,21 +1473,13 @@ where
             }
         }
 
-        let skip = if same_dir {
-            Some((entry.entry_block, entry.entry_offset))
-        } else {
-            None
-        };
+        let skip = if same_dir { Some((entry.entry_block, entry.entry_offset)) } else { None };
         debug!("Moving {:?} ({:?}) to {:?}", from.as_str(), entry, to.as_str());
         match &mut self.open_volumes[volume_idx].volume_type {
             VolumeType::Fat(fat) => {
                 let sfn = fat.find_unique_short_name(&mut self.block_cache, &to_info, to, skip)?;
                 fat.write_long_name_entries(&mut self.block_cache, &to_info, to, sfn, &entry)?;
-                fat.delete_long_name_entries(
-                    &mut self.block_cache,
-                    &from_info,
-                    (entry.entry_block, entry.entry_offset),
-                )?;
+                fat.delete_long_name_entries(&mut self.block_cache, &from_info, (entry.entry_block, entry.entry_offset))?;
                 if entry.attributes.is_directory() && !same_dir {
                     fat.update_dot_dot(&mut self.block_cache, entry.cluster, to_info.cluster)?;
                 }
@@ -1772,12 +1494,8 @@ where
 /// Kept separate so its easier to wrap it in a RefCell
 #[derive(Debug)]
 
-struct VolumeManagerData<
-    D,
-    const MAX_DIRS: usize = 4,
-    const MAX_FILES: usize = 4,
-    const MAX_VOLUMES: usize = 1,
-> where
+struct VolumeManagerData<D, const MAX_DIRS: usize = 4, const MAX_FILES: usize = 4, const MAX_VOLUMES: usize = 1>
+where
     D: BlockDevice,
 {
     id_generator: HandleGenerator,
@@ -1787,8 +1505,7 @@ struct VolumeManagerData<
     open_files: Vec<FileInfo, MAX_FILES>,
 }
 
-impl<D, const MAX_DIRS: usize, const MAX_FILES: usize, const MAX_VOLUMES: usize>
-    VolumeManagerData<D, MAX_DIRS, MAX_FILES, MAX_VOLUMES>
+impl<D, const MAX_DIRS: usize, const MAX_FILES: usize, const MAX_VOLUMES: usize> VolumeManagerData<D, MAX_DIRS, MAX_FILES, MAX_VOLUMES>
 where
     D: BlockDevice,
     <D as BlockDevice>::Error: core::error::Error,
@@ -1798,9 +1515,7 @@ where
     /// Returns `true` if it's open, `false`, otherwise.
     fn file_is_open(&self, raw_volume: RawVolume, dir_entry: &DirEntry) -> bool {
         for f in self.open_files.iter() {
-            if f.raw_volume == raw_volume
-                && f.entry.entry_block == dir_entry.entry_block
-                && f.entry.entry_offset == dir_entry.entry_offset
+            if f.raw_volume == raw_volume && f.entry.entry_block == dir_entry.entry_block && f.entry.entry_offset == dir_entry.entry_offset
             {
                 return true;
             }
@@ -1808,10 +1523,7 @@ where
         false
     }
 
-    fn get_volume_by_id<E: core::error::Error>(
-        &self,
-        raw_volume: RawVolume,
-    ) -> Result<usize, Error<E>> {
+    fn get_volume_by_id<E: core::error::Error>(&self, raw_volume: RawVolume) -> Result<usize, Error<E>> {
         for (idx, v) in self.open_volumes.iter().enumerate() {
             if v.raw_volume == raw_volume {
                 return Ok(idx);
@@ -1820,10 +1532,7 @@ where
         Err(Error::BadHandle)
     }
 
-    fn get_dir_by_id<E: core::error::Error>(
-        &self,
-        raw_directory: RawDirectory,
-    ) -> Result<usize, Error<E>> {
+    fn get_dir_by_id<E: core::error::Error>(&self, raw_directory: RawDirectory) -> Result<usize, Error<E>> {
         for (idx, d) in self.open_dirs.iter().enumerate() {
             if d.raw_directory == raw_directory {
                 return Ok(idx);
@@ -1940,14 +1649,7 @@ mod tests {
     impl TimeSource for Clock {
         fn get_timestamp(&self) -> Timestamp {
             // TODO: Return actual time
-            Timestamp {
-                year_since_1970: 0,
-                zero_indexed_month: 0,
-                zero_indexed_day: 0,
-                hours: 0,
-                minutes: 0,
-                seconds: 0,
-            }
+            Timestamp { year_since_1970: 0, zero_indexed_month: 0, zero_indexed_day: 0, hours: 0, minutes: 0, seconds: 0 }
         }
     }
 
@@ -1960,138 +1662,74 @@ mod tests {
             static BLOCKS: [Block; 3] = [
                 Block {
                     contents: [
-                        0xfa, 0xb8, 0x00, 0x10, 0x8e, 0xd0, 0xbc, 0x00, 0xb0, 0xb8, 0x00, 0x00,
-                        0x8e, 0xd8, 0x8e, 0xc0, // 0x000
-                        0xfb, 0xbe, 0x00, 0x7c, 0xbf, 0x00, 0x06, 0xb9, 0x00, 0x02, 0xf3, 0xa4,
-                        0xea, 0x21, 0x06, 0x00, // 0x010
-                        0x00, 0xbe, 0xbe, 0x07, 0x38, 0x04, 0x75, 0x0b, 0x83, 0xc6, 0x10, 0x81,
-                        0xfe, 0xfe, 0x07, 0x75, // 0x020
-                        0xf3, 0xeb, 0x16, 0xb4, 0x02, 0xb0, 0x01, 0xbb, 0x00, 0x7c, 0xb2, 0x80,
-                        0x8a, 0x74, 0x01, 0x8b, // 0x030
-                        0x4c, 0x02, 0xcd, 0x13, 0xea, 0x00, 0x7c, 0x00, 0x00, 0xeb, 0xfe, 0x00,
-                        0x00, 0x00, 0x00, 0x00, // 0x040
-                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                        0x00, 0x00, 0x00, 0x00, // 0x050
-                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                        0x00, 0x00, 0x00, 0x00, // 0x060
-                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                        0x00, 0x00, 0x00, 0x00, // 0x070
-                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                        0x00, 0x00, 0x00, 0x00, // 0x080
-                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                        0x00, 0x00, 0x00, 0x00, // 0x090
-                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                        0x00, 0x00, 0x00, 0x00, // 0x0A0
-                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                        0x00, 0x00, 0x00, 0x00, // 0x0B0
-                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                        0x00, 0x00, 0x00, 0x00, // 0x0C0
-                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                        0x00, 0x00, 0x00, 0x00, // 0x0D0
-                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                        0x00, 0x00, 0x00, 0x00, // 0x0E0
-                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                        0x00, 0x00, 0x00, 0x00, // 0x0F0
-                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                        0x00, 0x00, 0x00, 0x00, // 0x100
-                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                        0x00, 0x00, 0x00, 0x00, // 0x110
-                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                        0x00, 0x00, 0x00, 0x00, // 0x120
-                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                        0x00, 0x00, 0x00, 0x00, // 0x130
-                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                        0x00, 0x00, 0x00, 0x00, // 0x140
-                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                        0x00, 0x00, 0x00, 0x00, // 0x150
-                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                        0x00, 0x00, 0x00, 0x00, // 0x160
-                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                        0x00, 0x00, 0x00, 0x00, // 0x170
-                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                        0x00, 0x00, 0x00, 0x00, // 0x180
-                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                        0x00, 0x00, 0x00, 0x00, // 0x190
-                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                        0x00, 0x00, 0x00, 0x00, // 0x1A0
-                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x4c, 0xca, 0xde, 0x06,
-                        0x00, 0x00, 0x00, 0x04, // 0x1B0
-                        0x01, 0x04, 0x0c, 0xfe, 0xc2, 0xff, 0x01, 0x00, 0x00, 0x00, 0x33, 0x22,
-                        0x11, 0x00, 0x00, 0x00, // 0x1C0
-                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                        0x00, 0x00, 0x00, 0x00, // 0x1D0
-                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                        0x00, 0x00, 0x00, 0x00, // 0x1E0
-                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                        0x00, 0x00, 0x55, 0xaa, // 0x1F0
+                        0xfa, 0xb8, 0x00, 0x10, 0x8e, 0xd0, 0xbc, 0x00, 0xb0, 0xb8, 0x00, 0x00, 0x8e, 0xd8, 0x8e, 0xc0, // 0x000
+                        0xfb, 0xbe, 0x00, 0x7c, 0xbf, 0x00, 0x06, 0xb9, 0x00, 0x02, 0xf3, 0xa4, 0xea, 0x21, 0x06, 0x00, // 0x010
+                        0x00, 0xbe, 0xbe, 0x07, 0x38, 0x04, 0x75, 0x0b, 0x83, 0xc6, 0x10, 0x81, 0xfe, 0xfe, 0x07, 0x75, // 0x020
+                        0xf3, 0xeb, 0x16, 0xb4, 0x02, 0xb0, 0x01, 0xbb, 0x00, 0x7c, 0xb2, 0x80, 0x8a, 0x74, 0x01, 0x8b, // 0x030
+                        0x4c, 0x02, 0xcd, 0x13, 0xea, 0x00, 0x7c, 0x00, 0x00, 0xeb, 0xfe, 0x00, 0x00, 0x00, 0x00, 0x00, // 0x040
+                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 0x050
+                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 0x060
+                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 0x070
+                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 0x080
+                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 0x090
+                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 0x0A0
+                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 0x0B0
+                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 0x0C0
+                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 0x0D0
+                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 0x0E0
+                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 0x0F0
+                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 0x100
+                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 0x110
+                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 0x120
+                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 0x130
+                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 0x140
+                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 0x150
+                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 0x160
+                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 0x170
+                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 0x180
+                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 0x190
+                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 0x1A0
+                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x4c, 0xca, 0xde, 0x06, 0x00, 0x00, 0x00, 0x04, // 0x1B0
+                        0x01, 0x04, 0x0c, 0xfe, 0xc2, 0xff, 0x01, 0x00, 0x00, 0x00, 0x33, 0x22, 0x11, 0x00, 0x00, 0x00, // 0x1C0
+                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 0x1D0
+                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 0x1E0
+                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x55, 0xaa, // 0x1F0
                     ],
                 },
                 Block {
                     contents: [
-                        0xeb, 0x58, 0x90, 0x6d, 0x6b, 0x66, 0x73, 0x2e, 0x66, 0x61, 0x74, 0x00,
-                        0x02, 0x08, 0x20, 0x00, // 0x000
-                        0x02, 0x00, 0x00, 0x00, 0x00, 0xf8, 0x00, 0x00, 0x10, 0x00, 0x04, 0x00,
-                        0x00, 0x08, 0x00, 0x00, // 0x010
-                        0x00, 0x20, 0x76, 0x00, 0x80, 0x1d, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                        0x02, 0x00, 0x00, 0x00, // 0x020
-                        0x01, 0x00, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                        0x00, 0x00, 0x00, 0x00, // 0x030
-                        0x80, 0x01, 0x29, 0x0b, 0xa8, 0x89, 0x27, 0x50, 0x69, 0x63, 0x74, 0x75,
-                        0x72, 0x65, 0x73, 0x20, // 0x040
-                        0x20, 0x20, 0x46, 0x41, 0x54, 0x33, 0x32, 0x20, 0x20, 0x20, 0x0e, 0x1f,
-                        0xbe, 0x77, 0x7c, 0xac, // 0x050
-                        0x22, 0xc0, 0x74, 0x0b, 0x56, 0xb4, 0x0e, 0xbb, 0x07, 0x00, 0xcd, 0x10,
-                        0x5e, 0xeb, 0xf0, 0x32, // 0x060
-                        0xe4, 0xcd, 0x16, 0xcd, 0x19, 0xeb, 0xfe, 0x54, 0x68, 0x69, 0x73, 0x20,
-                        0x69, 0x73, 0x20, 0x6e, // 0x070
-                        0x6f, 0x74, 0x20, 0x61, 0x20, 0x62, 0x6f, 0x6f, 0x74, 0x61, 0x62, 0x6c,
-                        0x65, 0x20, 0x64, 0x69, // 0x080
-                        0x73, 0x6b, 0x2e, 0x20, 0x20, 0x50, 0x6c, 0x65, 0x61, 0x73, 0x65, 0x20,
-                        0x69, 0x6e, 0x73, 0x65, // 0x090
-                        0x72, 0x74, 0x20, 0x61, 0x20, 0x62, 0x6f, 0x6f, 0x74, 0x61, 0x62, 0x6c,
-                        0x65, 0x20, 0x66, 0x6c, // 0x0A0
-                        0x6f, 0x70, 0x70, 0x79, 0x20, 0x61, 0x6e, 0x64, 0x0d, 0x0a, 0x70, 0x72,
-                        0x65, 0x73, 0x73, 0x20, // 0x0B0
-                        0x61, 0x6e, 0x79, 0x20, 0x6b, 0x65, 0x79, 0x20, 0x74, 0x6f, 0x20, 0x74,
-                        0x72, 0x79, 0x20, 0x61, // 0x0C0
-                        0x67, 0x61, 0x69, 0x6e, 0x20, 0x2e, 0x2e, 0x2e, 0x20, 0x0d, 0x0a, 0x00,
-                        0x00, 0x00, 0x00, 0x00, // 0x0D0
-                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                        0x00, 0x00, 0x00, 0x00, // 0x0E0
-                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                        0x00, 0x00, 0x00, 0x00, // 0x0F0
-                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                        0x00, 0x00, 0x00, 0x00, // 0x100
-                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                        0x00, 0x00, 0x00, 0x00, // 0x110
-                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                        0x00, 0x00, 0x00, 0x00, // 0x120
-                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                        0x00, 0x00, 0x00, 0x00, // 0x130
-                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                        0x00, 0x00, 0x00, 0x00, // 0x140
-                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                        0x00, 0x00, 0x00, 0x00, // 0x150
-                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                        0x00, 0x00, 0x00, 0x00, // 0x160
-                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                        0x00, 0x00, 0x00, 0x00, // 0x170
-                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                        0x00, 0x00, 0x00, 0x00, // 0x180
-                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                        0x00, 0x00, 0x00, 0x00, // 0x190
-                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                        0x00, 0x00, 0x00, 0x00, // 0x1A0
-                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                        0x00, 0x00, 0x00, 0x00, // 0x1B0
-                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                        0x00, 0x00, 0x00, 0x00, // 0x1C0
-                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                        0x00, 0x00, 0x00, 0x00, // 0x1D0
-                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                        0x00, 0x00, 0x00, 0x00, // 0x1E0
-                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                        0x00, 0x00, 0x55, 0xaa, // 0x1F0
+                        0xeb, 0x58, 0x90, 0x6d, 0x6b, 0x66, 0x73, 0x2e, 0x66, 0x61, 0x74, 0x00, 0x02, 0x08, 0x20, 0x00, // 0x000
+                        0x02, 0x00, 0x00, 0x00, 0x00, 0xf8, 0x00, 0x00, 0x10, 0x00, 0x04, 0x00, 0x00, 0x08, 0x00, 0x00, // 0x010
+                        0x00, 0x20, 0x76, 0x00, 0x80, 0x1d, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, // 0x020
+                        0x01, 0x00, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 0x030
+                        0x80, 0x01, 0x29, 0x0b, 0xa8, 0x89, 0x27, 0x50, 0x69, 0x63, 0x74, 0x75, 0x72, 0x65, 0x73, 0x20, // 0x040
+                        0x20, 0x20, 0x46, 0x41, 0x54, 0x33, 0x32, 0x20, 0x20, 0x20, 0x0e, 0x1f, 0xbe, 0x77, 0x7c, 0xac, // 0x050
+                        0x22, 0xc0, 0x74, 0x0b, 0x56, 0xb4, 0x0e, 0xbb, 0x07, 0x00, 0xcd, 0x10, 0x5e, 0xeb, 0xf0, 0x32, // 0x060
+                        0xe4, 0xcd, 0x16, 0xcd, 0x19, 0xeb, 0xfe, 0x54, 0x68, 0x69, 0x73, 0x20, 0x69, 0x73, 0x20, 0x6e, // 0x070
+                        0x6f, 0x74, 0x20, 0x61, 0x20, 0x62, 0x6f, 0x6f, 0x74, 0x61, 0x62, 0x6c, 0x65, 0x20, 0x64, 0x69, // 0x080
+                        0x73, 0x6b, 0x2e, 0x20, 0x20, 0x50, 0x6c, 0x65, 0x61, 0x73, 0x65, 0x20, 0x69, 0x6e, 0x73, 0x65, // 0x090
+                        0x72, 0x74, 0x20, 0x61, 0x20, 0x62, 0x6f, 0x6f, 0x74, 0x61, 0x62, 0x6c, 0x65, 0x20, 0x66, 0x6c, // 0x0A0
+                        0x6f, 0x70, 0x70, 0x79, 0x20, 0x61, 0x6e, 0x64, 0x0d, 0x0a, 0x70, 0x72, 0x65, 0x73, 0x73, 0x20, // 0x0B0
+                        0x61, 0x6e, 0x79, 0x20, 0x6b, 0x65, 0x79, 0x20, 0x74, 0x6f, 0x20, 0x74, 0x72, 0x79, 0x20, 0x61, // 0x0C0
+                        0x67, 0x61, 0x69, 0x6e, 0x20, 0x2e, 0x2e, 0x2e, 0x20, 0x0d, 0x0a, 0x00, 0x00, 0x00, 0x00, 0x00, // 0x0D0
+                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 0x0E0
+                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 0x0F0
+                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 0x100
+                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 0x110
+                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 0x120
+                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 0x130
+                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 0x140
+                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 0x150
+                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 0x160
+                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 0x170
+                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 0x180
+                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 0x190
+                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 0x1A0
+                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 0x1B0
+                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 0x1C0
+                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 0x1D0
+                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 0x1E0
+                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x55, 0xaa, // 0x1F0
                     ],
                 },
                 Block {
@@ -2131,11 +1769,7 @@ mod tests {
                     ),
                 },
             ];
-            println!(
-                "Reading block {} to {}",
-                start_block_idx.0,
-                start_block_idx.0 as usize + blocks.len()
-            );
+            println!("Reading block {} to {}", start_block_idx.0, start_block_idx.0 as usize + blocks.len());
             for (idx, block) in blocks.iter_mut().enumerate() {
                 let block_idx = start_block_idx.0 as usize + idx;
                 if block_idx < BLOCKS.len() {
@@ -2160,8 +1794,7 @@ mod tests {
 
     #[test]
     fn partition0() {
-        let c: VolumeManager<DummyBlockDevice, Clock, 2, 2> =
-            VolumeManager::new_with_limits(DummyBlockDevice, Clock, 0xAA00_0000);
+        let c: VolumeManager<DummyBlockDevice, Clock, 2, 2> = VolumeManager::new_with_limits(DummyBlockDevice, Clock, 0xAA00_0000);
 
         let v = c.open_raw_volume(VolumeIdx(0)).unwrap();
         let expected_id = RawVolume(Handle(0xAA00_0000));

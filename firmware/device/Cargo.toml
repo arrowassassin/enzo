@@ -27,8 +27,8 @@ embassy-executor = { version = "0.10.0" }
 embassy-time = { version = "0.5.1" }
 embassy-sync = { version = "0.8.0" }
 embassy-futures = { version = "0.1.2" }
-embassy-net = { version = "0.9.1", features = ["tcp", "udp", "dns", "dhcpv4", "medium-ethernet", "proto-ipv4"] }
-picoserve = { version = "0.20.0", default-features = false, features = ["embassy", "ws"] }
+embassy-net = { version = "0.9.1", features = ["tcp", "udp", "dns", "dhcpv4", "dhcpv4-hostname", "medium-ethernet", "proto-ipv4", "multicast"] }
+picoserve = { version = "0.20.0", default-features = false, features = ["embassy", "ws", "alloc"] }
 embedded-hal = "1.0"
 embedded-hal-bus = { version = "0.3.0" }
 embedded-io-async = "0.7"
@@ -39,6 +39,14 @@ heapless = { version = "0.9", default-features = false }
 log = "0.4"
 critical-section = "1.2"
 nb = "1.1"
+# Pure codecs only (no `io` feature): the UDP loops run on embassy-net directly, because
+# edge-nal-embassy 0.8 targets embassy-net 0.8 and cannot adapt a 0.9 stack.
+edge-mdns = { version = "0.8.0", default-features = false }
+edge-captive = { version = "0.8.0", default-features = false }
+edge-dhcp = { version = "0.8.0", default-features = false }
+serde = { version = "1.0", default-features = false, features = ["derive", "alloc"] }
+serde_json = { version = "1.0.151", default-features = false, features = ["alloc"] }
+postcard = { version = "1.1", default-features = false, features = ["alloc"] }
 
 [profile.release]
 codegen-units = 1

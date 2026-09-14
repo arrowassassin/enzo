@@ -117,11 +117,7 @@ impl KeyMachine {
                 }
                 (Some(k), None) => {
                     slot.held = None;
-                    let _ = out.push(if slot.long {
-                        KeyEvent { key: k, kind: KeyKind::Release }
-                    } else {
-                        KeyEvent::press(k)
-                    });
+                    let _ = out.push(if slot.long { KeyEvent { key: k, kind: KeyKind::Release } } else { KeyEvent::press(k) });
                 }
                 (Some(k), Some(k2)) if k != k2 => {
                     // Slid from one ladder key to another: release the first, start the second.

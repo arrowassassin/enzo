@@ -28,12 +28,13 @@ use esp_hal::{ram, Blocking};
 use esp_println::println;
 use quire_board::bus::SharedBus;
 use quire_board::env::DeviceEnv;
+use quire_board::i2c;
 use quire_board::keys::KeyMachine;
 use quire_board::power::{self, UPTIME_MS};
 use quire_board::sdfs::{SdFs, Vm};
-use quire_board::i2c;
 use quire_gfx::{draw_text, Frame, Ink, TextStyle};
 use quire_library::{ingest_book, scan};
+use quire_net::{CardFs, NetCommand, NetTaskArgs, NetToMain};
 use quire_ui::{Env, Event, Refresh, SysRequest, Ui};
 use static_cell::StaticCell;
 
@@ -46,6 +47,8 @@ const BUILD: &str = env!("CARGO_PKG_VERSION");
 
 static BUS: StaticCell<SharedBus> = StaticCell::new();
 static VM: StaticCell<Vm> = StaticCell::new();
+/// The card handle the network task keeps for its lifetime.
+static NET_FS: StaticCell<SdFs> = StaticCell::new();
 
 type KeyPin1 = AdcPin<esp_hal::peripherals::GPIO1<'static>, ADC1<'static>, AdcCalLine<ADC1<'static>>>;
 type KeyPin2 = AdcPin<esp_hal::peripherals::GPIO2<'static>, ADC1<'static>, AdcCalLine<ADC1<'static>>>;
@@ -141,14 +144,17 @@ fn message_frame(title: &str, body: &str) -> Frame {
 }
 
 #[esp_rtos::main]
-async fn main(_spawner: embassy_executor::Spawner) -> ! {
+async fn main(spawner: embassy_executor::Spawner) -> ! {
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
     let mut peripherals = esp_hal::init(config);
 
     // Heap: the region the bootloader leaves behind plus the main region. Everything
-    // large and long-lived (frame, page cache, section text) lives here.
+    // large and long-lived (frame, page cache, section text, a Wi-Fi session) lives
+    // here. The main region is sized so the linker leaves the main stack about 40 KB:
+    // DRAM is 313 KB for data, bss (this heap, the 52 KB panel plane, the network
+    // statics), the mirrored IRAM code and the stack together.
     esp_alloc::heap_allocator!(#[ram(reclaimed)] size: 64 * 1024);
-    esp_alloc::heap_allocator!(size: 176 * 1024);
+    esp_alloc::heap_allocator!(size: 144 * 1024);
 
     let timg0 = TimerGroup::new(peripherals.TIMG0);
     let sw_int = SoftwareInterruptControl::new(peripherals.SW_INTERRUPT);
@@ -215,8 +221,9 @@ async fn main(_spawner: embassy_executor::Spawner) -> ! {
     // wizard corrects.
     let resume = power::load();
     let local_now = clock.or(resume.map(|r| r.clock).filter(|c| *c > 1_600_000_000)).unwrap_or(1_789_000_000);
-    let clean = matches!(reset, Some(esp_hal::rtc_cntl::SocResetReason::ChipPowerOn) | Some(esp_hal::rtc_cntl::SocResetReason::CoreDeepSleep))
-        || !matches!(wake, esp_hal::system::SleepSource::Undefined);
+    let clean =
+        matches!(reset, Some(esp_hal::rtc_cntl::SocResetReason::ChipPowerOn) | Some(esp_hal::rtc_cntl::SocResetReason::CoreDeepSleep))
+            || !matches!(wake, esp_hal::system::SleepSource::Undefined);
     let crashes = power::note_boot(clean, local_now);
     let safe_mode = crashes >= power::SAFE_MODE_CRASHES;
     if safe_mode {
@@ -261,6 +268,21 @@ async fn main(_spawner: embassy_executor::Spawner) -> ! {
         env.battery = b;
     }
 
+    // The network task owns the radio and a clone of the card handle; it sleeps until a
+    // screen asks for the radio.
+    let net_fs: &'static SdFs = NET_FS.init(env.fs.clone());
+    let card: &'static dyn CardFs = net_fs;
+    env.saved_networks = quire_net::init_from_card(card);
+    let seed = {
+        let rng = esp_hal::rng::Rng::new();
+        (rng.random() as u64) << 32 | rng.random() as u64
+    };
+    let mac6 = [mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]];
+    match quire_net::net_task(NetTaskArgs { wifi: peripherals.WIFI, fs: card, seed, mac: mac6 }) {
+        Ok(token) => spawner.spawn(token),
+        Err(e) => println!("net task: {e:?}"),
+    }
+
     let mut ui = Ui::new(&mut env);
     display.set_upside_down(ui.settings.left_handed);
     let refresh = ui.draw(&mut env);
@@ -274,6 +296,8 @@ async fn main(_spawner: embassy_executor::Spawner) -> ! {
     let mut timer_due: Option<u32> = None;
     let mut ingest_queue: Vec<quire_library::BookId> = Vec::new();
     let mut scanned = false;
+    let mut last_mirror = 0u32;
+    let mut reading_up = false;
 
     loop {
         tick_uptime();
@@ -291,6 +315,7 @@ async fn main(_spawner: embassy_executor::Spawner) -> ! {
             last_tick = now_ms;
             env.tick_clock();
             refresh = refresh.max(ui.handle(&mut env, Event::Tick));
+            publish_status(&mut ui, &env, now_ms, reading_up);
             if now_ms.wrapping_sub(last_battery) >= 30_000 {
                 last_battery = now_ms;
                 if let Some(b) = i2c::read_battery(&mut i2c_bus) {
@@ -341,10 +366,47 @@ async fn main(_spawner: embassy_executor::Spawner) -> ! {
                 SysRequest::Rescan => scanned = false,
                 SysRequest::IngestNow => ingest_queue = ui.lib.pending(),
                 SysRequest::Orientation(_) => {}
-                SysRequest::NightJobs(_) | SysRequest::Calibre(_) | SysRequest::SyncNow => {}
-                SysRequest::WifiOn | SysRequest::WifiOff | SysRequest::Hotspot | SysRequest::WifiScan => {}
-                SysRequest::WifiJoin { .. } | SysRequest::WifiForget(_) | SysRequest::Fetch(_) | SysRequest::Ota(_) => {}
+                SysRequest::NightJobs(_) => {}
+                SysRequest::Calibre(on) => net_send(NetCommand::Calibre(on)),
+                SysRequest::SyncNow => net_send(NetCommand::SyncNow),
+                SysRequest::WifiOn => net_send(NetCommand::WifiOn),
+                SysRequest::WifiOff => net_send(NetCommand::WifiOff),
+                SysRequest::Hotspot => net_send(NetCommand::Hotspot),
+                SysRequest::WifiScan => net_send(NetCommand::Scan),
+                SysRequest::WifiJoin { ssid, password } => net_send(NetCommand::Join { ssid, password }),
+                SysRequest::WifiForget(ssid) => net_send(NetCommand::Forget(ssid)),
+                SysRequest::Fetch(req) => net_send(NetCommand::Fetch(req)),
+                SysRequest::Ota(src) => net_send(NetCommand::Ota(src)),
             }
+        }
+
+        // What the network task reports: UI events, saved networks, settings written by
+        // the Drop page, and requests for the current frame.
+        while let Some(msg) = quire_net::poll_event() {
+            match msg {
+                NetToMain::Ui(ev) => {
+                    if let Event::Wifi(state) = &ev {
+                        env.wifi = state.clone();
+                    }
+                    refresh = refresh.max(ui.handle(&mut env, ev));
+                }
+                NetToMain::SavedNetworks(names) => env.saved_networks = names,
+                NetToMain::SettingsChanged => {
+                    ui.settings = quire_ui::Settings::load(&env.fs);
+                    refresh = refresh.max(ui.draw(&mut env));
+                }
+                NetToMain::ScreenRequest => {
+                    let r = ui.frame().as_bitmap();
+                    let bm = quire_gfx::Bitmap { w: r.w, h: r.h, bits: r.bits.to_vec() };
+                    let ok = quire_library::cache::write_pbm(&env.fs, quire_net::SCREEN_FILE, &bm).is_ok();
+                    quire_net::screen_ready(ok);
+                }
+            }
+        }
+        let on_page = ui.top_name() == "20-reading";
+        if on_page != reading_up {
+            reading_up = on_page;
+            net_send(NetCommand::Reading(on_page));
         }
 
         if refresh != Refresh::None {
@@ -355,6 +417,11 @@ async fn main(_spawner: embassy_executor::Spawner) -> ! {
                 // Keys keep being sampled during the panel's busy wait; they are queued
                 // in the state machine and delivered on the next loop pass.
             });
+            if quire_net::mirror_wanted() && now_ms.wrapping_sub(last_mirror) >= 500 {
+                last_mirror = now_ms;
+                let r = frame.as_bitmap();
+                quire_net::publish_mirror(r.bits, r.w, r.h);
+            }
         }
 
         if go_to_sleep {
@@ -412,6 +479,37 @@ async fn main(_spawner: embassy_executor::Spawner) -> ! {
             embassy_futures::yield_now().await;
         }
     }
+}
+
+/// Hand a command to the network task; a full queue is logged, never blocked on.
+fn net_send(cmd: NetCommand) {
+    if !quire_net::send_command(cmd) {
+        println!("net: command queue full");
+    }
+}
+
+/// The status the Drop page's API reports, refreshed once a second.
+fn publish_status(ui: &mut Ui<DeviceEnv>, env: &DeviceEnv, now_ms: u32, reading: bool) {
+    let stats = esp_alloc::HEAP.stats();
+    let (book_title, book_percent) = match ui.reader.as_mut() {
+        Some(r) => (Some(r.book.meta.title.clone()), (r.info().permille / 10).min(100) as u8),
+        None => (None, 0),
+    };
+    let status = quire_net::StatusInfo {
+        battery_percent: env.battery.percent,
+        charging: env.battery.charging,
+        version: alloc::string::String::from(BUILD),
+        build: alloc::string::String::from(BUILD),
+        book_title,
+        book_percent,
+        hostname: ui.settings.hostname.clone(),
+        heap_free: (stats.size - stats.current_usage) as u32,
+        heap_largest: esp_alloc::HEAP.free() as u32,
+        uptime: now_ms / 1000,
+        local_now: env.now(),
+        reading,
+    };
+    quire_net::publish_status(status, env.fs.total_bytes());
 }
 
 fn refresh_after_idle(ui: &mut Ui<DeviceEnv>, env: &mut DeviceEnv, display: &mut Display, ev: Event) {

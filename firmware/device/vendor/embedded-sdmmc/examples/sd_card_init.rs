@@ -4,9 +4,7 @@
 //! It should be noted that you only have to depend on [embedded_sdmmc_types] to add
 //! [embedded_sdmmc] support to your project.
 use anyhow::{Context as _, bail};
-use embedded_sdmmc_types::sdcard::argument::{
-    Acmd6, Acmd41, Cmd7, Cmd8, Cmd9, Cmd13, OcrLower, VoltageSuppliedSelect,
-};
+use embedded_sdmmc_types::sdcard::argument::{Acmd6, Acmd41, Cmd7, Cmd8, Cmd9, Cmd13, OcrLower, VoltageSuppliedSelect};
 use embedded_sdmmc_types::sdcard::mock::SdCardMock;
 use embedded_sdmmc_types::sdcard::response::{self, R1, R3, R6, R7};
 use embedded_sdmmc_types::sdcard::{self, AcmdId, CardType, CmdId};
@@ -45,19 +43,13 @@ impl SdCardUninit {
         // Voltage level negotiation. Send CMD8 first.
         let status = self.0.insert_command(
             CmdId::CMD8_SendIfCond,
-            Cmd8::ZERO
-                .with_voltage_supplied(VoltageSuppliedSelect::_2_7To3_6V)
-                .with_check_pattern(0xAA)
-                .raw_value(),
+            Cmd8::ZERO.with_voltage_supplied(VoltageSuppliedSelect::_2_7To3_6V).with_check_pattern(0xAA).raw_value(),
         );
         let responded_to_cmd8 = !status.timeout();
 
         let hcs = if responded_to_cmd8 {
             let r7 = R7::new_with_raw_value(self.0.read_reply_u32());
-            if r7
-                .voltage_accepted()
-                .is_ok_and(|val| val != VoltageSuppliedSelect::_2_7To3_6V)
-            {
+            if r7.voltage_accepted().is_ok_and(|val| val != VoltageSuppliedSelect::_2_7To3_6V) {
                 bail!("CMD8 reply R7: Voltage not accepted");
             }
             if r7.echo_check_pattern() != 0xAA {
@@ -91,15 +83,8 @@ impl SdCardUninit {
             }
         }
 
-        let card_type = if responded_to_cmd8 {
-            if r3.card_capacity_status() {
-                CardType::SdhcSdxc
-            } else {
-                CardType::SD2
-            }
-        } else {
-            CardType::SD1
-        };
+        let card_type =
+            if responded_to_cmd8 { if r3.card_capacity_status() { CardType::SdhcSdxc } else { CardType::SD2 } } else { CardType::SD1 };
 
         // Retrieve and cache the CID. This puts it into identification mode.
         self.0.insert_command(CmdId::CMD2_AllSendCid, 0);
@@ -113,20 +98,15 @@ impl SdCardUninit {
         let rca = r6.rca();
 
         // Retrieve and cache CSD, which also contains card specific data.
-        self.0
-            .insert_command(CmdId::CMD9_SendCsd, Cmd9::ZERO.with_rca(rca).raw_value());
+        self.0.insert_command(CmdId::CMD9_SendCsd, Cmd9::ZERO.with_rca(rca).raw_value());
         let cid_raw = self.0.read_reply_u128();
         let csd = Csd::new(&cid_raw.to_be_bytes()).with_context(|| "failed to parse CSD")?;
 
         // CMD7 to put the SD card into transfer state.
-        self.0
-            .insert_command(CmdId::CMD7_SelectCard, Cmd7::ZERO.with_rca(rca).raw_value());
+        self.0.insert_command(CmdId::CMD7_SelectCard, Cmd7::ZERO.with_rca(rca).raw_value());
 
         // Check that the card is in transfer mode.
-        self.0.insert_command(
-            CmdId::CMD13_SendStatus,
-            Cmd13::ZERO.with_rca(rca).raw_value(),
-        );
+        self.0.insert_command(CmdId::CMD13_SendStatus, Cmd13::ZERO.with_rca(rca).raw_value());
         let r1 = R1::new_with_raw_value(self.0.read_reply_u32());
 
         if r1.state().is_ok_and(|state| state != response::State::Tran) {
@@ -137,19 +117,10 @@ impl SdCardUninit {
         // have to configure register bits on the controller side as well.
         self.0.insert_acmd(
             AcmdId::ACMD6_SetBusWidth,
-            Acmd6::builder()
-                .with_bus_width(sdcard::argument::BusWidth::_4bits)
-                .build()
-                .raw_value(),
+            Acmd6::builder().with_bus_width(sdcard::argument::BusWidth::_4bits).build().raw_value(),
         );
 
-        Ok(SdCard {
-            card_type,
-            cid,
-            csd,
-            rca,
-            sd_mock: core::cell::RefCell::new(self.0),
-        })
+        Ok(SdCard { card_type, cid, csd, rca, sd_mock: core::cell::RefCell::new(self.0) })
     }
 }
 
@@ -204,9 +175,7 @@ impl SdCard {
         sd_mock.insert_command(CmdId::CMD24_WriteBlock, addr);
         let mut bytes_written = 0;
         while bytes_written < BLOCK_LEN {
-            sd_mock.write_data_word(u32::from_ne_bytes(
-                buf[bytes_written..bytes_written + 4].try_into().unwrap(),
-            ));
+            sd_mock.write_data_word(u32::from_ne_bytes(buf[bytes_written..bytes_written + 4].try_into().unwrap()));
             bytes_written += 4;
         }
         sd_mock.wait_until_data_transfer_done();
@@ -253,9 +222,7 @@ const MOCK_SD_RCA: u16 = 1;
 fn main() -> Result<(), anyhow::Error> {
     let sd_mock = SdCardMock::new(CardType::SdhcSdxc, MOCK_SD_RCA);
     let sd_card_uninit = SdCardUninit::new(sd_mock);
-    let sd_card = sd_card_uninit
-        .initialize()
-        .context("failed to initialize SD card")?;
+    let sd_card = sd_card_uninit.initialize().context("failed to initialize SD card")?;
     println!("SD card initialized successfully",);
     println!("--------");
     println!("Card Type: {:?}", sd_card.card_type);

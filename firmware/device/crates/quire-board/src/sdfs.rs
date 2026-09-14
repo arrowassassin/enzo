@@ -58,7 +58,9 @@ fn map<E: core::error::Error>(e: embedded_sdmmc::Error<E>) -> FsError {
     }
 }
 
-/// The mounted card.
+/// The mounted card. Clones share the volume manager, so the network task can hold its
+/// own handle; the manager is only ever used from the one cooperative executor.
+#[derive(Clone)]
 pub struct SdFs {
     vm: &'static Vm,
     volume: RawVolume,

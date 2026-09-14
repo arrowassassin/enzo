@@ -21,20 +21,13 @@ impl<'a> Bpb<'a> {
 
     /// Attempt to parse a Boot Parameter Block from a 512 byte sector.
     pub fn create_from_bytes(data: &[u8; 512]) -> Result<Bpb<'_>, &'static str> {
-        let mut bpb = Bpb {
-            data,
-            fat_type: FatType::Fat16,
-            cluster_count: 0,
-        };
+        let mut bpb = Bpb { data, fat_type: FatType::Fat16, cluster_count: 0 };
         if bpb.footer() != Self::FOOTER_VALUE {
             return Err("Bad BPB footer");
         }
 
-        let root_dir_blocks =
-            BlockCount::from_bytes(u32::from(bpb.root_entries_count()) * OnDiskDirEntry::LEN_U32).0;
-        let non_data_blocks = u32::from(bpb.reserved_block_count())
-            + (u32::from(bpb.num_fats()) * bpb.fat_size())
-            + root_dir_blocks;
+        let root_dir_blocks = BlockCount::from_bytes(u32::from(bpb.root_entries_count()) * OnDiskDirEntry::LEN_U32).0;
+        let non_data_blocks = u32::from(bpb.reserved_block_count()) + (u32::from(bpb.num_fats()) * bpb.fat_size()) + root_dir_blocks;
         let data_blocks = bpb.total_blocks() - non_data_blocks;
         bpb.cluster_count = data_blocks / u32::from(bpb.blocks_per_cluster());
         if bpb.cluster_count < 4085 {
@@ -110,21 +103,13 @@ impl<'a> Bpb<'a> {
     /// Get the size of the File Allocation Table in blocks.
     pub fn fat_size(&self) -> u32 {
         let result = u32::from(self.fat_size16());
-        if result != 0 {
-            result
-        } else {
-            self.fat_size32()
-        }
+        if result != 0 { result } else { self.fat_size32() }
     }
 
     /// Get the total number of blocks in this filesystem.
     pub fn total_blocks(&self) -> u32 {
         let result = u32::from(self.total_blocks16());
-        if result != 0 {
-            result
-        } else {
-            self.total_blocks32()
-        }
+        if result != 0 { result } else { self.total_blocks32() }
     }
 
     /// Get the total number of clusters in this filesystem.

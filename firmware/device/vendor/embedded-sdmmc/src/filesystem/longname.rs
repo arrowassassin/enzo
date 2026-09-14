@@ -54,10 +54,7 @@ impl<'a> LongName<'a> {
         if units > MAX_LFN_UNITS {
             return Err(FilenameError::NameTooLong);
         }
-        Ok(LongName {
-            name,
-            units: units as u16,
-        })
+        Ok(LongName { name, units: units as u16 })
     }
 
     /// The (trimmed) name.
@@ -327,11 +324,7 @@ impl ShortNameBasis {
         let mut idx = keep;
         for shift in [12u32, 8, 4, 0] {
             let nibble = ((hash >> shift) & 0xF) as u8;
-            sfn.contents[idx] = if nibble < 10 {
-                b'0' + nibble
-            } else {
-                b'A' + nibble - 10
-            };
+            sfn.contents[idx] = if nibble < 10 { b'0' + nibble } else { b'A' + nibble - 10 };
             idx += 1;
         }
         sfn.contents[idx] = b'~';
@@ -363,17 +356,12 @@ impl ShortNameBasis {
         if n == 0 || n > MAX_SEQUENTIAL_TAIL {
             return None;
         }
-        if &base[..tilde] == self.prefix_for_tail(n) {
-            Some(n)
-        } else {
-            None
-        }
+        if &base[..tilde] == self.prefix_for_tail(n) { Some(n) } else { None }
     }
 
     /// Does an existing short name equal the plain basis name?
     pub(crate) fn is_plain(&self, existing: &ShortFileName) -> bool {
-        existing.contents[..ShortFileName::BASE_LEN] == self.base
-            && existing.contents[ShortFileName::BASE_LEN..] == self.ext
+        existing.contents[..ShortFileName::BASE_LEN] == self.base && existing.contents[ShortFileName::BASE_LEN..] == self.ext
     }
 }
 
@@ -393,10 +381,7 @@ fn decimal_digits(mut n: u32) -> usize {
 
 /// Characters that are not allowed in a long file name.
 fn is_invalid_lfn_char(ch: char) -> bool {
-    matches!(
-        ch,
-        '\u{0000}'..='\u{001F}' | '"' | '*' | '/' | ':' | '<' | '>' | '?' | '\\' | '|'
-    )
+    matches!(ch, '\u{0000}'..='\u{001F}' | '"' | '*' | '/' | ':' | '<' | '>' | '?' | '\\' | '|')
 }
 
 /// Characters allowed (as-is) in an 8.3 short name. Only ASCII qualifies here;
@@ -410,11 +395,7 @@ fn is_short_name_char(b: u8) -> bool {
 fn to_short_char(ch: char) -> (u8, bool) {
     if ch.is_ascii() {
         let b = ch.to_ascii_uppercase() as u8;
-        if is_short_name_char(b) {
-            (b, false)
-        } else {
-            (b'_', true)
-        }
+        if is_short_name_char(b) { (b, false) } else { (b'_', true) }
     } else {
         (b'_', true)
     }
@@ -442,9 +423,7 @@ fn fold_unit(u: u16) -> u16 {
 
 /// Compare two strings ignoring case (Unicode simple lower-case mapping).
 pub fn eq_ignore_case(a: &str, b: &str) -> bool {
-    a.chars()
-        .flat_map(char::to_lowercase)
-        .eq(b.chars().flat_map(char::to_lowercase))
+    a.chars().flat_map(char::to_lowercase).eq(b.chars().flat_map(char::to_lowercase))
 }
 
 // ****************************************************************************
@@ -466,28 +445,16 @@ mod test {
         assert_eq!(LongName::new("").unwrap_err(), FilenameError::FilenameEmpty);
         assert_eq!(LongName::new("...").unwrap_err(), FilenameError::FilenameEmpty);
         assert_eq!(LongName::new("  . ").unwrap_err(), FilenameError::FilenameEmpty);
-        assert_eq!(
-            LongName::new("a:b").unwrap_err(),
-            FilenameError::InvalidCharacter
-        );
-        assert_eq!(
-            LongName::new("a\u{7}b").unwrap_err(),
-            FilenameError::InvalidCharacter
-        );
+        assert_eq!(LongName::new("a:b").unwrap_err(), FilenameError::InvalidCharacter);
+        assert_eq!(LongName::new("a\u{7}b").unwrap_err(), FilenameError::InvalidCharacter);
         assert_eq!(LongName::new("hello. ").unwrap().as_str(), "hello");
         let long: String = core::iter::repeat_n('x', 255).collect();
         assert!(LongName::new(&long).is_ok());
         let too_long: String = core::iter::repeat_n('x', 256).collect();
-        assert_eq!(
-            LongName::new(&too_long).unwrap_err(),
-            FilenameError::NameTooLong
-        );
+        assert_eq!(LongName::new(&too_long).unwrap_err(), FilenameError::NameTooLong);
         // An emoji is two UTF-16 units
         let emoji: String = core::iter::repeat_n('😀', 128).collect();
-        assert_eq!(
-            LongName::new(&emoji).unwrap_err(),
-            FilenameError::NameTooLong
-        );
+        assert_eq!(LongName::new(&emoji).unwrap_err(), FilenameError::NameTooLong);
     }
 
     #[test]
@@ -585,8 +552,8 @@ mod test {
         assert_eq!(
             n.chunk(1),
             [
-                'o' as u16, 'v' as u16, 'e' as u16, 'r' as u16, 'l' as u16, 'a' as u16,
-                'y' as u16, 's' as u16, 0x0000, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,
+                'o' as u16, 'v' as u16, 'e' as u16, 'r' as u16, 'l' as u16, 'a' as u16, 'y' as u16, 's' as u16, 0x0000, 0xFFFF, 0xFFFF,
+                0xFFFF, 0xFFFF,
             ]
         );
         let n = LongName::new("bcm2708-rpi-b-plus.dtb").unwrap();
@@ -594,16 +561,15 @@ mod test {
         assert_eq!(
             n.chunk(2),
             [
-                '-' as u16, 'p' as u16, 'l' as u16, 'u' as u16, 's' as u16, '.' as u16,
-                'd' as u16, 't' as u16, 'b' as u16, 0x0000, 0xFFFF, 0xFFFF, 0xFFFF,
+                '-' as u16, 'p' as u16, 'l' as u16, 'u' as u16, 's' as u16, '.' as u16, 'd' as u16, 't' as u16, 'b' as u16, 0x0000, 0xFFFF,
+                0xFFFF, 0xFFFF,
             ]
         );
         assert_eq!(
             n.chunk(1),
             [
-                'b' as u16, 'c' as u16, 'm' as u16, '2' as u16, '7' as u16, '0' as u16,
-                '8' as u16, '-' as u16, 'r' as u16, 'p' as u16, 'i' as u16, '-' as u16,
-                'b' as u16,
+                'b' as u16, 'c' as u16, 'm' as u16, '2' as u16, '7' as u16, '0' as u16, '8' as u16, '-' as u16, 'r' as u16, 'p' as u16,
+                'i' as u16, '-' as u16, 'b' as u16,
             ]
         );
         // Exactly 13 characters: no terminator fits, no padding.
@@ -619,22 +585,14 @@ mod test {
         let csum = sfn("OVERLAYS").csum();
         assert_eq!(csum, 0x47);
         let bytes = n.entry_bytes(1, csum);
-        let expected = hex_literal::hex!(
-            "416f007600650072006c000f00476100790073000000ffffffff0000ffffffff"
-        );
+        let expected = hex_literal::hex!("416f007600650072006c000f00476100790073000000ffffffff0000ffffffff");
         assert_eq!(bytes, expected);
 
         let n = LongName::new("bcm2708-rpi-b-plus.dtb").unwrap();
         let csum = sfn("BCM270~1.DTB").csum();
         assert_eq!(csum, 0x79);
-        assert_eq!(
-            n.entry_bytes(2, csum),
-            hex_literal::hex!("422d0070006c00750073000f00792e006400740062000000ffff0000ffffffff")
-        );
-        assert_eq!(
-            n.entry_bytes(1, csum),
-            hex_literal::hex!("01620063006d00320037000f0079300038002d0072007000690000002d006200")
-        );
+        assert_eq!(n.entry_bytes(2, csum), hex_literal::hex!("422d0070006c00750073000f00792e006400740062000000ffff0000ffffffff"));
+        assert_eq!(n.entry_bytes(1, csum), hex_literal::hex!("01620063006d00320037000f0079300038002d0072007000690000002d006200"));
     }
 
     #[test]

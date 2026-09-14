@@ -59,16 +59,12 @@ impl ShortFileName {
 
     /// Get a short file name containing "..", which means "parent directory".
     pub const fn parent_dir() -> Self {
-        Self {
-            contents: *b"..         ",
-        }
+        Self { contents: *b"..         " }
     }
 
     /// Get a short file name containing ".", which means "this directory".
     pub const fn this_dir() -> Self {
-        Self {
-            contents: *b".          ",
-        }
+        Self { contents: *b".          " }
     }
 
     /// Get base name (without extension) of the file.
@@ -89,9 +85,7 @@ impl ShortFileName {
     ///
     /// The output uses ISO-8859-1 encoding.
     pub fn create_from_str(name: &str) -> Result<ShortFileName, FilenameError> {
-        let mut sfn = ShortFileName {
-            contents: [b' '; Self::TOTAL_LEN],
-        };
+        let mut sfn = ShortFileName { contents: [b' '; Self::TOTAL_LEN] };
 
         // Special case `..`, which means "parent directory".
         if name == ".." {
@@ -172,9 +166,7 @@ impl ShortFileName {
     /// do this conversion if you have the name of a directory entry with the
     /// 'Volume Label' attribute.
     pub unsafe fn to_volume_label(self) -> VolumeName {
-        VolumeName {
-            contents: self.contents,
-        }
+        VolumeName { contents: self.contents }
     }
 
     /// Get the LFN checksum for this short filename
@@ -243,12 +235,7 @@ impl<'a> LfnBuffer<'a> {
         // A UTF-8 character takes at most 3 bytes.
         // Thus, a buffer of 765 (255*3) bytes is able to represent any LFN.
         let len = storage.len().min(usize::from(u16::MAX));
-        LfnBuffer {
-            inner: &mut storage[..len],
-            free: len as u16,
-            overflow: false,
-            unpaired_surrogate: None,
-        }
+        LfnBuffer { inner: &mut storage[..len], free: len as u16, overflow: false, unpaired_surrogate: None }
     }
 
     /// Returns [`Self::free`] casted to `usize`.
@@ -282,10 +269,7 @@ impl<'a> LfnBuffer<'a> {
     /// ```
     pub fn push(&mut self, buffer: &[u16; 13]) {
         // find the first null, if any
-        let null_idx = buffer
-            .iter()
-            .position(|&b| b == 0x0000)
-            .unwrap_or(buffer.len());
+        let null_idx = buffer.iter().position(|&b| b == 0x0000).unwrap_or(buffer.len());
         // take all the wide chars, up to the null (or go to the end)
         let buffer = &buffer[0..null_idx];
 
@@ -299,12 +283,7 @@ impl<'a> LfnBuffer<'a> {
         // Now do the decode, including the unpaired surrogate (if any) from
         // last time (maybe it has a pair now!)
         let mut is_first = true;
-        for ch in char::decode_utf16(
-            buffer
-                .iter()
-                .cloned()
-                .chain(self.unpaired_surrogate.take().iter().cloned()),
-        ) {
+        for ch in char::decode_utf16(buffer.iter().cloned().chain(self.unpaired_surrogate.take().iter().cloned())) {
             match ch {
                 Ok(ch) => {
                     char_vec.push(ch).expect("Vec was full!?");
@@ -374,9 +353,7 @@ mod test {
 
     #[test]
     fn filename_no_extension() {
-        let sfn = ShortFileName {
-            contents: *b"HELLO      ",
-        };
+        let sfn = ShortFileName { contents: *b"HELLO      " };
         assert_eq!(format!("{}", &sfn), "HELLO");
         assert_eq!(sfn, ShortFileName::create_from_str("HELLO").unwrap());
         assert_eq!(sfn, ShortFileName::create_from_str("hello").unwrap());
@@ -386,9 +363,7 @@ mod test {
 
     #[test]
     fn filename_extension() {
-        let sfn = ShortFileName {
-            contents: *b"HELLO   TXT",
-        };
+        let sfn = ShortFileName { contents: *b"HELLO   TXT" };
         assert_eq!(format!("{}", &sfn), "HELLO.TXT");
         assert_eq!(sfn, ShortFileName::create_from_str("HELLO.TXT").unwrap());
     }
@@ -415,71 +390,42 @@ mod test {
 
     #[test]
     fn filename_fulllength() {
-        let sfn = ShortFileName {
-            contents: *b"12345678TXT",
-        };
+        let sfn = ShortFileName { contents: *b"12345678TXT" };
         assert_eq!(format!("{}", &sfn), "12345678.TXT");
         assert_eq!(sfn, ShortFileName::create_from_str("12345678.TXT").unwrap());
     }
 
     #[test]
     fn filename_short_extension() {
-        let sfn = ShortFileName {
-            contents: *b"12345678C  ",
-        };
+        let sfn = ShortFileName { contents: *b"12345678C  " };
         assert_eq!(format!("{}", &sfn), "12345678.C");
         assert_eq!(sfn, ShortFileName::create_from_str("12345678.C").unwrap());
     }
 
     #[test]
     fn filename_short() {
-        let sfn = ShortFileName {
-            contents: *b"1       C  ",
-        };
+        let sfn = ShortFileName { contents: *b"1       C  " };
         assert_eq!(format!("{}", &sfn), "1.C");
         assert_eq!(sfn, ShortFileName::create_from_str("1.C").unwrap());
     }
 
     #[test]
     fn filename_ordering() {
-        assert!(
-            ShortFileName::create_from_str("1.C").unwrap()
-                < ShortFileName::create_from_str("2.C").unwrap()
-        );
-        assert!(
-            ShortFileName::create_from_str("1.C").unwrap()
-                < ShortFileName::create_from_str("1.D").unwrap()
-        );
-        assert!(
-            ShortFileName::create_from_str("12.C").unwrap()
-                < ShortFileName::create_from_str("3.C").unwrap()
-        );
-        assert!(
-            ShortFileName::create_from_str("1.D").unwrap()
-                < ShortFileName::create_from_str("12.C").unwrap()
-        );
+        assert!(ShortFileName::create_from_str("1.C").unwrap() < ShortFileName::create_from_str("2.C").unwrap());
+        assert!(ShortFileName::create_from_str("1.C").unwrap() < ShortFileName::create_from_str("1.D").unwrap());
+        assert!(ShortFileName::create_from_str("12.C").unwrap() < ShortFileName::create_from_str("3.C").unwrap());
+        assert!(ShortFileName::create_from_str("1.D").unwrap() < ShortFileName::create_from_str("12.C").unwrap());
         assert_eq!(
-            ShortFileName::create_from_str("1.D")
-                .unwrap()
-                .cmp(&ShortFileName::create_from_str("1.D").unwrap()),
+            ShortFileName::create_from_str("1.D").unwrap().cmp(&ShortFileName::create_from_str("1.D").unwrap()),
             core::cmp::Ordering::Equal
         );
-        assert!(
-            ShortFileName::create_from_str("1").unwrap()
-                < ShortFileName::create_from_str("1.C").unwrap()
-        );
-        assert!(
-            ShortFileName::create_from_str("1.C").unwrap()
-                < ShortFileName::create_from_str("2").unwrap()
-        );
+        assert!(ShortFileName::create_from_str("1").unwrap() < ShortFileName::create_from_str("1.C").unwrap());
+        assert!(ShortFileName::create_from_str("1.C").unwrap() < ShortFileName::create_from_str("2").unwrap());
     }
 
     #[test]
     fn filename_empty() {
-        assert_eq!(
-            ShortFileName::create_from_str("").unwrap(),
-            ShortFileName::this_dir()
-        );
+        assert_eq!(ShortFileName::create_from_str("").unwrap(), ShortFileName::this_dir());
     }
 
     #[test]
@@ -491,22 +437,14 @@ mod test {
 
     #[test]
     fn checksum() {
-        assert_eq!(
-            0xB3,
-            ShortFileName::create_from_str("UNARCH~1.DAT")
-                .unwrap()
-                .csum()
-        );
+        assert_eq!(0xB3, ShortFileName::create_from_str("UNARCH~1.DAT").unwrap().csum());
     }
 
     #[test]
     fn one_piece() {
         let mut storage = [0u8; 64];
         let mut buf: LfnBuffer = LfnBuffer::new(&mut storage);
-        buf.push(&[
-            0x0030, 0x0031, 0x0032, 0x0033, 0x2202, 0x0000, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,
-            0xFFFF, 0xFFFF,
-        ]);
+        buf.push(&[0x0030, 0x0031, 0x0032, 0x0033, 0x2202, 0x0000, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF]);
         assert_eq!(buf.as_str(), "0123∂");
     }
 
@@ -514,14 +452,8 @@ mod test {
     fn two_piece() {
         let mut storage = [0u8; 64];
         let mut buf: LfnBuffer = LfnBuffer::new(&mut storage);
-        buf.push(&[
-            0x0030, 0x0031, 0x0032, 0x0033, 0x2202, 0x0000, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,
-            0xFFFF, 0xFFFF,
-        ]);
-        buf.push(&[
-            0x0041, 0x0042, 0x0043, 0x0044, 0x0045, 0x0046, 0x0047, 0x0048, 0x0049, 0x004a, 0x004b,
-            0x004c, 0x004d,
-        ]);
+        buf.push(&[0x0030, 0x0031, 0x0032, 0x0033, 0x2202, 0x0000, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF]);
+        buf.push(&[0x0041, 0x0042, 0x0043, 0x0044, 0x0045, 0x0046, 0x0047, 0x0048, 0x0049, 0x004a, 0x004b, 0x004c, 0x004d]);
         assert_eq!(buf.as_str(), "ABCDEFGHIJKLM0123∂");
     }
 
@@ -530,14 +462,8 @@ mod test {
         let mut storage = [0u8; 64];
         let mut buf: LfnBuffer = LfnBuffer::new(&mut storage);
 
-        buf.push(&[
-            0xde00, 0x002e, 0x0074, 0x0078, 0x0074, 0x0000, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff,
-            0xffff, 0xffff,
-        ]);
-        buf.push(&[
-            0xd83d, 0xde00, 0x0030, 0x0031, 0x0032, 0x0033, 0x0034, 0x0035, 0x0036, 0x0037, 0x0038,
-            0x0039, 0xd83d,
-        ]);
+        buf.push(&[0xde00, 0x002e, 0x0074, 0x0078, 0x0074, 0x0000, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff]);
+        buf.push(&[0xd83d, 0xde00, 0x0030, 0x0031, 0x0032, 0x0033, 0x0034, 0x0035, 0x0036, 0x0037, 0x0038, 0x0039, 0xd83d]);
         assert_eq!(buf.as_str(), "😀0123456789😀.txt");
     }
 }

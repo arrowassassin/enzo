@@ -28,9 +28,7 @@ pub struct HandleGenerator {
 impl HandleGenerator {
     /// Create a new generator of Handles.
     pub const fn new(offset: u32) -> Self {
-        Self {
-            next_id: Wrapping(offset),
-        }
+        Self { next_id: Wrapping(offset) }
     }
 
     /// Generate a new, unique [`Handle`].

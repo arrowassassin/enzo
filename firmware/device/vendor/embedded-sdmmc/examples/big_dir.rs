@@ -41,9 +41,7 @@ fn main() -> Result<(), Error<std::io::Error>> {
         file_num += 1;
         let file_name = format!("{}.da", file_num);
         println!("opening file {file_name} for writing");
-        let file = root_dir
-            .open_file_in_dir(file_name.as_str(), Mode::ReadWriteCreateOrTruncate)
-            .unwrap();
+        let file = root_dir.open_file_in_dir(file_name.as_str(), Mode::ReadWriteCreateOrTruncate).unwrap();
         let buf = b"hello world, from rust";
         println!("writing to file");
         file.write(&buf[..]).unwrap();

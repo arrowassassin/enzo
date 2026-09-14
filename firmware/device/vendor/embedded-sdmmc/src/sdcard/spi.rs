@@ -57,14 +57,7 @@ where
     /// The card will not be initialised at this time. Initialisation is
     /// deferred until a method is called on the object.
     pub fn new_with_options(spi: SPI, delayer: DELAYER, options: AcquireOpts) -> Self {
-        SdCard {
-            inner: RefCell::new(SdCardInner {
-                spi,
-                delayer,
-                card_type: None,
-                options,
-            }),
-        }
+        SdCard { inner: RefCell::new(SdCardInner { spi, delayer, card_type: None, options }) }
     }
 
     /// Get a temporary borrow on the underlying SPI device.
@@ -335,21 +328,13 @@ where
     fn write_data(&mut self, token: u8, buffer: &[u8]) -> Result<(), Error> {
         self.write_byte(token)?;
         self.write_bytes(buffer)?;
-        let crc_bytes = if self.options.use_crc {
-            crc16(buffer).to_be_bytes()
-        } else {
-            [0xFF, 0xFF]
-        };
+        let crc_bytes = if self.options.use_crc { crc16(buffer).to_be_bytes() } else { [0xFF, 0xFF] };
         // These two bytes are always sent. They are either a valid CRC, or
         // junk, depending on whether CRC mode was enabled.
         self.write_bytes(&crc_bytes)?;
 
         let status = self.read_byte()?;
-        if (status & DATA_RES_MASK) != DATA_RES_ACCEPTED {
-            Err(Error::WriteError)
-        } else {
-            Ok(())
-        }
+        if (status & DATA_RES_MASK) != DATA_RES_ACCEPTED { Err(Error::WriteError) } else { Ok(()) }
     }
 
     /// Check the card is initialised.
@@ -408,9 +393,7 @@ where
             // Check card version
             let mut delay = Delay::new_command();
             let arg = loop {
-                if s.card_command(CmdId::CMD8_SendIfCond, 0x1AA)?
-                    == (R1_ILLEGAL_COMMAND | R1_IDLE_STATE)
-                {
+                if s.card_command(CmdId::CMD8_SendIfCond, 0x1AA)? == (R1_ILLEGAL_COMMAND | R1_IDLE_STATE) {
                     card_type = CardType::SD1;
                     break 0;
                 }
@@ -421,18 +404,12 @@ where
                     card_type = CardType::SD2;
                     break 0x4000_0000;
                 }
-                delay.delay(
-                    &mut s.delayer,
-                    Error::TimeoutCommand(CmdId::CMD8_SendIfCond),
-                )?;
+                delay.delay(&mut s.delayer, Error::TimeoutCommand(CmdId::CMD8_SendIfCond))?;
             };
 
             let mut delay = Delay::new_command();
             while s.card_acmd(AcmdId::ACMD41_SdSendOpCond, arg)? != R1_READY_STATE {
-                delay.delay(
-                    &mut s.delayer,
-                    Error::TimeoutACommand(AcmdId::ACMD41_SdSendOpCond),
-                )?;
+                delay.delay(&mut s.delayer, Error::TimeoutACommand(AcmdId::ACMD41_SdSendOpCond))?;
             }
 
             if card_type == CardType::SD2 {
@@ -465,14 +442,7 @@ where
         // Wait for the required idle gap (Ncc) after the CMD55 escape response
         // before clocking out the application command.
         self.wait_not_busy(Delay::new_command())?;
-        let mut buf = [
-            0x40 | command as u8,
-            (arg >> 24) as u8,
-            (arg >> 16) as u8,
-            (arg >> 8) as u8,
-            arg as u8,
-            0,
-        ];
+        let mut buf = [0x40 | command as u8, (arg >> 24) as u8, (arg >> 16) as u8, (arg >> 8) as u8, arg as u8, 0];
         buf[5] = (crc7(&buf[0..5]) << 1) | 1;
 
         self.write_bytes(&buf)?;
@@ -493,14 +463,7 @@ where
             self.wait_not_busy(Delay::new_command())?;
         }
 
-        let mut buf = [
-            0x40 | command as u8,
-            (arg >> 24) as u8,
-            (arg >> 16) as u8,
-            (arg >> 8) as u8,
-            arg as u8,
-            0,
-        ];
+        let mut buf = [0x40 | command as u8, (arg >> 24) as u8, (arg >> 16) as u8, (arg >> 8) as u8, arg as u8, 0];
         buf[5] = (crc7(&buf[0..5]) << 1) | 1;
 
         self.write_bytes(&buf)?;
@@ -534,9 +497,7 @@ where
     /// Send one byte and receive one byte over the SPI bus.
     fn transfer_byte(&mut self, out: u8) -> Result<u8, Error> {
         let mut read_buf = [0u8; 1];
-        self.spi
-            .transfer(&mut read_buf, &[out])
-            .map_err(|_| Error::Transport)?;
+        self.spi.transfer(&mut read_buf, &[out]).map_err(|_| Error::Transport)?;
         Ok(read_buf[0])
     }
 
@@ -548,9 +509,7 @@ where
 
     /// Send multiple bytes and replace them with what comes back over the SPI bus.
     fn transfer_bytes(&mut self, in_out: &mut [u8]) -> Result<(), Error> {
-        self.spi
-            .transfer_in_place(in_out)
-            .map_err(|_e| Error::Transport)?;
+        self.spi.transfer_in_place(in_out).map_err(|_e| Error::Transport)?;
         Ok(())
     }
 
@@ -588,10 +547,7 @@ pub struct AcquireOpts {
 
 impl Default for AcquireOpts {
     fn default() -> Self {
-        AcquireOpts {
-            use_crc: true,
-            acquire_retries: 50,
-        }
+        AcquireOpts { use_crc: true, acquire_retries: 50 }
     }
 }
 
@@ -639,10 +595,7 @@ impl core::fmt::Display for Error {
             Error::TimeoutCommand(command) => {
                 write!(f, "timeout when executing command {command:?}")
             }
-            Error::TimeoutACommand(command) => write!(
-                f,
-                "timeout when executing application-specific command {command:?}"
-            ),
+            Error::TimeoutACommand(command) => write!(f, "timeout when executing application-specific command {command:?}"),
             Error::Cmd58Error => write!(f, "bad response from command 58"),
             Error::RegisterReadError => write!(f, "failed to read Card Specific Data register"),
             Error::CrcError(_, _) => write!(f, "CRC mismatch"),
@@ -689,9 +642,7 @@ impl Delay {
 
     /// Create a new Delay object with the given maximum number of retries.
     fn new(max_retries: u32) -> Delay {
-        Delay {
-            retries_left: max_retries,
-        }
+        Delay { retries_left: max_retries }
     }
 
     /// Create a new Delay object with the maximum number of retries for a read operation.

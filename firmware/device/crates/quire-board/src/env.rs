@@ -5,7 +5,8 @@ use alloc::vec::Vec;
 use core::sync::atomic::Ordering;
 
 use quire_fs::Fs;
-use quire_ui::net::{NetState, NoNet};
+use quire_net::NetShared;
+use quire_ui::net::NetState;
 use quire_ui::{Battery, DeviceInfo, Env, SysRequest, WifiState};
 
 use crate::sdfs::{SdFs, LOCAL_NOW};
@@ -21,7 +22,7 @@ pub struct DeviceEnv {
     pub clock_base: u32,
     /// Latest battery reading.
     pub battery: Battery,
-    /// Wi-Fi state (Segment 5 drives it).
+    /// Wi-Fi state, as last reported by the network task.
     pub wifi: WifiState,
     /// Saved network names.
     pub saved_networks: Vec<String>,
@@ -34,7 +35,7 @@ pub struct DeviceEnv {
     /// Build stamp.
     pub build: &'static str,
     rng: esp_hal::rng::Rng,
-    net: NoNet,
+    net: NetShared,
 }
 
 impl DeviceEnv {
@@ -53,7 +54,7 @@ impl DeviceEnv {
             serial,
             build,
             rng: esp_hal::rng::Rng::new(),
-            net: NoNet::default(),
+            net: NetShared::new(),
         }
     }
 
@@ -116,6 +117,7 @@ impl Env for DeviceEnv {
         self.rng.random()
     }
     fn net(&mut self) -> &mut dyn NetState {
+        self.net.refresh();
         &mut self.net
     }
 }

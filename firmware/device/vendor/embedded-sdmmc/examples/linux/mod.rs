@@ -19,15 +19,7 @@ impl LinuxBlockDevice {
     where
         P: AsRef<Path>,
     {
-        Ok(LinuxBlockDevice {
-            file: RefCell::new(
-                OpenOptions::new()
-                    .read(true)
-                    .write(true)
-                    .open(device_name)?,
-            ),
-            print_blocks,
-        })
+        Ok(LinuxBlockDevice { file: RefCell::new(OpenOptions::new().read(true).write(true).open(device_name)?), print_blocks })
     }
 }
 
@@ -35,9 +27,7 @@ impl BlockDevice for LinuxBlockDevice {
     type Error = std::io::Error;
 
     fn read(&self, blocks: &mut [Block], start_block_idx: BlockIdx) -> Result<(), Self::Error> {
-        self.file
-            .borrow_mut()
-            .seek(SeekFrom::Start(start_block_idx.into_bytes()))?;
+        self.file.borrow_mut().seek(SeekFrom::Start(start_block_idx.into_bytes()))?;
         for block in blocks.iter_mut() {
             self.file.borrow_mut().read_exact(&mut block.contents)?;
             if self.print_blocks {
@@ -48,9 +38,7 @@ impl BlockDevice for LinuxBlockDevice {
     }
 
     fn write(&self, blocks: &[Block], start_block_idx: BlockIdx) -> Result<(), Self::Error> {
-        self.file
-            .borrow_mut()
-            .seek(SeekFrom::Start(start_block_idx.into_bytes()))?;
+        self.file.borrow_mut().seek(SeekFrom::Start(start_block_idx.into_bytes()))?;
         for block in blocks.iter() {
             self.file.borrow_mut().write_all(&block.contents)?;
             if self.print_blocks {

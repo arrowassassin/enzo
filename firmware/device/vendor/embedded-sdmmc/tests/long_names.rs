@@ -10,10 +10,7 @@ use std::ops::ControlFlow;
 use std::path::PathBuf;
 use std::process::Command;
 
-use embedded_sdmmc::{
-    Error, LfnBuffer, LongName, Mode, RawDirectory, RawVolume, ShortFileName, VolumeIdx,
-    VolumeManager,
-};
+use embedded_sdmmc::{Error, LfnBuffer, LongName, Mode, RawDirectory, RawVolume, ShortFileName, VolumeIdx, VolumeManager};
 
 mod utils;
 
@@ -22,11 +19,7 @@ macro_rules! assert_err {
     ($e:expr, $p:pat) => {
         match $e {
             Err($p) => {}
-            other => panic!(
-                "expected {}, got {:?}",
-                stringify!($p),
-                other.map(|_| ())
-            ),
+            other => panic!("expected {}, got {:?}", stringify!($p), other.map(|_| ())),
         }
     };
 }
@@ -40,14 +33,7 @@ type Vm = VolumeManager<utils::RamDisk<Vec<u8>>, utils::TestTimeSource, 8, 8, 1>
 // ****************************************************************************
 
 fn tool(name: &str) -> PathBuf {
-    for dir in [
-        "/usr/sbin",
-        "/sbin",
-        "/usr/local/sbin",
-        "/usr/bin",
-        "/bin",
-        "/opt/homebrew/sbin",
-    ] {
+    for dir in ["/usr/sbin", "/sbin", "/usr/local/sbin", "/usr/bin", "/bin", "/opt/homebrew/sbin"] {
         let candidate = PathBuf::from(dir).join(name);
         if candidate.exists() {
             return candidate;
@@ -87,17 +73,11 @@ fn fat32_image(label: &str) -> Vec<u8> {
 fn fsck(image: &[u8], label: &str) {
     let path = scratch_path(&format!("{label}-fsck"));
     std::fs::write(&path, image).unwrap();
-    let output = Command::new(tool("fsck.fat"))
-        .args(["-n", "-V", "-v"])
-        .arg(&path)
-        .output()
-        .expect("fsck.fat must be installed (dosfstools)");
+    let output =
+        Command::new(tool("fsck.fat")).args(["-n", "-V", "-v"]).arg(&path).output().expect("fsck.fat must be installed (dosfstools)");
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        output.status.success(),
-        "fsck.fat -n reported errors for {label}:\n{stdout}\n{stderr}"
-    );
+    assert!(output.status.success(), "fsck.fat -n reported errors for {label}:\n{stdout}\n{stderr}");
     std::fs::remove_file(&path).unwrap();
 }
 
@@ -139,9 +119,7 @@ fn snapshot(vm: &Vm) -> Vec<u8> {
 // ****************************************************************************
 
 fn create_file(vm: &Vm, dir: RawDirectory, name: &str, contents: &[u8]) {
-    let f = vm
-        .open_long_name_file_in_dir(dir, name, Mode::ReadWriteCreate)
-        .unwrap_or_else(|e| panic!("create {name:?}: {e:?}"));
+    let f = vm.open_long_name_file_in_dir(dir, name, Mode::ReadWriteCreate).unwrap_or_else(|e| panic!("create {name:?}: {e:?}"));
     if !contents.is_empty() {
         vm.write(f, contents).unwrap();
     }
@@ -160,16 +138,12 @@ fn read_all(vm: &Vm, f: embedded_sdmmc::RawFile) -> Vec<u8> {
 }
 
 fn read_file(vm: &Vm, dir: RawDirectory, name: &str) -> Vec<u8> {
-    let f = vm
-        .open_long_name_file_in_dir(dir, name, Mode::ReadOnly)
-        .unwrap_or_else(|e| panic!("open {name:?}: {e:?}"));
+    let f = vm.open_long_name_file_in_dir(dir, name, Mode::ReadOnly).unwrap_or_else(|e| panic!("open {name:?}: {e:?}"));
     read_all(vm, f)
 }
 
 fn read_file_short(vm: &Vm, dir: RawDirectory, name: ShortFileName) -> Vec<u8> {
-    let f = vm
-        .open_file_in_dir(dir, name, Mode::ReadOnly)
-        .unwrap_or_else(|e| panic!("open {name}: {e:?}"));
+    let f = vm.open_file_in_dir(dir, name, Mode::ReadOnly).unwrap_or_else(|e| panic!("open {name}: {e:?}"));
     read_all(vm, f)
 }
 
@@ -225,8 +199,7 @@ struct Layout {
 
 fn layout(image: &[u8]) -> Layout {
     let u16_at = |i: usize| u16::from_le_bytes([image[i], image[i + 1]]);
-    let u32_at =
-        |i: usize| u32::from_le_bytes([image[i], image[i + 1], image[i + 2], image[i + 3]]);
+    let u32_at = |i: usize| u32::from_le_bytes([image[i], image[i + 1], image[i + 2], image[i + 3]]);
     assert_eq!(u16_at(11), 512);
     let sectors_per_cluster = u32::from(image[13]);
     let reserved = u32::from(u16_at(14));
@@ -261,9 +234,7 @@ fn raw_dir(image: &[u8], first_cluster: u32) -> Vec<[u8; 32]> {
     let layout = layout(image);
     let mut out = Vec::new();
     for cluster in chain(image, &layout, first_cluster) {
-        let start = (layout.data_start
-            + u64::from(cluster - 2) * u64::from(layout.sectors_per_cluster) * 512)
-            as usize;
+        let start = (layout.data_start + u64::from(cluster - 2) * u64::from(layout.sectors_per_cluster) * 512) as usize;
         let len = (layout.sectors_per_cluster * 512) as usize;
         for entry in image[start..start + len].chunks_exact(32) {
             out.push(entry.try_into().unwrap());
@@ -273,26 +244,16 @@ fn raw_dir(image: &[u8], first_cluster: u32) -> Vec<[u8; 32]> {
 }
 
 fn raw_cluster(entry: &[u8; 32]) -> u32 {
-    (u32::from(u16::from_le_bytes([entry[20], entry[21]])) << 16)
-        | u32::from(u16::from_le_bytes([entry[26], entry[27]]))
+    (u32::from(u16::from_le_bytes([entry[20], entry[21]])) << 16) | u32::from(u16::from_le_bytes([entry[26], entry[27]]))
 }
 
 fn raw_find(entries: &[[u8; 32]], short: ShortFileName) -> Option<[u8; 32]> {
-    let name = format!(
-        "{:<8}{:<3}",
-        String::from_utf8_lossy(short.base_name()),
-        String::from_utf8_lossy(short.extension())
-    );
-    entries
-        .iter()
-        .find(|e| e[0] != 0xE5 && e[0] != 0x00 && e[11] != 0x0F && &e[..11] == name.as_bytes())
-        .copied()
+    let name = format!("{:<8}{:<3}", String::from_utf8_lossy(short.base_name()), String::from_utf8_lossy(short.extension()));
+    entries.iter().find(|e| e[0] != 0xE5 && e[0] != 0x00 && e[11] != 0x0F && &e[..11] == name.as_bytes()).copied()
 }
 
 fn lfn_checksum(short: &[u8]) -> u8 {
-    short
-        .iter()
-        .fold(0u8, |sum, &b| sum.rotate_right(1).wrapping_add(b))
+    short.iter().fold(0u8, |sum, &b| sum.rotate_right(1).wrapping_add(b))
 }
 
 /// Verify that the raw directory is well formed: every LFN entry belongs to a
@@ -306,10 +267,7 @@ fn check_raw_dir(entries: &[[u8; 32]]) -> (usize, usize) {
         let e = &entries[i];
         if e[0] == 0x00 {
             // end of directory: everything after must be unused too
-            assert!(
-                entries[i..].iter().all(|e| e[0] == 0x00),
-                "entries after the end marker at {i}"
-            );
+            assert!(entries[i..].iter().all(|e| e[0] == 0x00), "entries after the end marker at {i}");
             break;
         }
         if e[0] == 0xE5 {
@@ -317,29 +275,15 @@ fn check_raw_dir(entries: &[[u8; 32]]) -> (usize, usize) {
             continue;
         }
         if e[11] == 0x0F {
-            assert_ne!(
-                e[0] & 0x40,
-                0,
-                "LFN run at {i} does not start with the last-entry flag"
-            );
+            assert_ne!(e[0] & 0x40, 0, "LFN run at {i} does not start with the last-entry flag");
             let n = usize::from(e[0] & 0x1F);
             let csum = e[13];
             assert!((1..=20).contains(&n), "bad LFN sequence number at {i}");
             for k in 0..n {
                 let part = &entries[i + k];
                 assert_eq!(part[11], 0x0F, "LFN run at {i} interrupted at {}", i + k);
-                assert_eq!(
-                    usize::from(part[0] & 0x1F),
-                    n - k,
-                    "LFN order wrong at {}",
-                    i + k
-                );
-                assert_eq!(
-                    part[13],
-                    csum,
-                    "LFN checksum differs within run at {}",
-                    i + k
-                );
+                assert_eq!(usize::from(part[0] & 0x1F), n - k, "LFN order wrong at {}", i + k);
+                assert_eq!(part[13], csum, "LFN checksum differs within run at {}", i + k);
                 assert_eq!(part[26..28], [0, 0], "LFN entry has a cluster at {}", i + k);
                 // Unused character slots: 0x0000 terminator then 0xFFFF padding
                 let units: Vec<u16> = [1usize, 3, 5, 7, 9, 14, 16, 18, 20, 22, 24, 28, 30]
@@ -347,23 +291,12 @@ fn check_raw_dir(entries: &[[u8; 32]]) -> (usize, usize) {
                     .map(|&o| u16::from_le_bytes([part[o], part[o + 1]]))
                     .collect();
                 if let Some(term) = units.iter().position(|&u| u == 0x0000) {
-                    assert!(
-                        units[term + 1..].iter().all(|&u| u == 0xFFFF),
-                        "LFN padding after terminator is not 0xFFFF at {}",
-                        i + k
-                    );
+                    assert!(units[term + 1..].iter().all(|&u| u == 0xFFFF), "LFN padding after terminator is not 0xFFFF at {}", i + k);
                 }
             }
             let short = &entries[i + n];
-            assert!(
-                short[0] != 0xE5 && short[0] != 0x00 && short[11] != 0x0F,
-                "orphan LFN run at {i}: no live short entry follows"
-            );
-            assert_eq!(
-                lfn_checksum(&short[..11]),
-                csum,
-                "LFN checksum mismatch at {i}"
-            );
+            assert!(short[0] != 0xE5 && short[0] != 0x00 && short[11] != 0x0F, "orphan LFN run at {i}: no live short entry follows");
+            assert_eq!(lfn_checksum(&short[..11]), csum, "LFN checksum mismatch at {i}");
             lfn_count += n;
             short_count += 1;
             i += n + 1;
@@ -384,9 +317,7 @@ fn check_raw_dir(entries: &[[u8; 32]]) -> (usize, usize) {
 #[test]
 fn fat32_three_hundred_long_names_grow_the_root_directory() {
     let (vm, volume, root) = open_image(fat32_image("many"));
-    let names: Vec<String> = (0..300)
-        .map(|i| format!("Quire Library Book Number {i:03} - A Reasonably Long Title.epub"))
-        .collect();
+    let names: Vec<String> = (0..300).map(|i| format!("Quire Library Book Number {i:03} - A Reasonably Long Title.epub")).collect();
     for (i, name) in names.iter().enumerate() {
         create_file(&vm, root, name, format!("book {i}").as_bytes());
     }
@@ -416,23 +347,11 @@ fn fat32_three_hundred_long_names_grow_the_root_directory() {
         let entry = vm.find_long_name_entry_in_dir(root, name).unwrap();
         assert_eq!(entry.size as usize, format!("book {i}").len());
         assert_eq!(read_file(&vm, root, name), format!("book {i}").as_bytes());
-        assert_eq!(
-            read_file_short(&vm, root, entry.name),
-            format!("book {i}").as_bytes()
-        );
+        assert_eq!(read_file_short(&vm, root, entry.name), format!("book {i}").as_bytes());
     }
     // Case-insensitive lookup
-    assert!(
-        vm.find_long_name_entry_in_dir(root, &names[42].to_uppercase())
-            .is_ok()
-    );
-    assert_err!(
-        vm.find_long_name_entry_in_dir(
-            root,
-            "Quire Library Book Number 300 - A Reasonably Long Title.epub"
-        ),
-        Error::NotFound
-    );
+    assert!(vm.find_long_name_entry_in_dir(root, &names[42].to_uppercase()).is_ok());
+    assert_err!(vm.find_long_name_entry_in_dir(root, "Quire Library Book Number 300 - A Reasonably Long Title.epub"), Error::NotFound);
 
     let image = close_image(vm, volume, root);
     let layout = layout(&image);
@@ -464,35 +383,22 @@ fn fat32_colliding_names_get_distinct_numeric_tails() {
     assert_eq!(read_file(&vm, root, "mybook~1.epu"), b"first");
 
     // Creating an existing name (in another case) fails; opening it works
-    assert_err!(
-        vm.open_long_name_file_in_dir(root, "MY BOOK.EPUB", Mode::ReadWriteCreate),
-        Error::FileAlreadyExists
-    );
-    let f = vm
-        .open_long_name_file_in_dir(root, "MY BOOK.EPUB", Mode::ReadWriteCreateOrAppend)
-        .unwrap();
+    assert_err!(vm.open_long_name_file_in_dir(root, "MY BOOK.EPUB", Mode::ReadWriteCreate), Error::FileAlreadyExists);
+    let f = vm.open_long_name_file_in_dir(root, "MY BOOK.EPUB", Mode::ReadWriteCreateOrAppend).unwrap();
     vm.write(f, b"+more").unwrap();
     vm.close_file(f).unwrap();
     assert_eq!(read_file(&vm, root, "My Book.epub"), b"first+more");
-    let f = vm
-        .open_long_name_file_in_dir(root, "My Book (2).epub", Mode::ReadWriteCreateOrTruncate)
-        .unwrap();
+    let f = vm.open_long_name_file_in_dir(root, "My Book (2).epub", Mode::ReadWriteCreateOrTruncate).unwrap();
     vm.write(f, b"new").unwrap();
     vm.close_file(f).unwrap();
     assert_eq!(read_file(&vm, root, "My Book (2).epub"), b"new");
-    assert_err!(
-        vm.open_long_name_file_in_dir(root, "No Such Book.epub", Mode::ReadOnly),
-        Error::NotFound
-    );
+    assert_err!(vm.open_long_name_file_in_dir(root, "No Such Book.epub", Mode::ReadOnly), Error::NotFound);
     assert_eq!(list(&vm, root).len(), 3);
 
     // Invalid long names are rejected
     for bad in ["", ".", "..", "a/b", "a:b", "a?b", "a\"b", "a|b"] {
         assert!(
-            matches!(
-                vm.open_long_name_file_in_dir(root, bad, Mode::ReadWriteCreate),
-                Err(Error::FilenameError(_))
-            ),
+            matches!(vm.open_long_name_file_in_dir(root, bad, Mode::ReadWriteCreate), Err(Error::FilenameError(_))),
             "{bad:?} should be rejected"
         );
     }
@@ -527,10 +433,7 @@ fn fat32_mixed_case_83_names_keep_their_case() {
     assert_eq!(read_file(&vm, root, "readme.txt"), b"upper");
     assert_eq!(read_file(&vm, root, "Notes.MD"), b"lower");
     assert_eq!(read_file(&vm, root, "MIXED"), b"noext");
-    assert_eq!(
-        vm.find_directory_entry(root, "MYBOOK.TXT").unwrap().size,
-        5
-    );
+    assert_eq!(vm.find_directory_entry(root, "MYBOOK.TXT").unwrap().size, 5);
 
     let image = close_image(vm, volume, root);
     let layout = layout(&image);
@@ -545,52 +448,27 @@ fn fat32_mixed_case_83_names_keep_their_case() {
 fn fat32_nested_long_name_directories() {
     let (vm, volume, root) = open_image(fat32_image("nested"));
     vm.make_long_name_dir_in_dir(root, "Library").unwrap();
-    assert_err!(
-        vm.make_long_name_dir_in_dir(root, "library"),
-        Error::DirAlreadyExists
-    );
+    assert_err!(vm.make_long_name_dir_in_dir(root, "library"), Error::DirAlreadyExists);
     let library = vm.open_long_name_dir_in_dir(root, "LIBRARY").unwrap();
-    vm.make_long_name_dir_in_dir(library, "Science Fiction & Fantasy")
-        .unwrap();
-    let genre = vm
-        .open_long_name_dir_in_dir(library, "science fiction & fantasy")
-        .unwrap();
+    vm.make_long_name_dir_in_dir(library, "Science Fiction & Fantasy").unwrap();
+    let genre = vm.open_long_name_dir_in_dir(library, "science fiction & fantasy").unwrap();
     vm.make_long_name_dir_in_dir(genre, "Isaac Asimov").unwrap();
     let author = vm.open_long_name_dir_in_dir(genre, "Isaac Asimov").unwrap();
     create_file(&vm, author, "Foundation (1951).epub", b"psychohistory");
-    assert_err!(
-        vm.make_long_name_dir_in_dir(author, "Foundation (1951).epub"),
-        Error::FileAlreadyExists
-    );
-    assert_err!(
-        vm.open_long_name_dir_in_dir(author, "Foundation (1951).epub"),
-        Error::OpenedFileAsDir
-    );
-    assert_err!(
-        vm.open_long_name_dir_in_dir(author, "Missing"),
-        Error::NotFound
-    );
+    assert_err!(vm.make_long_name_dir_in_dir(author, "Foundation (1951).epub"), Error::FileAlreadyExists);
+    assert_err!(vm.open_long_name_dir_in_dir(author, "Foundation (1951).epub"), Error::OpenedFileAsDir);
+    assert_err!(vm.open_long_name_dir_in_dir(author, "Missing"), Error::NotFound);
 
     // `..` leads back up
     let up = vm.open_long_name_dir_in_dir(author, "..").unwrap();
-    assert!(
-        vm.find_long_name_entry_in_dir(up, "Isaac Asimov")
-            .unwrap()
-            .attributes
-            .is_directory()
-    );
+    assert!(vm.find_long_name_entry_in_dir(up, "Isaac Asimov").unwrap().attributes.is_directory());
     vm.close_dir(up).unwrap();
     let same = vm.open_long_name_dir_in_dir(author, ".").unwrap();
-    assert_eq!(
-        read_file(&vm, same, "foundation (1951).EPUB"),
-        b"psychohistory"
-    );
+    assert_eq!(read_file(&vm, same, "foundation (1951).EPUB"), b"psychohistory");
     vm.close_dir(same).unwrap();
 
     // Fill the deepest directory past its first cluster, then empty it again
-    let names: Vec<String> = (0..40)
-        .map(|i| format!("The Robot Series - Volume {i} of Many.epub"))
-        .collect();
+    let names: Vec<String> = (0..40).map(|i| format!("The Robot Series - Volume {i} of Many.epub")).collect();
     for name in &names {
         create_file(&vm, author, name, b"robot");
     }
@@ -633,19 +511,14 @@ fn fat32_nested_long_name_directories() {
     let (lfn_entries, short_entries) = check_raw_dir(&author_entries);
     assert_eq!(short_entries, 3, ". .. and the one file");
     assert_eq!(lfn_entries, 2);
-    assert!(
-        chain(&image, &layout, author_cluster).len() > 1,
-        "the directory grew"
-    );
+    assert!(chain(&image, &layout, author_cluster).len() > 1, "the directory grew");
     fsck(&image, "nested");
 }
 
 #[test]
 fn fat32_delete_leaves_no_orphan_lfn_entries_and_frees_clusters() {
     let (vm, volume, root) = open_image(fat32_image("delete"));
-    let names: Vec<String> = (0..20)
-        .map(|i| format!("Deletable Document Number {i} With A Long Name.txt"))
-        .collect();
+    let names: Vec<String> = (0..20).map(|i| format!("Deletable Document Number {i} With A Long Name.txt")).collect();
     let payload = vec![b'x'; 4096];
     for name in &names {
         create_file(&vm, root, name, &payload);
@@ -668,38 +541,21 @@ fn fat32_delete_leaves_no_orphan_lfn_entries_and_frees_clusters() {
     assert_eq!(deleted_chain.len(), 8);
 
     // Refusals
-    assert_err!(
-        vm.delete_long_name_entry_in_dir(root, "Some Directory"),
-        Error::DirAlreadyOpen
-    );
+    assert_err!(vm.delete_long_name_entry_in_dir(root, "Some Directory"), Error::DirAlreadyOpen);
     vm.close_dir(subdir).unwrap();
-    assert_err!(
-        vm.delete_long_name_entry_in_dir(root, "some directory"),
-        Error::DeleteNonEmptyDir
-    );
-    let f = vm
-        .open_long_name_file_in_dir(root, &names[0], Mode::ReadOnly)
-        .unwrap();
-    assert_err!(
-        vm.delete_long_name_entry_in_dir(root, &names[0]),
-        Error::FileAlreadyOpen
-    );
+    assert_err!(vm.delete_long_name_entry_in_dir(root, "some directory"), Error::DeleteNonEmptyDir);
+    let f = vm.open_long_name_file_in_dir(root, &names[0], Mode::ReadOnly).unwrap();
+    assert_err!(vm.delete_long_name_entry_in_dir(root, &names[0]), Error::FileAlreadyOpen);
     vm.close_file(f).unwrap();
-    assert_err!(
-        vm.delete_long_name_entry_in_dir(root, "Not There.txt"),
-        Error::NotFound
-    );
+    assert_err!(vm.delete_long_name_entry_in_dir(root, "Not There.txt"), Error::NotFound);
 
     // Delete every other file, in the other case
     for name in names.iter().step_by(2) {
-        vm.delete_long_name_entry_in_dir(root, &name.to_lowercase())
-            .unwrap();
+        vm.delete_long_name_entry_in_dir(root, &name.to_lowercase()).unwrap();
     }
     // Empty and delete the directory (using the short name API on the file)
     let subdir = vm.open_long_name_dir_in_dir(root, "Some Directory").unwrap();
-    let inside = vm
-        .find_long_name_entry_in_dir(subdir, "Inside The Directory.txt")
-        .unwrap();
+    let inside = vm.find_long_name_entry_in_dir(subdir, "Inside The Directory.txt").unwrap();
     vm.delete_entry_in_dir(subdir, inside.name).unwrap();
     assert_eq!(list(&vm, subdir).len(), 0);
     vm.close_dir(subdir).unwrap();
@@ -731,16 +587,10 @@ fn fat32_delete_leaves_no_orphan_lfn_entries_and_frees_clusters() {
     let (lfn_after, short_after) = check_raw_dir(&root_after);
     assert_eq!(short_after, 20 + 1);
     let per_name = LongName::new(&names[0]).unwrap().num_entries();
-    let per_replacement = LongName::new("Replacement File Number 0.txt")
-        .unwrap()
-        .num_entries();
+    let per_replacement = LongName::new("Replacement File Number 0.txt").unwrap().num_entries();
     assert_eq!(lfn_before, 20 * per_name + 2);
     assert_eq!(lfn_after, 10 * per_name + 10 * per_replacement);
-    assert_eq!(
-        chain(&image, &layout, layout.root_cluster).len(),
-        root_clusters_before,
-        "deleted entries were re-used"
-    );
+    assert_eq!(chain(&image, &layout, layout.root_cluster).len(), root_clusters_before, "deleted entries were re-used");
     fsck(&image, "delete");
 }
 
@@ -749,94 +599,47 @@ fn fat32_rename_and_move() {
     let (vm, volume, root) = open_image(fat32_image("rename"));
     create_file(&vm, root, "Draft Chapter.txt", b"once upon a time");
     create_file(&vm, root, "Other File.txt", b"other");
-    let original = vm
-        .find_long_name_entry_in_dir(root, "Draft Chapter.txt")
-        .unwrap();
+    let original = vm.find_long_name_entry_in_dir(root, "Draft Chapter.txt").unwrap();
 
     // Rename in place
-    vm.rename_long_name_in_dir(root, "draft chapter.TXT", "Final Chapter v2.txt")
-        .unwrap();
-    assert_err!(
-        vm.find_long_name_entry_in_dir(root, "Draft Chapter.txt"),
-        Error::NotFound
-    );
-    let renamed = vm
-        .find_long_name_entry_in_dir(root, "Final Chapter v2.txt")
-        .unwrap();
+    vm.rename_long_name_in_dir(root, "draft chapter.TXT", "Final Chapter v2.txt").unwrap();
+    assert_err!(vm.find_long_name_entry_in_dir(root, "Draft Chapter.txt"), Error::NotFound);
+    let renamed = vm.find_long_name_entry_in_dir(root, "Final Chapter v2.txt").unwrap();
     assert_eq!(renamed.cluster, original.cluster);
     assert_eq!(renamed.size, original.size);
     assert_eq!(renamed.ctime, original.ctime);
     assert_eq!(renamed.mtime, original.mtime);
     assert_eq!(renamed.name, sfn("FINALC~1.TXT"));
-    assert_eq!(
-        read_file(&vm, root, "Final Chapter v2.txt"),
-        b"once upon a time"
-    );
+    assert_eq!(read_file(&vm, root, "Final Chapter v2.txt"), b"once upon a time");
 
     // Case-only rename
-    vm.rename_long_name_in_dir(root, "Final Chapter v2.txt", "FINAL CHAPTER V2.TXT")
-        .unwrap();
-    assert!(
-        list(&vm, root)
-            .iter()
-            .any(|l| l.name == "FINAL CHAPTER V2.TXT")
-    );
-    assert_eq!(
-        read_file(&vm, root, "final chapter v2.txt"),
-        b"once upon a time"
-    );
+    vm.rename_long_name_in_dir(root, "Final Chapter v2.txt", "FINAL CHAPTER V2.TXT").unwrap();
+    assert!(list(&vm, root).iter().any(|l| l.name == "FINAL CHAPTER V2.TXT"));
+    assert_eq!(read_file(&vm, root, "final chapter v2.txt"), b"once upon a time");
 
     // Rename to a name that is 8.3 drops the LFN entries
-    vm.rename_long_name_in_dir(root, "FINAL CHAPTER V2.TXT", "FINAL.TXT")
-        .unwrap();
-    assert_eq!(
-        vm.find_directory_entry(root, "FINAL.TXT").unwrap().cluster,
-        original.cluster
-    );
+    vm.rename_long_name_in_dir(root, "FINAL CHAPTER V2.TXT", "FINAL.TXT").unwrap();
+    assert_eq!(vm.find_directory_entry(root, "FINAL.TXT").unwrap().cluster, original.cluster);
 
     // Refusals
-    assert_err!(
-        vm.rename_long_name_in_dir(root, "FINAL.TXT", "other file.txt"),
-        Error::FileAlreadyExists
-    );
-    assert_err!(
-        vm.rename_long_name_in_dir(root, "Missing.txt", "X.txt"),
-        Error::NotFound
-    );
-    let f = vm
-        .open_long_name_file_in_dir(root, "FINAL.TXT", Mode::ReadOnly)
-        .unwrap();
-    assert_err!(
-        vm.rename_long_name_in_dir(root, "FINAL.TXT", "Y.txt"),
-        Error::FileAlreadyOpen
-    );
+    assert_err!(vm.rename_long_name_in_dir(root, "FINAL.TXT", "other file.txt"), Error::FileAlreadyExists);
+    assert_err!(vm.rename_long_name_in_dir(root, "Missing.txt", "X.txt"), Error::NotFound);
+    let f = vm.open_long_name_file_in_dir(root, "FINAL.TXT", Mode::ReadOnly).unwrap();
+    assert_err!(vm.rename_long_name_in_dir(root, "FINAL.TXT", "Y.txt"), Error::FileAlreadyOpen);
     vm.close_file(f).unwrap();
 
     // Move a file into a directory
     vm.make_long_name_dir_in_dir(root, "Archive").unwrap();
     let archive = vm.open_long_name_dir_in_dir(root, "Archive").unwrap();
-    vm.move_long_name(root, "final.txt", archive, "Moved Chapter.txt")
-        .unwrap();
-    assert_err!(
-        vm.find_long_name_entry_in_dir(root, "FINAL.TXT"),
-        Error::NotFound
-    );
-    let moved = vm
-        .find_long_name_entry_in_dir(archive, "Moved Chapter.txt")
-        .unwrap();
+    vm.move_long_name(root, "final.txt", archive, "Moved Chapter.txt").unwrap();
+    assert_err!(vm.find_long_name_entry_in_dir(root, "FINAL.TXT"), Error::NotFound);
+    let moved = vm.find_long_name_entry_in_dir(archive, "Moved Chapter.txt").unwrap();
     assert_eq!(moved.cluster, original.cluster);
-    assert_eq!(
-        read_file(&vm, archive, "moved chapter.txt"),
-        b"once upon a time"
-    );
-    assert_err!(
-        vm.move_long_name(root, "Other File.txt", archive, "Moved Chapter.txt"),
-        Error::FileAlreadyExists
-    );
+    assert_eq!(read_file(&vm, archive, "moved chapter.txt"), b"once upon a time");
+    assert_err!(vm.move_long_name(root, "Other File.txt", archive, "Moved Chapter.txt"), Error::FileAlreadyExists);
     // Same directory through two handles is a rename
     let root2 = vm.open_long_name_dir_in_dir(archive, "..").unwrap();
-    vm.move_long_name(root, "Other File.txt", root2, "Other File (renamed).txt")
-        .unwrap();
+    vm.move_long_name(root, "Other File.txt", root2, "Other File (renamed).txt").unwrap();
     vm.close_dir(root2).unwrap();
     assert_eq!(read_file(&vm, root, "Other File (renamed).txt"), b"other");
 
@@ -845,32 +648,16 @@ fn fat32_rename_and_move() {
     let series = vm.open_long_name_dir_in_dir(root, "Series").unwrap();
     create_file(&vm, series, "Book 1.epub", b"one");
     vm.close_dir(series).unwrap();
-    assert_err!(
-        vm.move_long_name(root, "Archive", archive, "Archive Inside Itself"),
-        Error::Unsupported
-    );
-    vm.move_long_name(root, "Series", archive, "Series (moved)")
-        .unwrap();
-    assert_err!(
-        vm.open_long_name_dir_in_dir(root, "Series"),
-        Error::NotFound
-    );
-    let series = vm
-        .open_long_name_dir_in_dir(archive, "Series (moved)")
-        .unwrap();
+    assert_err!(vm.move_long_name(root, "Archive", archive, "Archive Inside Itself"), Error::Unsupported);
+    vm.move_long_name(root, "Series", archive, "Series (moved)").unwrap();
+    assert_err!(vm.open_long_name_dir_in_dir(root, "Series"), Error::NotFound);
+    let series = vm.open_long_name_dir_in_dir(archive, "Series (moved)").unwrap();
     assert_eq!(read_file(&vm, series, "Book 1.epub"), b"one");
     let parent = vm.open_long_name_dir_in_dir(series, "..").unwrap();
-    assert!(
-        vm.find_long_name_entry_in_dir(parent, "Moved Chapter.txt")
-            .is_ok(),
-        "'..' of the moved directory points at Archive"
-    );
+    assert!(vm.find_long_name_entry_in_dir(parent, "Moved Chapter.txt").is_ok(), "'..' of the moved directory points at Archive");
     vm.close_dir(parent).unwrap();
     // A directory can't be moved below itself
-    assert_err!(
-        vm.move_long_name(root, "Archive", series, "Nope"),
-        Error::Unsupported
-    );
+    assert_err!(vm.move_long_name(root, "Archive", series, "Nope"), Error::Unsupported);
     vm.close_dir(series).unwrap();
 
     assert_eq!(list(&vm, root).len(), 2);
@@ -901,13 +688,10 @@ fn fat32_directory_wrapper_api() {
         let root = volume.open_root_dir().unwrap();
         root.make_long_name_dir_in_dir("Wrapped Directory").unwrap();
         let dir = root.open_long_name_dir("wrapped directory").unwrap();
-        let file = dir
-            .open_long_name_file_in_dir("Wrapped File.txt", Mode::ReadWriteCreate)
-            .unwrap();
+        let file = dir.open_long_name_file_in_dir("Wrapped File.txt", Mode::ReadWriteCreate).unwrap();
         file.write(b"wrapped").unwrap();
         file.close().unwrap();
-        dir.rename_long_name_in_dir("Wrapped File.txt", "Renamed File.txt")
-            .unwrap();
+        dir.rename_long_name_in_dir("Wrapped File.txt", "Renamed File.txt").unwrap();
         assert_eq!(dir.find_long_name_entry("renamed file.txt").unwrap().size, 7);
         dir.delete_long_name_entry_in_dir("Renamed File.txt").unwrap();
         assert_err!(dir.find_long_name_entry("Renamed File.txt"), Error::NotFound);
@@ -933,54 +717,30 @@ fn fat16_long_names_in_fixed_root_and_subdirectory() {
 
     create_file(&vm, root, "Long Name In The FAT16 Root.txt", b"root");
     create_file(&vm, root, "Another Long Name.txt", b"another");
-    assert_eq!(
-        read_file(&vm, root, "long name in the fat16 root.TXT"),
-        b"root"
-    );
+    assert_eq!(read_file(&vm, root, "long name in the fat16 root.TXT"), b"root");
     let listed = list(&vm, root);
-    assert!(
-        listed
-            .iter()
-            .any(|l| l.name == "Long Name In The FAT16 Root.txt")
-    );
+    assert!(listed.iter().any(|l| l.name == "Long Name In The FAT16 Root.txt"));
     assert!(listed.iter().any(|l| l.name == "README.TXT"));
 
     let test_dir = vm.open_long_name_dir_in_dir(root, "test").unwrap();
     create_file(&vm, test_dir, "Deep Long Name.txt", b"deep");
-    vm.make_long_name_dir_in_dir(test_dir, "Nested Directory")
-        .unwrap();
-    let nested = vm
-        .open_long_name_dir_in_dir(test_dir, "Nested Directory")
-        .unwrap();
+    vm.make_long_name_dir_in_dir(test_dir, "Nested Directory").unwrap();
+    let nested = vm.open_long_name_dir_in_dir(test_dir, "Nested Directory").unwrap();
     create_file(&vm, nested, "Deeper Still.txt", b"deeper");
     assert_eq!(read_file(&vm, nested, "Deeper Still.txt"), b"deeper");
-    vm.rename_long_name_in_dir(nested, "Deeper Still.txt", "Deepest.txt")
-        .unwrap();
-    vm.move_long_name(nested, "Deepest.txt", root, "Surfaced.txt")
-        .unwrap();
+    vm.rename_long_name_in_dir(nested, "Deeper Still.txt", "Deepest.txt").unwrap();
+    vm.move_long_name(nested, "Deepest.txt", root, "Surfaced.txt").unwrap();
     assert_eq!(read_file(&vm, root, "Surfaced.txt"), b"deeper");
     vm.close_dir(nested).unwrap();
-    vm.delete_long_name_entry_in_dir(test_dir, "Nested Directory")
-        .unwrap();
-    vm.delete_long_name_entry_in_dir(test_dir, "Deep Long Name.txt")
-        .unwrap();
-    assert_err!(
-        vm.find_long_name_entry_in_dir(test_dir, "Deep Long Name.txt"),
-        Error::NotFound
-    );
+    vm.delete_long_name_entry_in_dir(test_dir, "Nested Directory").unwrap();
+    vm.delete_long_name_entry_in_dir(test_dir, "Deep Long Name.txt").unwrap();
+    assert_err!(vm.find_long_name_entry_in_dir(test_dir, "Deep Long Name.txt"), Error::NotFound);
     assert_eq!(list(&vm, test_dir).len(), 1, "only TEST.DAT remains");
     vm.close_dir(test_dir).unwrap();
 
-    vm.delete_long_name_entry_in_dir(root, "Another Long Name.txt")
-        .unwrap();
-    assert_err!(
-        vm.find_long_name_entry_in_dir(root, "Another Long Name.txt"),
-        Error::NotFound
-    );
-    assert_eq!(
-        read_file(&vm, root, "Long Name In The FAT16 Root.txt"),
-        b"root"
-    );
+    vm.delete_long_name_entry_in_dir(root, "Another Long Name.txt").unwrap();
+    assert_err!(vm.find_long_name_entry_in_dir(root, "Another Long Name.txt"), Error::NotFound);
+    assert_eq!(read_file(&vm, root, "Long Name In The FAT16 Root.txt"), b"root");
     vm.close_dir(root).unwrap();
     vm.close_volume(volume).unwrap();
 }
