@@ -31,7 +31,7 @@
 25-layout 2362c135a2197e84
 25-type 08f803ad1f21c1fc
 25-type-bigger 9902597b23f99bd3
-26-cursor 9f42d1df0e5bbb70
+26-cursor 5080679ae3eaf9c2
 27-dictionary be5a8832ee75453b
 28-highlights 34898b39ece26043
 29-footnote ea762b7a1474bf86

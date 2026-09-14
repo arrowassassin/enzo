@@ -443,11 +443,10 @@ fn reader_method_costs() {
         r.next_page(fs, 0);
         let _ = r.render(fs, &mut frame, settings);
     });
-    m2(&mut sim, "Reader::prerender()", |s| {
+    m2(&mut sim, "Reader::prefetch_next()", |s| {
         let fs = s.env.fs();
-        let settings = &s.ui.settings;
         let r = s.ui.reader.as_mut().unwrap();
-        r.prerender(fs, settings);
+        r.prefetch_next(fs);
     });
     m2(&mut sim, "Reader::index_step() (one section)", |s| {
         let fs = s.env.fs();

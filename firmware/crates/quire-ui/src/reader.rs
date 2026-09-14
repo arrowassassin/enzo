@@ -501,12 +501,6 @@ impl Reader {
         true
     }
 
-    /// Idle hook kept for platforms that called the old frame pre-render: it now prefetches
-    /// the next section (see [`Reader::prefetch_next`]); no frame is rendered.
-    pub fn prerender<F: Fs>(&mut self, fs: &F, _settings: &Settings) {
-        self.prefetch_next(fs);
-    }
-
     /// The Spine model for the current position.
     pub fn spine_model(&self) -> SpineModel {
         let total = self.total_pages();

@@ -186,7 +186,8 @@ impl<E: Env> Screen<E> for WordCursor {
         if let Some(r) = cx.reader.as_ref() {
             let w = f.width() as i32;
             let text = r.text_rect();
-            let right = (w - MARGIN - SPINE_W - 6).max(text.right());
+            // The head shares the text measure, exactly as the reader draws it.
+            let right = text.right();
             f.fill_rect(Rect::new(0, 0, w as u32, (MARGIN + 26) as u32), Ink::White);
             crate::widgets::reading_head(f, &r.book.meta.title, "", text.x, right, MARGIN + 18);
             draw_right(f, quire_fonts::ui::mono(), right, MARGIN + 18, &label, TextStyle::INK);
