@@ -54,7 +54,7 @@ impl<E: Env> Screen<E> for Weather {
             Some((temp, cond, days)) => {
                 draw_text(f, hero, widgets::INSET, y + hero.ascent(), &alloc::format!("{temp}°"), TextStyle::INK);
                 draw_text(f, fb, widgets::INSET + 150, y + hero.ascent() - 10, &cond, TextStyle::INK);
-                y += hero.ascent() + hero.descent() + 30;
+                y += hero.ascent() + hero.below() + 30;
                 f.fill_rect(Rect::new(widgets::INSET, y, (w - 2 * widgets::INSET) as u32, 2), Ink::Black);
                 y += 16;
                 let cw = (w - 2 * widgets::INSET) / 5;
@@ -67,7 +67,7 @@ impl<E: Env> Screen<E> for Weather {
                         f,
                         fl,
                         cx_,
-                        y + line_h(fl) + 8 + poster.ascent() + poster.descent() + 4 + fl.ascent(),
+                        y + line_h(fl) + 8 + poster.ascent() + poster.below() + 4 + fl.ascent(),
                         &alloc::format!("{lo}°"),
                         TextStyle::INK,
                     );

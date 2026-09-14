@@ -131,7 +131,8 @@ impl<E: Env> Screen<E> for LibraryScreen {
             None => String::from("Library"),
         };
         running_head(f, &title, None);
-        let y = tabs(f, widgets::CONTENT_TOP - 8, &TABS, self.tab, self.on_tabs, Some(&page_indicator(self.nav.page(), self.nav.pages())));
+        let indicator = page_indicator(self.nav.page(), self.nav.pages());
+        let y = tabs(f, widgets::CONTENT_TOP - 8, &TABS, self.tab, self.on_tabs, (self.nav.pages() > 1).then_some(indicator.as_str()));
         if items.is_empty() {
             let (line, hint) = match self.tab {
                 4 => ("No collections yet", "Long-press Confirm on a book to add it to one."),

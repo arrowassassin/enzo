@@ -11,6 +11,9 @@ quire-gfx = { path = "../../crates/quire-gfx", features = ["std"] }
 quire-fonts = { path = "../../crates/quire-fonts" }
 quire-layout = { path = "../../crates/quire-layout" }
 quire-qtx = { path = "../../crates/quire-qtx" }
+quire-fs = { path = "../../crates/quire-fs", features = ["std"] }
+quire-library = { path = "../../crates/quire-library", features = ["std"] }
+quire-ui = { path = "../../crates/quire-ui", features = ["std"] }
 image = { workspace = true }
 anyhow = { workspace = true }
 clap = { workspace = true }

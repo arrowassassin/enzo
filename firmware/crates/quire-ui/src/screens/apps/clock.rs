@@ -86,7 +86,7 @@ impl<E: Env> Screen<E> for Clock {
         let fl = quire_fonts::ui::label();
         let mut y = widgets::CONTENT_TOP + 20;
         draw_centered(f, hero, w / 2, y + hero.ascent(), &time::fmt_clock(now, cx.settings.clock_24h), TextStyle::INK);
-        y += hero.ascent() + hero.descent() + 8;
+        y += hero.ascent() + hero.below() + 8;
         let day = time::day_of(now);
         draw_centered(f, fl, w / 2, y + fl.ascent(), &small_caps(&time::fmt_weekday_date(day)), crate::text::label_style(false));
         y += line_h(fl) + 28;
@@ -97,16 +97,9 @@ impl<E: Env> Screen<E> for Clock {
         };
         let steps = 24;
         let done = if total == 0 { 0 } else { ((total - left) as u64 * steps as u64 / total as u64) as u32 };
-        ring(f, w / 2, y + 70, 64, steps, done);
+        let (cx, cy, radius) = (w / 2, y + 80, 78);
+        ring(f, cx, cy, radius, steps, done);
         let poster = quire_fonts::ui::poster();
-        draw_centered(
-            f,
-            poster,
-            w / 2,
-            y + 70 + poster.ascent() / 2 - 4,
-            &alloc::format!("{:02}:{:02}", left / 60, left % 60),
-            TextStyle::INK,
-        );
         let state = if self.rang {
             "Done"
         } else if self.timer.is_some() {
@@ -114,8 +107,14 @@ impl<E: Env> Screen<E> for Clock {
         } else {
             "Timer"
         };
-        draw_centered(f, fl, w / 2, y + 70 + poster.ascent() / 2 + 20, &small_caps(state), crate::text::label_style(false));
-        y += 160;
+        // The numeral's cap height plus the label line, centred as one block on the ring.
+        let cap = poster.glyph('0').map(|g| g.bitmap.h as i32).unwrap_or(poster.ascent() * 7 / 10);
+        let gap = 6;
+        let block = cap + gap + fl.ascent();
+        let top = cy - block / 2;
+        draw_centered(f, poster, cx, top + cap, &alloc::format!("{:02}:{:02}", left / 60, left % 60), TextStyle::INK);
+        draw_centered(f, fl, cx, top + cap + gap + fl.ascent(), &small_caps(state), crate::text::label_style(false));
+        y += 2 * radius + 40;
         // Alarms (visual only: the device shows them when awake).
         draw_label(f, widgets::INSET, y + fl.ascent(), "Alarms · visual", false);
         y += line_h(fl) + 4;

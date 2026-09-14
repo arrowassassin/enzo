@@ -4,10 +4,9 @@
 use alloc::boxed::Box;
 use alloc::string::String;
 use alloc::vec::Vec;
-use quire_gfx::{draw_text, Frame, Ink, Rect, TextStyle};
+use quire_gfx::{Frame, Ink, Rect};
 use quire_library::marks::{Mark, MarkKind};
 
-use crate::text::draw_right;
 use crate::theme::*;
 use crate::widgets::rail;
 use crate::{Action, Ctx, Env, Key, KeyEvent, KeyKind, Refresh, Screen};
@@ -129,9 +128,15 @@ impl<E: Env> Screen<E> for WordCursor {
         } else {
             alloc::format!("{} / {}", self.rare_pos + 1, self.by_rarity.len().min(6))
         };
-        let w = f.width() as i32;
-        f.fill_rect(Rect::new(w - MARGIN - 90, MARGIN - 4, 90, 26), Ink::White);
-        draw_right(f, mono, w - MARGIN - SPINE_W - 8, MARGIN + 14, &label, TextStyle::INK);
+        // The counter takes the chapter's place in the running head while the cursor is up.
+        if let Some(r) = cx.reader.as_ref() {
+            let w = f.width() as i32;
+            let text = r.text_rect();
+            let right = w - MARGIN - SPINE_W - 6;
+            f.fill_rect(Rect::new(0, 0, w as u32, (MARGIN + 26) as u32), Ink::White);
+            crate::widgets::reading_head(f, &r.book.meta.title, &label, text.x, right.max(text.right()), MARGIN + 18);
+        }
+        let _ = mono;
         if self.sel_end.is_some() {
             crate::widgets::side_labels(f, Some("Less"), Some("More"), true);
             rail(f, ["Less", "Cancel", "Save", "More"], None);
@@ -139,7 +144,6 @@ impl<E: Env> Screen<E> for WordCursor {
             crate::widgets::side_labels(f, Some("Line"), Some("Line"), true);
             rail(f, ["Rarer", "Cancel", "Define", "Next"], None);
         }
-        let _ = draw_text;
         Refresh::Du
     }
     fn key(&mut self, cx: &mut Ctx<E>, ev: KeyEvent) -> Action<E> {

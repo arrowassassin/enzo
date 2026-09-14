@@ -61,14 +61,14 @@ impl<E: Env> Screen<E> for GoTo {
             f,
             fl,
             widgets::INSET,
-            y + 20 + poster.ascent() + poster.descent() + 4 + fl.ascent(),
+            y + 20 + poster.ascent() + poster.below() + 4 + fl.ascent(),
             "OF THE BOOK",
             TextStyle { tracking: 1, ..style },
         );
         let pages = alloc::format!("Page {} of {}", r.page_number(), r.total_pages());
         let pw = quire_gfx::measure_text(mono, &pages, style);
         draw_text(f, mono, w - widgets::INSET - pw, centered_baseline(mono, y, 96), &pages, style);
-        draw_text(f, fl, w - widgets::INSET - quire_gfx::measure_text(fl, "‹ 1% ›", style), y + 24, "‹ 1% ›", style);
+        draw_text(f, fl, w - widgets::INSET - quire_gfx::measure_text(fl, "‹ › 1% steps", style), y + 24, "‹ › 1% steps", style);
         y += 96;
         f.fill_rect(Rect::new(0, y, w as u32, 1), Ink::Black);
         y += 8;
@@ -105,7 +105,7 @@ impl<E: Env> Screen<E> for GoTo {
             draw_text(f, fs, ROW_PAD, y + ROW_H + fs.ascent() + 6, &ellipsis(fs, &m.excerpt, w - 2 * ROW_PAD), TextStyle::INK);
         }
         y += ROW_H + line_h(fl) + 24;
-        draw_label(f, widgets::INSET, y + fl.ascent(), "Hold Right on the page to skim instead.", false);
+        draw_label(f, widgets::INSET, y + fl.ascent(), "Hold Right on the page to skim.", false);
         rail(f, ["", "Back", "Go", ""], None);
         Refresh::Gc
     }

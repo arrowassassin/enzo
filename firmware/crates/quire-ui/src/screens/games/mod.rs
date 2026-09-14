@@ -4,6 +4,7 @@
 pub mod chess;
 pub mod game2048;
 pub mod minesweeper;
+pub mod pieces;
 pub mod sudoku;
 pub mod wordle;
 

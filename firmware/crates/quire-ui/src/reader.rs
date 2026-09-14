@@ -565,17 +565,22 @@ impl Reader {
         let mut out = Vec::new();
         for item in &page.items {
             if let quire_layout::DrawItem::Text { text, x, y, font, .. } = item {
-                let mut pen = *x;
+                // Measures are in quarter pixels; the pen stays in quarters so rounding
+                // never drifts along the line.
+                let mut pen_q = *x * 4;
+                let space_q = quire_gfx::text::measure_text_q(font, " ");
                 for word in text.split(' ') {
-                    let w = quire_gfx::text::measure_text_q(font, word);
+                    let w_q = quire_gfx::text::measure_text_q(font, word);
                     let clean: String = word.trim_matches(|c: char| !c.is_alphanumeric()).into();
                     if !clean.is_empty() {
+                        let x0 = pen_q / 4;
+                        let x1 = (pen_q + w_q + 3) / 4;
                         out.push((
                             clean,
-                            Rect::new(pen, y - font.ascent(), w.max(1) as u32, (font.ascent() + font.descent()).max(font_h) as u32),
+                            Rect::new(x0, y - font.ascent(), (x1 - x0).max(1) as u32, (font.ascent() + font.below()).max(font_h) as u32),
                         ));
                     }
-                    pen += w + quire_gfx::text::measure_text_q(font, " ");
+                    pen_q += w_q + space_q;
                 }
             }
         }

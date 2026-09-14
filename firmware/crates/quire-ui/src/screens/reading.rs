@@ -231,19 +231,20 @@ pub fn draw_compass(
     let lf = quire_fonts::ui::label();
     draw_text(f, lf, 28, card.y + 20 + lf.ascent(), &ellipsis(lf, context, card.w as i32 - 120), TextStyle::INK);
     // Side choices.
-    for (label, y) in [(up, SIDE_UP_Y), (down, SIDE_DOWN_Y)] {
-        if !label.is_empty() {
-            draw_side_choice(f, y, label);
-        }
-    }
+    draw_side_choices(f, up, down);
     // Hold hint centred in the free space.
     let hint_y = (card.y + 20 + line_h(lf) + (card.bottom() - 104)) / 2;
-    draw_centered(f, lf, (card.w as i32 - 48) / 2, hint_y + lf.ascent() / 2, hold_hint, TextStyle::INK);
+    let hint = ellipsis(lf, hold_hint, card.w as i32 - 88);
+    draw_centered(f, lf, (card.w as i32 - 48) / 2, hint_y + lf.ascent() / 2, &hint, TextStyle::INK);
     // Choice cells: 104 px tall above the bottom edge.
     let cy = card.bottom() - 104;
     f.fill_rect(Rect::new(0, cy, card.w, RULE_HEAVY), Ink::Black);
     let cell = card.w as i32 / 4;
-    let tf = quire_fonts::ui::list_title();
+    // 26 px labels, or 22 px for the whole row when one of them will not fit its cell.
+    let mut tf = quire_fonts::ui::list_title();
+    if cells.iter().any(|(l, _)| quire_gfx::measure_text(tf, l, TextStyle::INK) > cell - 8) {
+        tf = quire_fonts::ui::body();
+    }
     for (i, (label, ctx)) in cells.iter().enumerate() {
         let x = i as i32 * cell;
         let r = Rect::new(x, cy + RULE_HEAVY as i32, cell as u32, (104 - RULE_HEAVY as i32) as u32);
@@ -262,19 +263,31 @@ pub fn draw_compass(
     }
 }
 
-fn draw_side_choice(f: &mut Frame, y: i32, label: &str) {
-    let font = quire_fonts::ui::list_title();
-    let tw = quire_gfx::measure_text(font, label, TextStyle::INK) + 16;
-    let th = line_h(font) + 6;
-    let mut tmp = Frame::new(tw as u32, th as u32);
-    draw_text(&mut tmp, font, 8, 3 + font.ascent(), label, TextStyle::INK);
-    let rot = tmp.rotated(quire_gfx::Rotation::Cw90);
-    let x = f.width() as i32 - 4 - th;
-    let yy = y + (SIDE_H - tw).max(0) / 2;
-    let r = Rect::new(x, yy, th as u32, tw as u32);
-    f.fill_rect(r, Ink::White);
-    f.blit(x, yy, rot.as_bitmap(), quire_gfx::BlitMode::Or);
-    f.stroke_rect(r, 1, Ink::Black);
+/// The two rotated side choices (Up above Down), body text reading upwards with a tick at
+/// the edge, spaced so they never run into each other or the choice cells.
+fn draw_side_choices(f: &mut Frame, up: &str, down: &str) {
+    let font = quire_fonts::ui::body();
+    let th = line_h(font) + 2;
+    let w = f.width() as i32;
+    let x = w - 12 - th;
+    let floor = f.height() as i32 - 104 - RULE_HEAVY as i32 - 6;
+    let mut next_top = floor;
+    for (label, y) in [(down, SIDE_DOWN_Y), (up, SIDE_UP_Y)] {
+        if label.is_empty() {
+            continue;
+        }
+        let tw = quire_gfx::measure_text(font, label, TextStyle::INK) + 8;
+        let mut tmp = Frame::new(tw as u32, th as u32);
+        draw_text(&mut tmp, font, 4, 1 + font.ascent(), label, TextStyle::INK);
+        let rot = tmp.rotated(quire_gfx::Rotation::Ccw90);
+        let centre = y + SIDE_H / 2;
+        let top = (centre - tw / 2).min(next_top - tw).max(0);
+        let r = Rect::new(x, top, th as u32, tw as u32);
+        f.fill_rect(r, Ink::White);
+        f.blit(x, top, rot.as_bitmap(), quire_gfx::BlitMode::Or);
+        f.fill_rect(Rect::new(w - 4, centre - 12, 2, 24), Ink::Black);
+        next_top = top - 12;
+    }
 }
 
 impl<E: Env> Screen<E> for Compass {
@@ -299,10 +312,18 @@ impl<E: Env> Screen<E> for Compass {
         let bookmarked = reader.bookmarked();
         let ch_no = reader.chapter_number();
         let ch_count = reader.chapter_count();
-        let context = if chapter.is_empty() {
+        let lf = quire_fonts::ui::label();
+        let ctx_w = f.width() as i32 - 120;
+        let full = if chapter.is_empty() {
             alloc::format!("{title} · p {page} of {total}")
         } else {
             alloc::format!("{title} · {chapter} · p {page} of {total}")
+        };
+        // When the whole line will not fit, the chapter and page matter more than the title.
+        let context = if quire_gfx::measure_text(lf, &full, TextStyle::INK) <= ctx_w || chapter.is_empty() {
+            full
+        } else {
+            alloc::format!("{chapter} · p {page} of {total}")
         };
         if self.more {
             let words = reader.page_words();
@@ -327,7 +348,7 @@ impl<E: Env> Screen<E> for Compass {
                 _ => alloc::format!("{} left", fmt_duration(chapter_secs)),
             };
             let goto_ctx = alloc::format!("{}% · p {page}", permille / 10);
-            let bm = if bookmarked { "Bookmarked ✓" } else { "Bookmark" };
+            let bm = if bookmarked { "Bookmarked" } else { "Bookmark" };
             let bm_ctx = if bookmarked { "set" } else { "not set" };
             draw_compass(
                 f,
@@ -436,7 +457,7 @@ impl<E: Env> Screen<E> for HomeLayer {
         match cx.reader.as_mut() {
             Some(r) => {
                 draw_text(f, ft, x, y + ft.ascent(), &ellipsis(ft, &r.book.meta.title, w), TextStyle::INK);
-                y += ft.ascent() + ft.descent() + 4;
+                y += ft.ascent() + ft.below() + 4;
                 let author = cx.lib.get(r.id).map(|e| e.author_line()).unwrap_or_default();
                 draw_text(f, fb, x, y + fb.ascent(), &ellipsis(fb, &author, w), TextStyle::INK);
                 y += line_h(fb) + 20;
@@ -456,7 +477,7 @@ impl<E: Env> Screen<E> for HomeLayer {
             }
             None => {
                 draw_text(f, ft, x, y + ft.ascent(), "Nothing open yet", TextStyle::INK);
-                y += ft.ascent() + ft.descent() + 12;
+                y += ft.ascent() + ft.below() + 12;
                 for b in cx.lib.shelf().into_iter().take(3) {
                     recent.push((b.title.clone(), fmt_duration(cx.stats.time_left_secs(b))));
                 }

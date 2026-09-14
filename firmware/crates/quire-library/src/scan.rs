@@ -16,6 +16,24 @@ const MAX_FILES: usize = 300;
 const MAX_FILES: usize = 6000;
 /// Folder depth.
 const MAX_DEPTH: u32 = 6;
+/// Top-level folders that hold the apps' own files or system data, never books.
+pub const SKIP_DIRS: &[&str] = &[
+    "notes",
+    "flashcards",
+    "stories",
+    "dict",
+    "sleep",
+    "images",
+    "pictures",
+    "photos",
+    "fonts",
+    "quire",
+    "lost.dir",
+    "android",
+    "dcim",
+    "system volume information",
+    "$recycle.bin",
+];
 
 /// What a scan found.
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -142,7 +160,10 @@ fn walk<F: Fs>(fs: &F, dir: &str, skip: &[String], depth: u32, visit: &mut dyn F
     }
     let Ok(entries) = fs.read_dir(dir) else { return true };
     for e in entries {
-        if e.name.starts_with('.') || e.name.starts_with('_') || e.name.eq_ignore_ascii_case("System Volume Information") {
+        if e.name.starts_with('.') || e.name.starts_with('_') {
+            continue;
+        }
+        if e.is_dir && dir == "/" && SKIP_DIRS.iter().any(|s| e.name.eq_ignore_ascii_case(s)) {
             continue;
         }
         let path = quire_fs::join(dir, &e.name);

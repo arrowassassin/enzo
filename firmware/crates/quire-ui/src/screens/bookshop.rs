@@ -219,9 +219,13 @@ impl Default for BookshopHome {
     }
 }
 
-/// Draw a small typographic cover cell (96 × 132) for a catalog book.
+/// Shop shelf cover cell size.
+const SHOP_COVER_W: i32 = 112;
+const SHOP_COVER_H: i32 = 152;
+
+/// Draw a small typographic cover cell for a catalog book.
 fn shop_cover(f: &mut Frame, x: i32, y: i32, b: &ShopBook, focused: bool) {
-    let r = Rect::new(x, y, 96, 132);
+    let r = Rect::new(x, y, SHOP_COVER_W as u32, SHOP_COVER_H as u32);
     widgets::typographic_cover(f, r, &b.title, &b.author);
     f.stroke_rect(r, if focused { 4 } else { 1 }, Ink::Black);
 }
@@ -253,12 +257,12 @@ impl<E: Env> Screen<E> for BookshopHome {
             let sy = y + (si - visible_start) as i32 * shelf_h;
             draw_label(f, widgets::INSET, sy + fl.ascent(), name, false);
             let cy = sy + line_h(fl) + 4;
-            let cell_w = 96;
-            let gap = (w - 2 * widgets::INSET - per_row as i32 * cell_w - 80) / per_row as i32;
+            let cell_w = SHOP_COVER_W;
+            let gap = (w - 2 * widgets::INSET - per_row as i32 * cell_w - 64) / per_row as i32;
             for (k, bi) in ids.iter().take(per_row).enumerate() {
                 let x = widgets::INSET + k as i32 * (cell_w + gap);
                 let focused = self.focus == (si + 1, k);
-                if (shelf_h - line_h(fl) - 8) < 132 {
+                if (shelf_h - line_h(fl) - 8) < SHOP_COVER_H {
                     // Not enough room for a full cover: compact rows.
                     let b = &cat.books[*bi];
                     draw_text(
@@ -275,7 +279,7 @@ impl<E: Env> Screen<E> for BookshopHome {
             }
             let mx = widgets::INSET + per_row as i32 * (cell_w + gap);
             let more_focused = self.focus == (si + 1, per_row);
-            let mr = Rect::new(mx, cy, 72, 132.min(shelf_h - line_h(fl) - 8).max(24) as u32);
+            let mr = Rect::new(mx, cy, 56, SHOP_COVER_H.min(shelf_h - line_h(fl) - 8).max(24) as u32);
             if more_focused {
                 f.fill_rect(mr, Ink::Black);
             }
@@ -283,7 +287,7 @@ impl<E: Env> Screen<E> for BookshopHome {
             crate::text::draw_centered(
                 f,
                 fl,
-                mr.x + 36,
+                mr.x + 28,
                 mr.y + mr.h as i32 / 2 + 6,
                 "More",
                 TextStyle { inverted: more_focused, ..TextStyle::INK },

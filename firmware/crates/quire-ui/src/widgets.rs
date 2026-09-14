@@ -16,22 +16,31 @@ pub const INSET: i32 = 32;
 /// Y where content starts under a running head.
 pub const CONTENT_TOP: i32 = 92;
 
+/// Y of the running head's 4 px rule.
+pub const HEAD_RULE_Y: i32 = 74;
+
 /// Running head for a screen: serif title, optional right-hand mono text, 4 px rule.
+/// The title sits on a baseline that keeps its descenders clear of the rule.
 pub fn running_head(f: &mut Frame, title: &str, right: Option<&str>) {
     let font = quire_fonts::ui::title();
-    let inverted = false;
     let w = f.width() as i32;
-    draw_text(f, font, INSET, 28 + font.ascent(), &ellipsis(font, title, w - 2 * INSET - 90), TextStyle { inverted, ..TextStyle::INK });
+    let base = HEAD_RULE_Y - 8 - font.below();
+    let mut avail = w - 2 * INSET;
     if let Some(r) = right {
-        draw_right(f, quire_fonts::ui::mono(), w - INSET, 28 + font.ascent(), r, TextStyle::INK);
+        let mf = quire_fonts::ui::mono();
+        draw_right(f, mf, w - INSET, base, r, TextStyle::INK);
+        avail -= measure_text(mf, r, TextStyle::INK) + 20;
     }
-    f.fill_rect(Rect::new(INSET, 72, (w - 2 * INSET) as u32, RULE_HEAVY), Ink::Black);
+    draw_text(f, font, INSET, base, &ellipsis(font, title, avail), TextStyle::INK);
+    f.fill_rect(Rect::new(INSET, HEAD_RULE_Y, (w - 2 * INSET) as u32, RULE_HEAVY), Ink::Black);
 }
 
 /// The reading page's running head: book title left, chapter right, 18 px small caps.
 pub fn reading_head(f: &mut Frame, left: &str, right: &str, text_x: i32, text_right: i32, baseline: i32) {
     let font = quire_fonts::ui::label();
     let style = label_style(false);
+    // Front matter often carries the book's own title as its heading: say it once.
+    let right = if right.trim().eq_ignore_ascii_case(left.trim()) { "" } else { right };
     let r = small_caps(right);
     let rw = measure_text(font, &r, style);
     let avail = text_right - text_x - rw - 24;
@@ -86,36 +95,43 @@ pub const SIDE_DOWN_Y: i32 = 592;
 /// Side label box height.
 pub const SIDE_H: i32 = 72;
 
-/// Draw a rotated 18 px mono label at the right edge; `boxed` draws the 1 px frame.
-fn side_label(f: &mut Frame, y: i32, label: &str, boxed: bool, inverted: bool) {
+/// A rotated edge label beside a side key: mono small caps reading upwards, no box, with
+/// a 2 px tick on the very edge marking the key. `y` is the key's centre line.
+fn side_label(f: &mut Frame, y: i32, label: &str, inverted: bool) {
     let font = quire_fonts::ui::mono();
-    let tw = measure_text(font, label, TextStyle::INK) + 12;
-    let th = line_h(font) + 4;
+    let text = label.to_uppercase();
+    let tw = measure_text(font, &text, TextStyle::INK) + 8;
+    let th = line_h(font) + 2;
     let mut tmp = Frame::new(tw as u32, th as u32);
-    draw_text(&mut tmp, font, 6, 2 + font.ascent(), label, TextStyle::INK);
-    let rot = tmp.rotated(Rotation::Cw90);
+    draw_text(&mut tmp, font, 4, 1 + font.ascent(), &text, TextStyle::INK);
+    // Reading bottom to top, like a spine.
+    let rot = tmp.rotated(Rotation::Ccw90);
     let w = f.width() as i32;
-    let x = w - 4 - th;
-    let r = Rect::new(x, y, th as u32, tw as u32);
+    let h = f.height() as i32;
+    let x = w - 10 - th;
+    let mut top = y - tw / 2;
+    top = top.clamp(CONTENT_TOP, h - RAIL_H - 6 - tw);
+    let r = Rect::new(x, top, th as u32, tw as u32);
     if inverted {
         f.fill_rect(r, Ink::Black);
-        f.blit(x, y, rot.as_bitmap(), BlitMode::Clear);
+        f.blit(x, top, rot.as_bitmap(), BlitMode::Clear);
     } else {
         f.fill_rect(r, Ink::White);
-        f.blit(x, y, rot.as_bitmap(), BlitMode::Or);
-        if boxed {
-            f.stroke_rect(r, 1, Ink::Black);
-        }
+        f.blit(x, top, rot.as_bitmap(), BlitMode::Or);
     }
+    // Tick at the edge, centred on the key.
+    f.fill_rect(Rect::new(w - 4, y - 12, 2, 24), Ink::Black);
 }
 
-/// Side labels beside Up and Down (only when the side keys act).
+/// Side labels beside Up and Down (only when the side keys act). `boxed` is kept for
+/// callers but the labels are always drawn open; a focused side key inverts instead.
 pub fn side_labels(f: &mut Frame, up: Option<&str>, down: Option<&str>, boxed: bool) {
+    let _ = boxed;
     if let Some(u) = up {
-        side_label(f, SIDE_UP_Y, u, boxed, false);
+        side_label(f, SIDE_UP_Y + SIDE_H / 2, u, false);
     }
     if let Some(d) = down {
-        side_label(f, SIDE_DOWN_Y, d, boxed, false);
+        side_label(f, SIDE_DOWN_Y + SIDE_H / 2, d, false);
     }
 }
 
@@ -155,10 +171,10 @@ pub fn row(f: &mut Frame, y: i32, h: i32, title: &str, subtitle: Option<&str>, v
         Some(sub) => {
             let font = quire_fonts::ui::list_title();
             let sfont = quire_fonts::ui::label();
-            let total = font.ascent() + font.descent() + 4 + sfont.ascent() + sfont.descent();
+            let total = font.ascent() + font.below() + 4 + sfont.ascent() + sfont.below();
             let top = y + (h - total) / 2;
             draw_text(f, font, ROW_PAD, top + font.ascent(), &ellipsis(font, title, avail), style);
-            draw_text(f, sfont, ROW_PAD, top + font.ascent() + font.descent() + 4 + sfont.ascent(), &ellipsis(sfont, sub, avail), style);
+            draw_text(f, sfont, ROW_PAD, top + font.ascent() + font.below() + 4 + sfont.ascent(), &ellipsis(sfont, sub, avail), style);
         }
     }
     if state == RowState::Selected {
@@ -206,9 +222,9 @@ pub fn row_thumb(f: &mut Frame, y: i32, thumb: Option<BitmapRef<'_>>, title: &st
     let x = ROW_PAD + 48 + 16;
     let font = quire_fonts::ui::list_title();
     let sfont = quire_fonts::ui::label();
-    let top = y + (h - (font.ascent() + font.descent() + 6 + sfont.ascent() + sfont.descent())) / 2;
+    let top = y + (h - (font.ascent() + font.below() + 6 + sfont.ascent() + sfont.below())) / 2;
     draw_text(f, font, x, top + font.ascent(), &ellipsis(font, title, right - x), style);
-    draw_text(f, sfont, x, top + font.ascent() + font.descent() + 6 + sfont.ascent(), &ellipsis(sfont, subtitle, right - x), style);
+    draw_text(f, sfont, x, top + font.ascent() + font.below() + 6 + sfont.ascent(), &ellipsis(sfont, subtitle, right - x), style);
     if state == RowState::Selected {
         f.fill_rect(Rect::new(0, y, 4, h as u32), Ink::Black);
     }
@@ -321,41 +337,75 @@ pub fn cover_cell(
     let tfont = quire_fonts::ui::body();
     let afont = quire_fonts::ui::label();
     draw_text(f, tfont, x, y + COVER_H as i32 + 8 + tfont.ascent(), &ellipsis(tfont, title, COVER_W as i32), TextStyle::INK);
-    let line2 = match percent {
-        Some(p) if p > 0 => alloc::format!("{author} · {p}%"),
+    let tag = match percent {
+        Some(p) if p > 0 && p < 100 => alloc::format!("{p}%"),
+        Some(100) => String::from("finished"),
+        _ => String::new(),
+    };
+    let line2 = match (author.is_empty(), tag.is_empty()) {
+        (false, false) => alloc::format!("{author} · {tag}"),
+        (true, false) => tag,
         _ => String::from(author),
     };
     draw_text(
         f,
         afont,
         x,
-        y + COVER_H as i32 + 8 + tfont.ascent() + tfont.descent() + 4 + afont.ascent(),
+        y + COVER_H as i32 + 8 + tfont.ascent() + tfont.below() + 4 + afont.ascent(),
         &ellipsis(afont, &line2, COVER_W as i32),
         TextStyle::INK,
     );
 }
 
-/// The typographic cover: a white title plate over a 6 px hatch.
+/// The typographic cover: a white title plate over a 6 px hatch. The plate scales with
+/// the cell: body text in a full cover, the label face in a small one, and only as many
+/// lines (and the author) as the cell has room for.
 pub fn typographic_cover(f: &mut Frame, r: Rect, title: &str, author: &str) {
     f.fill_rect(r, Ink::White);
     f.pattern_rect(r, Pattern::Hatch { pitch: 6 });
-    let tfont = quire_fonts::ui::body();
     let afont = quire_fonts::ui::label();
-    let inner_w = r.w as i32 - 24;
-    let lines = wrap(tfont, title, inner_w - 12);
-    let lines: Vec<String> = lines.into_iter().take(4).collect();
+    let small = r.w < 140;
+    let pad = if small { 6 } else { 10 };
+    let plate_w = r.w as i32 - 2 * pad;
+    let text_w = plate_w - 2 * pad;
+    let mut tfont = if small { afont } else { quire_fonts::ui::body() };
+    if title.split_whitespace().any(|w| measure_text(tfont, w, TextStyle::INK) > text_w) {
+        tfont = afont;
+    }
     let lh = line_h(tfont);
-    let ph = 12 + lines.len() as i32 * lh + 8 + line_h(afont) + 12;
-    let plate = Rect::new(r.x + 12, r.y + 40.min(r.h as i32 / 6), inner_w as u32, ph.min(r.h as i32 - 48) as u32);
+    let alh = line_h(afont);
+    let top = r.y + (r.h as i32 / 6).min(40).max(pad);
+    let room = r.bottom() - pad - top - 2 * pad;
+    let mut lines = wrap(tfont, title, text_w);
+    let want_author = !author.is_empty();
+    let author_h = if want_author { 6 + alh } else { 0 };
+    // Lines that fit with the author; otherwise without it; never fewer than one.
+    let mut with_author = want_author && (room - author_h) / lh >= 1;
+    let max_lines = if with_author { (room - author_h) / lh } else { room / lh }.clamp(1, 4) as usize;
+    if lines.len() > max_lines {
+        lines.truncate(max_lines);
+        if let Some(last) = lines.last_mut() {
+            let t = alloc::format!("{last}…");
+            *last = ellipsis(tfont, &t, text_w);
+        }
+    }
+    if with_author && lines.len() as i32 * lh + author_h > room {
+        with_author = false;
+    }
+    let ph = 2 * pad + lines.len() as i32 * lh + if with_author { author_h } else { 0 };
+    let plate = Rect::new(r.x + pad, top, plate_w as u32, ph as u32);
     f.fill_rect(plate, Ink::White);
     f.stroke_rect(plate, 1, Ink::Black);
     let cx = plate.x + plate.w as i32 / 2;
-    let mut yy = plate.y + 12 + tfont.ascent();
+    let mut yy = plate.y + pad + tfont.ascent();
     for l in &lines {
         draw_centered(f, tfont, cx, yy, l, TextStyle::INK);
         yy += lh;
     }
-    draw_centered(f, afont, cx, yy + 8, &ellipsis(afont, author, inner_w - 12), TextStyle::INK);
+    if with_author {
+        let base = plate.y + pad + lines.len() as i32 * lh + 6 + afont.ascent();
+        draw_centered(f, afont, cx, base, &ellipsis(afont, author, text_w), TextStyle::INK);
+    }
 }
 
 /// Poster tiles: 44 px numeral over an 18 px small-cap label, 2-column grid with 2 px rules.
@@ -364,15 +414,16 @@ pub fn poster_tiles(f: &mut Frame, x: i32, y: i32, w: i32, tiles: &[(String, Str
     let cw = w / cols as i32;
     let nfont = quire_fonts::ui::poster();
     let lfont = quire_fonts::ui::label();
-    let th = 24 + nfont.ascent() + nfont.descent() + 4 + line_h(lfont) + 20;
+    let th = 24 + nfont.ascent() + nfont.below() + 4 + line_h(lfont) + 20;
     let rows = tiles.len().div_ceil(cols);
     for (i, (value, label)) in tiles.iter().enumerate() {
         let (c, r) = (i % cols, i / cols);
         let tx = x + c as i32 * cw;
         let ty = y + r as i32 * th;
-        let nf = if measure_text(nfont, value, TextStyle::INK) > cw - 40 { quire_fonts::ui::title() } else { nfont };
-        draw_text(f, nf, tx + 28, ty + 24 + nfont.ascent(), value, TextStyle::INK);
-        draw_label(f, tx + 28, ty + 24 + nfont.ascent() + nfont.descent() + 4 + lfont.ascent(), label, false);
+        let nf = if measure_text(nfont, value, TextStyle::INK) > cw - 32 { quire_fonts::ui::title() } else { nfont };
+        draw_text(f, nf, tx + 20, ty + 24 + nfont.ascent(), value, TextStyle::INK);
+        let label = ellipsis(lfont, &small_caps(label), cw - 28);
+        draw_label(f, tx + 20, ty + 24 + nfont.ascent() + nfont.below() + 4 + lfont.ascent(), &label, false);
         if c + 1 < cols && i + 1 < tiles.len() {
             f.fill_rect(Rect::new(tx + cw - 1, ty, RULE, th as u32), Ink::Black);
         }
@@ -388,9 +439,9 @@ pub fn poster_centered(f: &mut Frame, cx: i32, y: i32, value: &str, label: &str,
     let nfont = if hero { quire_fonts::ui::hero() } else { quire_fonts::ui::poster() };
     let lfont = quire_fonts::ui::label();
     draw_centered(f, nfont, cx, y + nfont.ascent(), value, TextStyle::INK);
-    let ly = y + nfont.ascent() + nfont.descent() + 6 + lfont.ascent();
+    let ly = y + nfont.ascent() + nfont.below() + 6 + lfont.ascent();
     draw_centered(f, lfont, cx, ly, &small_caps(label), label_style(false));
-    ly + lfont.descent()
+    ly + lfont.below()
 }
 
 /// The value part of a setting row.
@@ -482,13 +533,13 @@ pub fn dialog(f: &mut Frame, title: &str, body: &str, cancel: &str, confirm: &st
     let inner = w - 2 * MARGIN - 2 * 28;
     let lines = wrap(font_b, body, inner);
     let lh = line_h(font_b);
-    let h = 28 + font_t.ascent() + font_t.descent() + 12 + lines.len() as i32 * lh + 24 + RAIL_H + 2;
+    let h = 28 + font_t.ascent() + font_t.below() + 12 + lines.len() as i32 * lh + 24 + RAIL_H + 2;
     let y = (f.height() as i32 - RAIL_H - h) / 2;
     let card = Rect::new(MARGIN, y, (w - 2 * MARGIN) as u32, h as u32);
     f.fill_rect(card, Ink::White);
     f.stroke_rect(card, 2, Ink::Black);
     draw_text(f, font_t, card.x + 28, card.y + 28 + font_t.ascent(), &ellipsis(font_t, title, inner), TextStyle::INK);
-    let mut yy = card.y + 28 + font_t.ascent() + font_t.descent() + 12;
+    let mut yy = card.y + 28 + font_t.ascent() + font_t.below() + 12;
     for l in &lines {
         draw_text(f, font_b, card.x + 28, yy + font_b.ascent(), l, TextStyle::INK);
         yy += lh;
@@ -538,14 +589,14 @@ pub fn working_card(f: &mut Frame, title: &str, subtitle: &str, permille: u32, s
     let ft = quire_fonts::ui::title();
     let fb = quire_fonts::ui::body();
     let fl = quire_fonts::ui::label();
-    let h = 28 + ft.ascent() + ft.descent() + 8 + line_h(fb) + 20 + 16 + 10 + line_h(fl) + 28;
+    let h = 28 + ft.ascent() + ft.below() + 8 + line_h(fb) + 20 + 16 + 10 + line_h(fl) + 28;
     let y = (f.height() as i32 - RAIL_H - h) / 2;
     let card = Rect::new(MARGIN, y, (w - 2 * MARGIN) as u32, h as u32);
     f.fill_rect(card, Ink::White);
     f.stroke_rect(card, 2, Ink::Black);
     let inner = card.w as i32 - 56;
     draw_text(f, ft, card.x + 28, card.y + 28 + ft.ascent(), &ellipsis(ft, title, inner), TextStyle::INK);
-    let mut yy = card.y + 28 + ft.ascent() + ft.descent() + 8;
+    let mut yy = card.y + 28 + ft.ascent() + ft.below() + 8;
     draw_text(f, fb, card.x + 28, yy + fb.ascent(), &ellipsis(fb, subtitle, inner), TextStyle::INK);
     yy += line_h(fb) + 20;
     stepped_bar(f, Rect::new(card.x + 28, yy, inner as u32, 16), permille);
@@ -565,7 +616,7 @@ pub fn empty_state(f: &mut Frame, y: i32, line: &str, hint: &str) {
         draw_centered(f, ft, cx, yy + ft.ascent(), &l, TextStyle::INK);
         yy += line_h(ft);
     }
-    yy += 8;
+    yy += 12;
     for l in wrap(fl, hint, w - 2 * INSET) {
         draw_centered(f, fl, cx, yy + fl.ascent(), &l, TextStyle::INK);
         yy += line_h(fl);
@@ -577,28 +628,54 @@ pub fn screen(f: &mut Frame, r: Rect) {
     f.screen_rect(r, SCREENED);
 }
 
-/// A tab line: names with the active one inverted, page number at the right, 2 px rule beneath.
+/// A tab line: names with the active one inverted, page number at the right, 2 px rule
+/// beneath. When the names do not fit, the strip scrolls so the active tab is visible
+/// and a chevron marks the hidden side.
 pub fn tabs(f: &mut Frame, y: i32, names: &[&str], active: usize, focused: bool, right: Option<&str>) -> i32 {
     let font = quire_fonts::ui::label();
     let w = f.width() as i32;
-    let mut x = INSET;
     let h = 32;
-    for (i, n) in names.iter().enumerate() {
-        let t = small_caps(n);
-        let tw = measure_text(font, &t, label_style(false));
-        let cell = Rect::new(x - 6, y, (tw + 12) as u32, h as u32);
-        let inv = i == active;
-        if inv {
-            f.fill_rect(cell, Ink::Black);
-            if focused {
-                f.stroke_rect(cell, 3, Ink::Black);
-            }
-        }
-        draw_text(f, font, x, centered_baseline(font, y, h), &t, label_style(inv));
-        x += tw + 22;
-    }
+    let gap = 16;
+    let mut limit = w - INSET;
     if let Some(r) = right {
+        let rw = measure_text(quire_fonts::ui::mono(), r, TextStyle::INK);
         draw_right(f, quire_fonts::ui::mono(), w - INSET, centered_baseline(quire_fonts::ui::mono(), y, h), r, TextStyle::INK);
+        limit -= rw + 16;
+    }
+    let labels: Vec<String> = names.iter().map(|n| small_caps(n)).collect();
+    let widths: Vec<i32> = labels.iter().map(|t| measure_text(font, t, label_style(false))).collect();
+    // Scroll so the active tab is fully visible.
+    let avail = limit - INSET;
+    let mut offset = 0;
+    let active_end: i32 = widths.iter().take(active + 1).sum::<i32>() + gap * active as i32;
+    if active_end > avail {
+        offset = active_end - avail + 20;
+    }
+    let mut x = INSET - offset;
+    let mut hidden_right = false;
+    for (i, t) in labels.iter().enumerate() {
+        let tw = widths[i];
+        if x >= INSET - 6 && x + tw <= limit {
+            let cell = Rect::new(x - 6, y, (tw + 12) as u32, h as u32);
+            let inv = i == active;
+            if inv {
+                f.fill_rect(cell, Ink::Black);
+                if focused {
+                    f.stroke_rect(cell, 3, Ink::Black);
+                }
+            }
+            draw_text(f, font, x, centered_baseline(font, y, h), t, label_style(inv));
+        } else if x + tw > limit {
+            hidden_right = true;
+        }
+        x += tw + gap;
+    }
+    let mf = quire_fonts::ui::mono();
+    if offset > 0 {
+        draw_text(f, mf, INSET - 22, centered_baseline(mf, y, h), "‹", TextStyle::INK);
+    }
+    if hidden_right {
+        draw_text(f, mf, limit - 8, centered_baseline(mf, y, h), "›", TextStyle::INK);
     }
     f.fill_rect(Rect::new(INSET, y + h, (w - 2 * INSET) as u32, RULE), Ink::Black);
     y + h + RULE as i32

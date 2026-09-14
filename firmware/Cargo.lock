@@ -485,9 +485,12 @@ dependencies = [
  "clap",
  "image",
  "quire-fonts",
+ "quire-fs",
  "quire-gfx",
  "quire-layout",
+ "quire-library",
  "quire-qtx",
+ "quire-ui",
 ]
 
 [[package]]

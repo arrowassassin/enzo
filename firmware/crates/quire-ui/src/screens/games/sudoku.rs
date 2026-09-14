@@ -214,7 +214,7 @@ impl<E: Env> Screen<E> for Sudoku {
             rail(f, ["", "Back", "New", ""], None);
         } else {
             let fl = quire_fonts::ui::label();
-            draw_text(f, fl, bx, py + fl.ascent(), "Confirm enters a number · long Confirm pencils · Left/Right clear", TextStyle::INK);
+            draw_text(f, fl, bx, py + fl.ascent(), "Confirm enters · hold Confirm pencils · Left clears", TextStyle::INK);
             rail(f, ["Clear", "Pause", "Enter", "Pencil"], None);
         }
         Refresh::Du

@@ -78,9 +78,7 @@ impl<E: Env> Screen<E> for Overview {
             .unwrap_or_else(|| String::from("—"));
         let period = match range {
             Range::Today => "Books today",
-            Range::Week => "Books this week",
-            Range::Month => "Books this month",
-            Range::Year => "Books this year",
+            Range::Week | Range::Month | Range::Year => "Books finished",
             Range::All => "Books finished",
         };
         let tiles = alloc::vec![
@@ -583,7 +581,7 @@ impl<E: Env> Screen<E> for Goals {
         let poster = quire_fonts::ui::poster();
         let fl = quire_fonts::ui::label();
         draw_text(f, poster, sr.right() + 24, y + 24 + poster.ascent(), &alloc::format!("{done} / {goal}"), TextStyle::INK);
-        draw_label(f, sr.right() + 24, y + 24 + poster.ascent() + poster.descent() + 4 + fl.ascent(), "Books this year", false);
+        draw_label(f, sr.right() + 24, y + 24 + poster.ascent() + poster.below() + 4 + fl.ascent(), "Books this year", false);
         // Awards.
         let ax = sr.right() + 24;
         let mut ay = y + 100;
@@ -686,10 +684,10 @@ impl<E: Env> Screen<E> for YearInReview {
         let totals = cx.stats.totals_between(a, b);
         let mut y = 110;
         draw_text(f, hero, widgets::INSET, y + hero.ascent(), &alloc::format!("{}", books.len()), TextStyle::INK);
-        draw_label(f, widgets::INSET, y + hero.ascent() + hero.descent() + 6 + fl.ascent(), "Books", false);
+        draw_label(f, widgets::INSET, y + hero.ascent() + hero.below() + 6 + fl.ascent(), "Books", false);
         draw_text(f, hero, w / 2 + 20, y + hero.ascent(), &alloc::format!("{} h", totals.secs / 3600), TextStyle::INK);
-        draw_label(f, w / 2 + 20, y + hero.ascent() + hero.descent() + 6 + fl.ascent(), "Read", false);
-        y += hero.ascent() + hero.descent() + 6 + line_h(fl) + 24;
+        draw_label(f, w / 2 + 20, y + hero.ascent() + hero.below() + 6 + fl.ascent(), "Read", false);
+        y += hero.ascent() + hero.below() + 6 + line_h(fl) + 24;
         let tiles = alloc::vec![
             (cx.stats.favourite_hour().map(time::fmt_hour).unwrap_or_else(|| String::from("—")), String::from("Favourite hour")),
             (alloc::format!("{}", cx.stats.longest_streak_in_year(y0)), String::from("Longest streak")),

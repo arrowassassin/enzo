@@ -47,6 +47,49 @@ pub enum Icon {
     Lock,
     /// Warning triangle.
     Warning,
+    /// Five-point star, outline.
+    Star,
+    /// Five-point star, filled.
+    StarFilled,
+}
+
+/// The ten vertices of a 24 px star, outer radius 11, inner radius 4.5.
+const STAR: [(i32, i32); 10] = [(12, 1), (15, 8), (23, 9), (17, 14), (19, 22), (12, 18), (5, 22), (7, 14), (1, 9), (9, 8)];
+
+fn star(f: &mut Frame, x: i32, y: i32, filled: bool, ink: Ink) {
+    if filled {
+        // Even-odd scanline fill of the polygon.
+        for row in 1..23 {
+            let yy = row as f32 + 0.5;
+            let mut xs: [f32; 12] = [0.0; 12];
+            let mut n = 0;
+            for i in 0..10 {
+                let (x0, y0) = STAR[i];
+                let (x1, y1) = STAR[(i + 1) % 10];
+                let (y0, y1f) = (y0 as f32, y1 as f32);
+                if (y0 <= yy) != (y1f <= yy) {
+                    let t = (yy - y0) / (y1f - y0);
+                    xs[n] = x0 as f32 + t * (x1 - x0) as f32;
+                    n += 1;
+                }
+            }
+            let xs = &mut xs[..n];
+            xs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(core::cmp::Ordering::Equal));
+            let mut i = 0;
+            while i + 1 < n {
+                let (a, b) = (xs[i].round() as i32, xs[i + 1].round() as i32);
+                if b > a {
+                    f.fill_rect(Rect::new(x + a, y + row, (b - a) as u32, 1), ink);
+                }
+                i += 2;
+            }
+        }
+    }
+    for i in 0..10 {
+        let (x0, y0) = STAR[i];
+        let (x1, y1) = STAR[(i + 1) % 10];
+        line(f, x + x0, y + y0, x + x1, y + y1, ink);
+    }
 }
 
 fn line(f: &mut Frame, x0: i32, y0: i32, x1: i32, y1: i32, ink: Ink) {
@@ -188,6 +231,8 @@ pub fn draw(f: &mut Frame, icon: Icon, x: i32, y: i32, ink: Ink) {
             r(f, 11, 9, 2, 6);
             r(f, 11, 17, 2, 2);
         }
+        Icon::Star => star(f, x, y, false, ink),
+        Icon::StarFilled => star(f, x, y, true, ink),
     }
 }
 

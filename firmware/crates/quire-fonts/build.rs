@@ -49,6 +49,7 @@ fn strikes() -> Vec<(Fam, Sty, u16, &'static str)> {
     for s in [44u16, 56] {
         v.push((Fam::Literata, Sty::Regular, s, "numeral"));
     }
+    // UI faces at the brief's sizes (label 18, body 22, list 26, title 32, mono 18).
     for s in [18u16, 22, 26] {
         v.push((Fam::Atkinson, Sty::Regular, s, "text"));
         v.push((Fam::Atkinson, Sty::Bold, s, "text"));
@@ -163,9 +164,28 @@ fn gpos_kern(face: &Face, first: GlyphId, second: GlyphId) -> i16 {
     0
 }
 
+/// The scale that makes the em exactly `em_px` pixels. ab_glyph's scales are height-based
+/// and its point conversion differs per face, so calibrate on the face's own ascender:
+/// whatever scale we ask for, the ascent it reports over the ascender in font units is
+/// the em it actually used.
+fn scale_for_em(font: &FontRef, face: &Face, em_px: f32) -> PxScale {
+    let probe = PxScale::from(em_px);
+    let asc_units = face.ascender() as f32;
+    let upem = face.units_per_em() as f32;
+    if asc_units <= 0.0 || upem <= 0.0 {
+        return probe;
+    }
+    let asc_px = font.as_scaled(probe).ascent();
+    let em_actual = asc_px * upem / asc_units;
+    if em_actual <= 0.0 {
+        return probe;
+    }
+    PxScale::from(em_px * em_px / em_actual)
+}
+
 /// Height in pixels of 'M' rendered at `em`.
-fn cap_height(font: &FontRef, em: u16) -> f32 {
-    let Some(scale) = font.pt_to_px_scale(em as f32) else { return 0.0 };
+fn cap_height(font: &FontRef, face: &Face, em: u16) -> f32 {
+    let scale = scale_for_em(font, face, em as f32);
     let id = font.glyph_id('M');
     let g = id.with_scale_and_position(scale, ab_glyph::point(0.0, 0.0));
     match font.outline_glyph(g) {
@@ -179,16 +199,16 @@ fn cap_height(font: &FontRef, em: u16) -> f32 {
 
 /// Em size whose cap height spans three lines of text at the default 145 % line height.
 /// Outlines scale linearly, so one measurement plus one correction is exact enough.
-fn solve_dropcap_em(font: &FontRef, reading_px: u16) -> u16 {
+fn solve_dropcap_em(font: &FontRef, face: &Face, reading_px: u16) -> u16 {
     let target = reading_px as f32 * 1.45 * 3.0;
     let probe = (reading_px * 4).max(24);
-    let h = cap_height(font, probe);
+    let h = cap_height(font, face, probe);
     if h <= 1.0 {
         return probe;
     }
     let em = (probe as f32 * target / h).round().clamp(8.0, 400.0) as u16;
     // One correction pass in case of hinting or rounding at the new size.
-    let h2 = cap_height(font, em);
+    let h2 = cap_height(font, face, em);
     if h2 <= 1.0 {
         return em;
     }
@@ -209,8 +229,8 @@ fn main() {
         let upem = face.units_per_em() as f32;
         // A drop cap is named after the reading size it serves; its em is solved by
         // measurement so the cap height spans exactly three lines at 145 % line height.
-        let em_px = if kind == "dropcap" { solve_dropcap_em(&font, px) } else { px };
-        let scale: PxScale = font.pt_to_px_scale(em_px as f32).expect("scale");
+        let em_px = if kind == "dropcap" { solve_dropcap_em(&font, &face, px) } else { px };
+        let scale: PxScale = scale_for_em(&font, &face, em_px as f32);
         let sf = font.as_scaled(scale);
         let chars = charset(kind);
         let mut glyphs = Vec::with_capacity(chars.len());

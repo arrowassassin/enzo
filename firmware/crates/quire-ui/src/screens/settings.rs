@@ -54,9 +54,10 @@ impl<E: Env> Screen<E> for SettingsHome {
         "50-settings"
     }
     fn draw(&mut self, cx: &mut Ctx<E>, f: &mut Frame) -> Refresh {
-        let row_h = cx.settings.row_h();
+        // Title-over-subtitle rows need the tall row.
+        let row_h = cx.settings.row_h().max(ROW_H_LARGE);
         self.nav.per_page = widgets::rows_between(widgets::CONTENT_TOP, f.height() as i32 - RAIL_H, row_h);
-        running_head(f, "Settings", Some(&page_indicator(self.nav.page(), self.nav.pages())));
+        running_head(f, "Settings", (self.nav.pages() > 1).then(|| page_indicator(self.nav.page(), self.nav.pages())).as_deref());
         let mut y = widgets::CONTENT_TOP;
         for i in self.nav.visible() {
             let (t, sub) = GROUPS[i];
@@ -359,28 +360,36 @@ impl Default for KeysScreen {
     }
 }
 
-/// Draw the device outline with the seven keys labelled, in a box at (x, y).
-pub fn draw_device(f: &mut Frame, x: i32, y: i32, labels: [&str; 7]) {
-    // Body 140 × 200, screen inset, keys as small rectangles.
-    let body = Rect::new(x, y + 10, 140, 200);
+/// Height of the device diagram drawn by [`draw_device`].
+pub const DEVICE_H: i32 = 250;
+
+/// Draw the device outline with the seven keys labelled, centred on `cx` with its top at
+/// `y`: the power key sits at the top-left corner of the body, the two side keys on the
+/// right edge and the four front keys along the bottom, named in one line beneath.
+pub fn draw_device(f: &mut Frame, cx: i32, y: i32, labels: [&str; 7]) {
+    let (bw, bh) = (140, 200);
+    let x = cx - bw / 2;
+    let body = Rect::new(x, y + 8, bw as u32, bh as u32);
     f.stroke_rect(body, 2, Ink::Black);
-    f.stroke_rect(Rect::new(x + 12, y + 22, 116, 150), 1, Ink::Black);
-    f.pattern_rect(Rect::new(x + 13, y + 23, 114, 148), Pattern::Hatch { pitch: 6 });
+    f.stroke_rect(Rect::new(x + 12, y + 20, 116, 150), 1, Ink::Black);
+    f.pattern_rect(Rect::new(x + 13, y + 21, 114, 148), Pattern::Hatch { pitch: 6 });
     let mono = quire_fonts::ui::mono();
-    // Power on top.
-    f.fill_rect(Rect::new(x + 60, y + 2, 20, 8), Ink::Black);
-    draw_text(f, mono, x + 86, y + 10, labels[6], TextStyle::INK);
-    // Bottom four.
-    for (i, l) in labels.iter().take(4).enumerate() {
-        let kx = x + 16 + i as i32 * 28;
-        f.fill_rect(Rect::new(kx, y + 184, 20, 12), Ink::Black);
-        draw_text(f, mono, kx - 4, y + 232, l, TextStyle::INK);
+    // Power: top-left corner, label to its right on the same line.
+    f.fill_rect(Rect::new(x + 10, y, 22, 8), Ink::Black);
+    draw_text(f, mono, x + 40, y + 8, labels[6], TextStyle::INK);
+    // Front keys along the bottom edge, evenly spaced.
+    for i in 0..4 {
+        let kx = x + 22 + i * 28;
+        f.fill_rect(Rect::new(kx, y + bh - 10, 20, 10), Ink::Black);
     }
-    // Right edge two.
-    f.fill_rect(Rect::new(x + 138, y + 60, 8, 24), Ink::Black);
-    f.fill_rect(Rect::new(x + 138, y + 100, 8, 24), Ink::Black);
-    draw_text(f, mono, x + 152, y + 78, labels[4], TextStyle::INK);
-    draw_text(f, mono, x + 152, y + 118, labels[5], TextStyle::INK);
+    let names = alloc::format!("{} · {} · {} · {}", labels[0], labels[1], labels[2], labels[3]);
+    crate::text::draw_centered(f, mono, cx, y + bh + 34, &names, TextStyle::INK);
+    // Side keys on the right edge, labels beside them.
+    for (i, l) in [labels[4], labels[5]].iter().enumerate() {
+        let ky = y + 56 + i as i32 * 40;
+        f.fill_rect(Rect::new(x + bw - 2, ky, 8, 24), Ink::Black);
+        draw_text(f, mono, x + bw + 16, ky + 18, l, TextStyle::INK);
+    }
 }
 
 impl<E: Env> Screen<E> for KeysScreen {
@@ -392,7 +401,7 @@ impl<E: Env> Screen<E> for KeysScreen {
         let (up, down) =
             if cx.settings.side_keys == crate::settings::SideKeys::Pages { ("Prev page", "Next page") } else { ("Prev ch", "Next ch") };
         let (u, d) = if cx.settings.swap_side_keys { (down, up) } else { (up, down) };
-        draw_device(f, widgets::INSET + 40, widgets::CONTENT_TOP, ["Left", "Back", "OK", "Right", u, d, "Power"]);
+        draw_device(f, f.width() as i32 / 2 - 40, widgets::CONTENT_TOP + 4, ["Left", "Back", "OK", "Right", u, d, "Power"]);
         let row_h = cx.settings.row_h();
         let top = widgets::CONTENT_TOP + 250;
         self.inner.nav.per_page = widgets::rows_between(top, f.height() as i32 - RAIL_H, row_h);
@@ -785,7 +794,7 @@ impl<E: Env> Screen<E> for OtaScreen {
             None => (String::from("Update from the card"), String::from("A quire-update.bin file was found on the card. It is checked and verified before installing; the previous version stays as a fallback.")),
         };
         draw_text(f, ft, widgets::INSET, y + ft.ascent(), &title, TextStyle::INK);
-        y += ft.ascent() + ft.descent() + 12;
+        y += ft.ascent() + ft.below() + 12;
         if let Some(e) = &self.error {
             for l in wrap(fb, &alloc::format!("Couldn't update. {e}"), w - 2 * widgets::INSET) {
                 draw_text(f, fb, widgets::INSET, y + fb.ascent(), &l, TextStyle::INK);

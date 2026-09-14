@@ -144,18 +144,18 @@ pub fn draw_variant<E: Env>(cx: &mut Ctx<E>, f: &mut Frame, v: SleepVariant, loc
                 }
             }
             if cx.settings.sleep_band && cx.reader.is_some() {
-                let band_h = 96;
+                let band_h = 112;
                 let band = Rect::new(0, h - band_h, w as u32, band_h as u32);
                 f.fill_rect(band, Ink::White);
                 f.fill_rect(Rect::new(0, band.y, w as u32, RULE), Ink::Black);
                 let ft = quire_fonts::ui::list_title();
                 let fb = quire_fonts::ui::body();
-                draw_text(f, ft, 32, band.y + 22 + ft.ascent(), &ellipsis(ft, &title, w - 120), TextStyle::INK);
+                draw_text(f, ft, 32, band.y + 16 + ft.ascent(), &ellipsis(ft, &title, w - 120), TextStyle::INK);
                 draw_text(
                     f,
                     fb,
                     32,
-                    band.y + 22 + ft.ascent() + ft.descent() + 8 + fb.ascent(),
+                    band.y + 16 + ft.ascent() + ft.below() + 6 + fb.ascent(),
                     &ellipsis(fb, &left_line(ch_secs, "this chapter"), w - 120),
                     TextStyle::INK,
                 );
@@ -193,7 +193,7 @@ pub fn draw_variant<E: Env>(cx: &mut Ctx<E>, f: &mut Frame, v: SleepVariant, loc
                 f,
                 fb,
                 cx_,
-                h / 2 + 80 + ft.ascent() + ft.descent() + 8 + fb.ascent(),
+                h / 2 + 80 + ft.ascent() + ft.below() + 8 + fb.ascent(),
                 &ellipsis(fb, &author, w - 64),
                 TextStyle::INK,
             );
@@ -445,8 +445,12 @@ impl<E: Env> Screen<E> for Picker {
             let focused = i == self.focus && !self.in_options;
             f.blit(x, y, bm.as_ref(), BlitMode::Or);
             f.stroke_rect(Rect::new(x - 1, y - 1, (tw + 2) as u32, (th + 2) as u32), if focused { 4 } else { 1 }, Ink::Black);
-            let name = if cx.settings.sleep == *v { alloc::format!("{} ✓", v.name()) } else { String::from(v.name()) };
-            draw_centered(f, fl, x + tw / 2, y + th + 8 + fl.ascent(), &name, TextStyle::INK);
+            let name = v.name();
+            let base = y + th + 8 + fl.ascent();
+            let right = draw_centered(f, fl, x + tw / 2, base, name, TextStyle::INK);
+            if cx.settings.sleep == *v {
+                icons::draw(f, Icon::Check, right + 6, base - 20, Ink::Black);
+            }
         }
         let mut y = widgets::CONTENT_TOP + 2 * (th + 40) + 4;
         let opts = self.options(cx);

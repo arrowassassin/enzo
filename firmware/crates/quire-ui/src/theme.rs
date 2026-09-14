@@ -15,7 +15,7 @@ pub const ROW_H: i32 = 56;
 /// List row with a thumbnail.
 pub const ROW_THUMB_H: i32 = 88;
 /// Large-UI row.
-pub const ROW_H_LARGE: i32 = 72;
+pub const ROW_H_LARGE: i32 = 68;
 /// Heavy rule.
 pub const RULE_HEAVY: u32 = 4;
 /// Standard rule.

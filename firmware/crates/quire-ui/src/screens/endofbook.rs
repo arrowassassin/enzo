@@ -6,6 +6,7 @@ use alloc::vec::Vec;
 use quire_gfx::{draw_text, Frame, Ink, Rect, TextStyle};
 use quire_library::time::fmt_duration;
 
+use crate::icons::{self, Icon};
 use crate::text::{centered_baseline, draw_label, ellipsis, line_h};
 use crate::theme::*;
 use crate::widgets::{self, poster_tiles, rail, running_head};
@@ -48,7 +49,7 @@ impl<E: Env> Screen<E> for EndOfBook {
         let fl = quire_fonts::ui::label();
         let mut y = widgets::CONTENT_TOP;
         draw_text(f, ft, widgets::INSET, y + ft.ascent(), &ellipsis(ft, &e.title, w - 2 * widgets::INSET), TextStyle::INK);
-        y += ft.ascent() + ft.descent() + 4;
+        y += ft.ascent() + ft.below() + 4;
         draw_text(f, fb, widgets::INSET, y + fb.ascent(), &ellipsis(fb, &e.author_line(), w - 2 * widgets::INSET), TextStyle::INK);
         y += line_h(fb) + 16;
         let days = match (e.stats.started, e.stats.finished) {
@@ -70,15 +71,14 @@ impl<E: Env> Screen<E> for EndOfBook {
         // Rate it.
         draw_label(f, widgets::INSET, y + fl.ascent(), "Rate it", false);
         y += line_h(fl) + 6;
-        let star_font = quire_fonts::ui::title();
         for i in 0..5u8 {
-            let s = if i < self.stars { "★" } else { "☆" };
             let x = widgets::INSET + i as i32 * 40;
+            let filled = i < self.stars;
             if self.focus == 0 && i + 1 == self.stars.max(1) {
-                f.fill_rect(Rect::new(x - 4, y, 36, 40), Ink::Black);
-                draw_text(f, star_font, x, y + 32, s, TextStyle::PAPER);
+                f.fill_rect(Rect::new(x - 6, y - 2, 36, 36), Ink::Black);
+                icons::draw(f, if filled { Icon::StarFilled } else { Icon::Star }, x, y + 4, Ink::White);
             } else {
-                draw_text(f, star_font, x, y + 32, s, TextStyle::INK);
+                icons::draw(f, if filled { Icon::StarFilled } else { Icon::Star }, x, y + 4, Ink::Black);
             }
         }
         y += 56;

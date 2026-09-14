@@ -5,7 +5,6 @@ use alloc::vec::Vec;
 use quire_gfx::{draw_text, Frame, Ink, Pattern, Rect, TextStyle};
 
 use super::{board_x, Paused, Rng};
-use crate::text::{centered_baseline, draw_centered};
 use crate::widgets::{self, rail, running_head};
 use crate::{Action, Ctx, Env, Event, Key, KeyEvent, KeyKind, Refresh, Result_, Screen};
 
@@ -487,37 +486,6 @@ impl Default for ChessScreen {
     }
 }
 
-fn glyph(p: u8) -> &'static str {
-    match p {
-        1 => "♙",
-        2 => "♘",
-        3 => "♗",
-        4 => "♖",
-        5 => "♕",
-        6 => "♔",
-        7 => "♟",
-        8 => "♞",
-        9 => "♝",
-        10 => "♜",
-        11 => "♛",
-        12 => "♚",
-        _ => "",
-    }
-}
-
-/// Letters when the font has no chess glyphs.
-fn letter(p: u8) -> &'static str {
-    match kind(p) {
-        1 => "P",
-        2 => "N",
-        3 => "B",
-        4 => "R",
-        5 => "Q",
-        6 => "K",
-        _ => "",
-    }
-}
-
 impl<E: Env> Screen<E> for ChessScreen {
     fn name(&self) -> &'static str {
         "80-chess"
@@ -530,8 +498,6 @@ impl<E: Env> Screen<E> for ChessScreen {
         running_head(f, "Chess", Some(&alloc::format!("move {}", self.history.len() / 2 + 1)));
         let bx = board_x(f, 8 * SQ);
         let by = widgets::CONTENT_TOP;
-        let font = quire_fonts::ui::title();
-        let has_glyphs = font.has('♔');
         for i in 0..64usize {
             let (r, c) = (i / 8, i % 8);
             let (dr, dc) = if self.flipped { (7 - r, 7 - c) } else { (r, c) };
@@ -542,21 +508,7 @@ impl<E: Env> Screen<E> for ChessScreen {
             }
             let p = self.pos.board[i];
             if p != 0 {
-                // A white plate keeps the glyph legible on hatched squares.
-                let plate = rect.inset(8);
-                f.fill_rect(plate, Ink::White);
-                if is_black(p) {
-                    f.fill_rect(plate.inset(4), Ink::Black);
-                }
-                let s = if has_glyphs { glyph(p) } else { letter(p) };
-                draw_centered(
-                    f,
-                    font,
-                    rect.x + SQ / 2,
-                    centered_baseline(font, rect.y, SQ),
-                    s,
-                    TextStyle { inverted: is_black(p), ..TextStyle::INK },
-                );
+                super::pieces::draw_piece(f, rect, kind(p), is_black(p));
             }
             if self.selected == Some(i) {
                 f.stroke_rect(rect, 4, Ink::Black);
@@ -685,6 +637,18 @@ impl<E: Env> Screen<E> for ChessScreen {
             Result_::Choice(2) => Action::Pop,
             _ => Action::Redraw,
         }
+    }
+}
+
+/// Algebraic letter for a piece (empty for pawns), used in the move list.
+fn letter(p: u8) -> &'static str {
+    match kind(p) {
+        2 => "N",
+        3 => "B",
+        4 => "R",
+        5 => "Q",
+        6 => "K",
+        _ => "",
     }
 }
 

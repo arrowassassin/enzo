@@ -103,7 +103,7 @@ impl<E: Env> Screen<E> for WifiScreen {
             WifiState::Hotspot { ssid, password, ip } => (alloc::format!("Hotspot {ssid}"), alloc::format!("password {password} · {ip}")),
             WifiState::Connecting(s) => (alloc::format!("Joining {s}…"), String::new()),
             WifiState::Failed(s) => (alloc::format!("Couldn't join {s}."), String::from("Check the password.")),
-            WifiState::Off => (String::from("Wi-Fi off"), String::from("Reading mode. Confirm on a network turns it on.")),
+            WifiState::Off => (String::from("Wi-Fi off"), String::from("Reading mode · Confirm on a network joins it.")),
         };
         icons::draw(f, if matches!(state, WifiState::Off) { Icon::WifiOff } else { Icon::Wifi }, card.x + 14, card.y + 26, Ink::Black);
         draw_text(f, fb, card.x + 50, card.y + 14 + fb.ascent(), &ellipsis(fb, &l1, card.w as i32 - 64), TextStyle::INK);

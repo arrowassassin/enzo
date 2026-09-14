@@ -91,6 +91,11 @@ impl Font {
     pub const fn descent(&self) -> i32 {
         rd_i16(self.data, 8) as i32
     }
+    /// Descent below the baseline as a positive number of pixels (what layout code adds).
+    #[inline]
+    pub const fn below(&self) -> i32 {
+        -self.descent()
+    }
     /// Recommended line gap.
     #[inline]
     pub const fn line_gap(&self) -> i32 {

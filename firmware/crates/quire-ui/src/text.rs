@@ -116,7 +116,7 @@ pub fn line_h(font: &Font) -> i32 {
 
 /// Baseline for text vertically centred in a row of `h` starting at `y`.
 pub fn centered_baseline(font: &Font, y: i32, h: i32) -> i32 {
-    y + (h - (font.ascent() + font.descent())) / 2 + font.ascent()
+    y + (h - (font.ascent() + font.below())) / 2 + font.ascent()
 }
 
 /// Two-line title/subtitle pairs for the rows: ensure `s` fits or gets an ellipsis.

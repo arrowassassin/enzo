@@ -1,38 +1,28 @@
-//! Quire simulator: renders the real engine to PNG so screens and pages can be reviewed
-//! and snapshot-tested without hardware.
+//! Quire simulator: boots the real UI on a fixture card, tours every screen, and writes
+//! PNG snapshots plus a report; also renders reading pages at several type sizes.
 
 use anyhow::Result;
 use clap::Parser;
-use quire_gfx::{draw_text, Frame, Ink, Rect, TextStyle};
 use quire_layout::{render_page, NoImages, Paginator, Pos, Profile};
 use quire_qtx::{ParaKind, Token, Writer};
-use std::path::{Path, PathBuf};
+use quire_sim::{fixture_card, frame_to_png, tour, Sim};
+use std::path::PathBuf;
 
 #[derive(Parser)]
 #[command(name = "quire-sim", about = "Render Quire screens and pages headlessly")]
 struct Args {
-    /// Write a markdown report (budgets, page statistics) to this path.
+    /// Write a markdown report (per-screen timings, refresh kinds) to this path.
     #[arg(long)]
     report: Option<PathBuf>,
     /// Write PNG snapshots into this directory.
     #[arg(long)]
     snapshots: Option<PathBuf>,
+    /// Use an existing card directory instead of the built-in fixture card.
+    #[arg(long)]
+    card: Option<PathBuf>,
 }
 
 const FIXTURE: &str = include_str!("../../../crates/quire-layout/fixtures/middlemarch.txt");
-
-fn frame_to_png(frame: &Frame, path: &Path) -> Result<()> {
-    let (w, h) = (frame.width(), frame.height());
-    let mut img = image::GrayImage::new(w, h);
-    for y in 0..h {
-        for x in 0..w {
-            let v = if frame.get(x as i32, y as i32) { 0 } else { 255 };
-            img.put_pixel(x, y, image::Luma([v]));
-        }
-    }
-    img.save(path)?;
-    Ok(())
-}
 
 fn chapter() -> Vec<u8> {
     let mut w = Writer::new();
@@ -44,84 +34,62 @@ fn chapter() -> Vec<u8> {
     w.finish()
 }
 
-/// The running head and the Spine: the two pieces of chrome the reading page carries.
-fn chrome(frame: &mut Frame, profile: &Profile, book: &str, chapter: &str, frac: f32, chapters: &[f32]) {
-    let f = quire_fonts::ui::label();
-    let st = TextStyle { tracking: 1, ..TextStyle::INK };
-    let m = profile.margin as i32;
-    if profile.running_head {
-        let y = m + f.ascent();
-        draw_text(frame, f, m, y, &book.to_uppercase(), st);
-        let w = quire_gfx::measure_text(f, &chapter.to_uppercase(), st);
-        let right = frame.width() as i32 - m - if profile.spine { (quire_layout::SPINE_W + quire_layout::SPINE_GUTTER) as i32 } else { 0 };
-        draw_text(frame, f, right - w, y, &chapter.to_uppercase(), st);
-    }
-    if profile.spine {
-        let x = frame.width() as i32 - m - quire_layout::SPINE_W as i32;
-        let top = m + quire_layout::RUNNING_HEAD_H as i32;
-        let bottom = frame.height() as i32 - m;
-        let h = bottom - top;
-        let read_h = (h as f32 * frac) as i32;
-        let mut y = top;
-        while y < bottom {
-            let full = y < top + read_h;
-            frame.hline(x, y, if full { 12 } else { 6 }, 1, Ink::Black);
-            y += 4;
-        }
-        for c in chapters {
-            let cy = top + (h as f32 * c) as i32;
-            frame.hline(x + 9, cy, 3, 3, Ink::Black);
-        }
-        frame.hline(x - 1, top + read_h, 14, 2, Ink::Black);
-    }
-}
-
-fn reading_page(profile: Profile, start: Pos) -> (Frame, Option<Pos>, u32) {
+fn reading_page(profile: Profile, start: Pos) -> (quire_gfx::Frame, Option<Pos>, u32) {
     let qtx = chapter();
-    let mut frame = Frame::panel();
-    frame.clear(Ink::White);
+    let mut frame = quire_gfx::Frame::panel();
+    frame.clear(quire_gfx::Ink::White);
     let geom = profile.geometry(frame.width(), frame.height());
     let pg = Paginator::new(&qtx, profile, geom);
     let page = pg.page_from(start).expect("page");
     render_page(&page, &mut frame, &profile, &NoImages);
-    chrome(&mut frame, &profile, "Middlemarch", "Chapter 1", 0.43, &[0.0, 0.28, 0.61, 0.84]);
     (frame, page.next, page.chars)
 }
 
 fn main() -> Result<()> {
     let args = Args::parse();
-    let mut report = String::from("# Quire simulator report\n\n| page | size | line height | chars | ink px |\n|---|---|---|---|---|\n");
+    let mut report =
+        String::from("# Quire simulator report\n\n## Screens\n\n| screen | stack | refresh | ms | ink px |\n|---|---|---|---|---|\n");
 
-    let mut shots: Vec<(String, Frame)> = Vec::new();
-    let default = Profile::default();
-    let (f1, next, chars) = reading_page(default, Pos::START);
-    report.push_str(&format!("| 20-reading-chapter | {} | {} | {} | {} |\n", default.size, default.line_height_pct, chars, f1.ink_count()));
-    shots.push(("20-reading-chapter".into(), f1));
-
-    if let Some(n) = next {
-        let (f2, _, chars) = reading_page(default, n);
-        report.push_str(&format!(
-            "| 20-reading-default | {} | {} | {} | {} |\n",
-            default.size,
-            default.line_height_pct,
-            chars,
-            f2.ink_count()
-        ));
-        shots.push(("20-reading-default".into(), f2));
+    let card = match &args.card {
+        Some(c) => c.clone(),
+        None => fixture_card("cli"),
+    };
+    let mut sim = Sim::boot(&card);
+    let shots = tour(&mut sim);
+    let mut slowest = (0u128, String::new());
+    for s in &shots {
+        report.push_str(&format!("| {} | {} | {:?} | {} | {} |\n", s.name, s.stack.join(" › "), s.refresh, s.ms, s.frame.ink_count()));
+        if s.ms > slowest.0 {
+            slowest = (s.ms, s.name.clone());
+        }
     }
 
+    report.push_str("\n## Reading pages\n\n| page | size | line height | chars | ink px |\n|---|---|---|---|---|\n");
+    let mut pages: Vec<(String, quire_gfx::Frame)> = Vec::new();
+    let default = Profile::default();
+    let (f1, next, chars) = reading_page(default, Pos::START);
+    report.push_str(&format!("| layout-chapter | {} | {} | {} | {} |\n", default.size, default.line_height_pct, chars, f1.ink_count()));
+    pages.push(("layout-chapter".into(), f1));
+    if let Some(n) = next {
+        let (f2, _, chars) = reading_page(default, n);
+        report.push_str(&format!("| layout-default | {} | {} | {} | {} |\n", default.size, default.line_height_pct, chars, f2.ink_count()));
+        pages.push(("layout-default".into(), f2));
+    }
     for (name, p) in [
-        ("20-reading-22", Profile { size: 22, line_height_pct: 130, ..default }),
-        ("20-reading-34", Profile { size: 34, line_height_pct: 160, ..default }),
+        ("layout-22", Profile { size: 22, line_height_pct: 130, ..default }),
+        ("layout-34", Profile { size: 34, line_height_pct: 160, ..default }),
     ] {
         let (f, _, chars) = reading_page(p, Pos::START);
         report.push_str(&format!("| {name} | {} | {} | {} | {} |\n", p.size, p.line_height_pct, chars, f.ink_count()));
-        shots.push((name.into(), f));
+        pages.push((name.into(), f));
     }
 
     if let Some(dir) = &args.snapshots {
         std::fs::create_dir_all(dir)?;
-        for (name, f) in &shots {
+        for s in &shots {
+            frame_to_png(&s.frame, &dir.join(format!("{}.png", s.name)))?;
+        }
+        for (name, f) in &pages {
             frame_to_png(f, &dir.join(format!("{name}.png")))?;
         }
     }
@@ -129,10 +97,18 @@ fn main() -> Result<()> {
         if let Some(parent) = p.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        report.push_str(&format!("\n- font packs: {}\n", quire_fonts::PACKS.len()));
+        report.push_str(&format!(
+            "\n- screens captured: {}\n- slowest event: {} ({} ms, host debug/release as built)\n- font packs: {}\n",
+            shots.len(),
+            slowest.1,
+            slowest.0,
+            quire_fonts::PACKS.len()
+        ));
         std::fs::write(p, report)?;
     }
-    println!("ok: {} pages rendered, {} font packs", shots.len(), quire_fonts::PACKS.len());
-    let _ = Rect::default();
+    println!("ok: {} screens, {} pages rendered; slowest {} at {} ms", shots.len(), pages.len(), slowest.1, slowest.0);
+    if args.card.is_none() {
+        let _ = std::fs::remove_dir_all(&card);
+    }
     Ok(())
 }

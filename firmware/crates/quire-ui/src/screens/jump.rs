@@ -110,7 +110,7 @@ pub fn all_rows<E: Env>(cx: &mut Ctx<E>) -> Vec<JumpRow> {
             JumpRow { title: "Wordle".into(), value: String::new(), target: Target::Screen("80-wordle"), group: 2 },
         ]);
     }
-    features.sort_by_key(|r| r.title.to_lowercase());
+    features.sort_by_key(|r| (r.group, r.title.to_lowercase()));
     rows.extend(features);
     rows
 }
@@ -295,7 +295,7 @@ pub fn draw_empty_home<E: Env>(cx: &mut Ctx<E>, f: &mut Frame) {
     let fl = quire_fonts::ui::label();
     let mut y = 40;
     draw_text(f, ft, 32, y + ft.ascent(), "Nothing open yet", TextStyle::INK);
-    y += ft.ascent() + ft.descent() + 8;
+    y += ft.ascent() + ft.below() + 8;
     draw_text(f, fb, 32, y + fb.ascent(), &ellipsis(fb, "Three good places to start, free from the Bookshop.", w - 64), TextStyle::INK);
     y += line_h(fb) + 24;
     draw_label(f, 32, y + fl.ascent(), "Start here", false);

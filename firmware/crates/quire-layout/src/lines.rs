@@ -141,7 +141,25 @@ const MAX_HYPHEN_BYTES: usize = 45;
 /// Whether a word may be hyphenated: prose-looking, long enough to be worth splitting,
 /// and short enough that the hyphenator is safe and cheap.
 fn is_hyphenable(t: &str, code: bool) -> bool {
-    !code && t.len() <= MAX_HYPHEN_BYTES && t.chars().count() >= 5 && t.chars().all(|c| c.is_alphabetic() || c == '\'' || c == '\u{2019}')
+    if code || t.len() > MAX_HYPHEN_BYTES {
+        return false;
+    }
+    let (_, core, _) = word_core(t);
+    core.chars().count() >= 5
+}
+
+/// Split an atom into (leading punctuation, the alphabetic word, trailing punctuation):
+/// `“shore,”` → (`“`, `shore`, `,”`). The hyphenator only ever sees the word.
+fn word_core(t: &str) -> (&str, &str, &str) {
+    let is_word = |c: char| c.is_alphabetic() || c == '\'' || c == '\u{2019}';
+    let start = t.find(is_word).unwrap_or(t.len());
+    let end = t.rfind(is_word).map(|i| i + t[i..].chars().next().map_or(1, char::len_utf8)).unwrap_or(start);
+    let core = &t[start..end];
+    if core.chars().all(is_word) {
+        (&t[..start], core, &t[end..])
+    } else {
+        (t, "", "")
+    }
 }
 
 fn space_width_q(font: &Font) -> i32 {
@@ -263,7 +281,9 @@ fn finish(lines: &mut Vec<Line>, cur: &mut Line, natural_q: i32, last: bool, jus
         if !gaps.is_empty() && extra > 0 {
             let per = extra / gaps.len() as i32;
             let space_ref = line.atoms[gaps[0]].1.space_q.max(1);
-            if per <= space_ref * 3 {
+            // A line that would need more than six spaces' worth of stretch per gap stays
+            // ragged (rivers read worse than one short line); hyphenation makes this rare.
+            if per <= space_ref * 6 {
                 let mut rem = extra - per * gaps.len() as i32;
                 let mut shift = 0i32;
                 let mut gi = 0usize;
@@ -286,7 +306,7 @@ fn finish(lines: &mut Vec<Line>, cur: &mut Line, natural_q: i32, last: bool, jus
 /// Split an atom at the longest hyphenation point whose `head-` fits in `avail_q`.
 fn hyphen_split(atom: &Atom, avail_q: i32, lang: Lang) -> Option<(Atom, Atom)> {
     let lang = lang.hypher()?;
-    let word = atom.text.as_str();
+    let (prefix, word, suffix) = word_core(&atom.text);
     let hyphen_q = atom.font.glyph('-').map(|g| g.advance_q as i32).unwrap_or(0);
     let mut best: Option<usize> = None;
     let mut acc = 0usize;
@@ -294,10 +314,11 @@ fn hyphen_split(atom: &Atom, avail_q: i32, lang: Lang) -> Option<(Atom, Atom)> {
     if syllables.len() < 2 {
         return None;
     }
+    let prefix_q = measure_text_q(atom.font, prefix);
     for s in &syllables[..syllables.len() - 1] {
         acc += s.len();
         let head = &word[..acc];
-        let w = measure_text_q(atom.font, head) + hyphen_q;
+        let w = prefix_q + measure_text_q(atom.font, head) + hyphen_q;
         if w <= avail_q {
             best = Some(acc);
         } else {
@@ -305,9 +326,11 @@ fn hyphen_split(atom: &Atom, avail_q: i32, lang: Lang) -> Option<(Atom, Atom)> {
         }
     }
     let cut = best?;
-    let mut head_text = String::from(&word[..cut]);
+    let mut head_text = String::from(prefix);
+    head_text.push_str(&word[..cut]);
     head_text.push('-');
-    let tail_text = String::from(&word[cut..]);
+    let mut tail_text = String::from(&word[cut..]);
+    tail_text.push_str(suffix);
     let head = Atom {
         width_q: measure_text_q(atom.font, &head_text),
         space_q: 0,
@@ -318,7 +341,7 @@ fn hyphen_split(atom: &Atom, avail_q: i32, lang: Lang) -> Option<(Atom, Atom)> {
     };
     let tail = Atom {
         width_q: measure_text_q(atom.font, &tail_text),
-        part: atom.part + word[..cut].chars().count() as u16,
+        part: atom.part + (prefix.chars().count() + word[..cut].chars().count()) as u16,
         hyphenable: is_hyphenable(&tail_text, false),
         text: tail_text,
         ..atom.clone()

@@ -574,10 +574,14 @@ impl<E: Env> Ui<E> {
                 other => top.event(&mut cx, other),
             }
         };
-        let mut refresh = self.apply(env, action);
-        // Non-key events may also matter to screens beneath (ingest progress on the shelf).
-        if refresh == Refresh::None && matches!(ev, Event::Tick) {
-            refresh = Refresh::None;
+        let refresh = self.apply(env, action);
+        // A sleep screen on top means the device goes to sleep once this frame is on the
+        // panel: persist everything and ask the platform, whichever screen put it there.
+        let top = self.top_name();
+        if (top == "40-sleep" || top == "40-sleep-charging") && !self.asleep {
+            self.asleep = true;
+            self.flush(env);
+            env.request(SysRequest::Sleep);
         }
         // Periodic persistence of positions and stats.
         let now = env.now();
@@ -592,7 +596,9 @@ impl<E: Env> Ui<E> {
         refresh
     }
 
-    fn apply(&mut self, env: &mut E, action: Action<E>) -> Refresh {
+    /// Apply an action as if the top screen returned it (the platform and tests use it to
+    /// open Jump targets directly).
+    pub fn apply(&mut self, env: &mut E, action: Action<E>) -> Refresh {
         match action {
             Action::None => Refresh::None,
             Action::Redraw => self.draw(env),

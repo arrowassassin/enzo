@@ -114,7 +114,7 @@ impl<E: Env> Screen<E> for Dictionary {
         draw_text(f, fl, widgets::INSET, foot, &self.source, TextStyle::INK);
         widgets::side_labels(f, Some("Wiki"), Some("Dict"), true);
         let saved = cx.settings.saved_words.iter().any(|w| w.eq_ignore_ascii_case(&self.headword));
-        rail(f, ["", "Back", if saved { "Saved ✓" } else { "Save word" }, if self.pages.len() > 1 { "Next" } else { "" }], None);
+        rail(f, ["", "Back", if saved { "Saved ✓" } else { "Save" }, if self.pages.len() > 1 { "Next" } else { "" }], None);
         Refresh::Gc
     }
     fn key(&mut self, cx: &mut Ctx<E>, ev: KeyEvent) -> Action<E> {

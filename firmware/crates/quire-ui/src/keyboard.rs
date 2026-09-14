@@ -230,7 +230,8 @@ impl<E: Env> Screen<E> for KeyboardScreen {
                 if focused {
                     f.fill_rect(rect, Ink::Black);
                 }
-                let font = quire_fonts::ui::body();
+                // The check mark lives in the mono face only.
+                let font = if *a == "✓" { quire_fonts::ui::mono() } else { quire_fonts::ui::body() };
                 draw_centered(
                     f,
                     font,
@@ -276,7 +277,7 @@ impl<E: Env> Screen<E> for KeyboardScreen {
                     f.fill_rect(rect, Ink::Black);
                 }
                 f.stroke_rect(rect, 2, Ink::Black);
-                let font = quire_fonts::ui::body();
+                let font = if *a == "✓" { quire_fonts::ui::mono() } else { quire_fonts::ui::body() };
                 draw_centered(
                     f,
                     font,

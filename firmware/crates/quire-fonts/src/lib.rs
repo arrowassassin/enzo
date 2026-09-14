@@ -115,7 +115,7 @@ pub fn dropcap(px: u16) -> Option<&'static Font> {
     find(buf.as_str_mut())
 }
 
-/// UI faces used everywhere, by role (brief §4).
+/// UI faces used everywhere, by role (brief §4). Sizes are the em in pixels.
 pub mod ui {
     use super::*;
     /// 18 px small-cap labels and captions.
@@ -243,10 +243,18 @@ mod tests {
     #[test]
     fn registry_roles_resolve() {
         assert_eq!(ui::label().size(), 18);
+        assert_eq!(ui::body().size(), 22);
+        assert_eq!(ui::body_italic().size(), 22);
+        assert_eq!(ui::list_title().size(), 26);
         assert_eq!(ui::title().size(), 32);
         assert_eq!(ui::poster().size(), 44);
         assert_eq!(ui::hero().size(), 56);
         assert_eq!(ui::mono().size(), 18);
+        assert_eq!(ui::mono_body().size(), 22);
+        // The em is the size: a 26 px face's 'M' is about 0.7 em tall, never 0.9.
+        let f = get(Family::Literata, Style::Regular, 26).expect("literata 26");
+        let m = f.glyph('M').unwrap().bitmap.h as i32;
+        assert!((15..=21).contains(&m), "cap height {m} px at 26 px");
         // A three-line drop cap: the cap height of 'M' spans three 145 % lines, at each
         // size that has its own strike.
         for size in DROPCAP_SIZES {
