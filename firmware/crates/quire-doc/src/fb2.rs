@@ -60,11 +60,15 @@ pub fn ingest<R: ReadAt>(file: &R, sink: &mut dyn Sink) -> Result<(), DocError> 
                     let n = name.to_ascii_lowercase();
                     if n == "binary" {
                         let id = attrs.iter().find(|(k, _)| k.eq_ignore_ascii_case("id")).map(|(_, v)| v.clone()).unwrap_or_default();
-                        let ct = attrs.iter().find(|(k, _)| k.eq_ignore_ascii_case("content-type")).map(|(_, v)| v.clone()).unwrap_or_default();
+                        let ct =
+                            attrs.iter().find(|(k, _)| k.eq_ignore_ascii_case("content-type")).map(|(_, v)| v.clone()).unwrap_or_default();
                         cur_binary = Some((id, ct, String::new()));
                     }
                     if n == "image" && path.iter().any(|p| p == "coverpage") {
-                        cover_href = attrs.iter().find(|(k, _)| k.to_ascii_lowercase().ends_with("href")).map(|(_, v)| v.trim_start_matches('#').into());
+                        cover_href = attrs
+                            .iter()
+                            .find(|(k, _)| k.to_ascii_lowercase().ends_with("href"))
+                            .map(|(_, v)| v.trim_start_matches('#').into());
                     }
                     if !*self_closing {
                         path.push(n);
@@ -283,7 +287,11 @@ pub fn ingest<R: ReadAt>(file: &R, sink: &mut dyn Sink) -> Result<(), DocError> 
                         }
                     }
                     "a" if in_body => {
-                        let href = attrs.iter().find(|(k, _)| k.to_ascii_lowercase().ends_with("href")).map(|(_, v)| v.clone()).unwrap_or_default();
+                        let href = attrs
+                            .iter()
+                            .find(|(k, _)| k.to_ascii_lowercase().ends_with("href"))
+                            .map(|(_, v)| v.clone())
+                            .unwrap_or_default();
                         let is_note = attrs.iter().any(|(k, v)| k.eq_ignore_ascii_case("type") && v == "note");
                         if let Some(wr) = w.as_mut() {
                             if in_para {
@@ -296,9 +304,15 @@ pub fn ingest<R: ReadAt>(file: &R, sink: &mut dyn Sink) -> Result<(), DocError> 
                         }
                     }
                     "image" if in_body && !notes_body => {
-                        let href = attrs.iter().find(|(k, _)| k.to_ascii_lowercase().ends_with("href")).map(|(_, v)| String::from(v.trim_start_matches('#'))).unwrap_or_default();
+                        let href = attrs
+                            .iter()
+                            .find(|(k, _)| k.to_ascii_lowercase().ends_with("href"))
+                            .map(|(_, v)| String::from(v.trim_start_matches('#')))
+                            .unwrap_or_default();
                         if let Some((_, ct, bytes)) = binaries.iter().find(|(id, _, _)| *id == href) {
-                            if let Ok(bm) = crate::image::decode(bytes, ImageKind::from_hint(ct), Fit::inside(limits::IMAGE_W, limits::IMAGE_H)) {
+                            if let Ok(bm) =
+                                crate::image::decode(bytes, ImageKind::from_hint(ct), Fit::inside(limits::IMAGE_W, limits::IMAGE_H))
+                            {
                                 let id = sink.image(&bm)?;
                                 if w.is_none() {
                                     w = Some(Writer::new());

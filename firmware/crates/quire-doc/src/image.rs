@@ -210,7 +210,7 @@ impl RowSink {
         if self.fs {
             self.err_next.iter_mut().for_each(|e| *e = 0);
             for x in 0..w {
-                let g = if self.cnt[x] > 0 { (self.acc[x] / self.cnt[x]) as i32 } else { 255 };
+                let g = self.acc[x].checked_div(self.cnt[x]).map(|v| v as i32).unwrap_or(255);
                 let v = g + self.err_cur[x + 1] as i32;
                 let (q, e) = if v < 128 { (0, v) } else { (255, v - 255) };
                 if q == 0 {
@@ -226,7 +226,7 @@ impl RowSink {
         } else {
             const BAYER4: [[u8; 4]; 4] = [[0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5]];
             for x in 0..w {
-                let g = if self.cnt[x] > 0 { (self.acc[x] / self.cnt[x]) as u8 } else { 255 };
+                let g = self.acc[x].checked_div(self.cnt[x]).map(|v| v as u8).unwrap_or(255);
                 let t = (BAYER4[y as usize & 3][x & 3] as u32 * 16 + 8) as u8;
                 if g < t {
                     self.out.set(x as u32, y, true);
@@ -290,7 +290,7 @@ pub fn decode_bmp<R: ReadAt>(src: &R, fit: Fit) -> Result<Bitmap, DocError> {
     let top_down = hgt < 0;
     let (w, hgt) = (w.unsigned_abs(), hgt.unsigned_abs());
     let mut sink = RowSink::new(w, hgt, fit)?;
-    let stride = ((w * bpp + 31) / 32 * 4) as u64;
+    let stride = ((w * bpp).div_ceil(32) * 4) as u64;
     let mut palette = Vec::new();
     if bpp <= 8 {
         let hdr_size = u32::from_le_bytes([h[14], h[15], h[16], h[17]]) as u64;

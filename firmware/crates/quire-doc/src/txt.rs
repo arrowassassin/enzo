@@ -15,7 +15,8 @@ pub fn decode_bytes(data: &[u8]) -> String {
     }
     if data.len() >= 2 && (data[..2] == [0xFF, 0xFE] || data[..2] == [0xFE, 0xFF]) {
         let be = data[0] == 0xFE;
-        let units: Vec<u16> = data[2..].chunks_exact(2).map(|c| if be { u16::from_be_bytes([c[0], c[1]]) } else { u16::from_le_bytes([c[0], c[1]]) }).collect();
+        let units: Vec<u16> =
+            data[2..].as_chunks::<2>().0.iter().map(|c| if be { u16::from_be_bytes(*c) } else { u16::from_le_bytes(*c) }).collect();
         return char::decode_utf16(units).map(|r| r.unwrap_or('\u{FFFD}')).collect();
     }
     match core::str::from_utf8(data) {
@@ -98,7 +99,14 @@ pub fn ingest<R: ReadAt>(file: &R, name: &str, sink: &mut dyn Sink) -> Result<()
     let mut chapter_chars = 0u32;
     let mut chapter_open = false;
 
-    let flush_para = |para: &mut String, w: &mut Writer, sink: &mut dyn Sink, chapter: &mut u16, toc: &mut Vec<TocEntry>, chapter_open: &mut bool, chapter_chars: &mut u32| -> Result<(), DocError> {
+    let flush_para = |para: &mut String,
+                      w: &mut Writer,
+                      sink: &mut dyn Sink,
+                      chapter: &mut u16,
+                      toc: &mut Vec<TocEntry>,
+                      chapter_open: &mut bool,
+                      chapter_chars: &mut u32|
+     -> Result<(), DocError> {
         let text = para.trim();
         if text.is_empty() {
             para.clear();
@@ -246,7 +254,11 @@ fn looks_like_heading(text: &str) -> bool {
         return false;
     }
     let up = t.to_ascii_uppercase();
-    up.starts_with("CHAPTER ") || up.starts_with("BOOK ") || up.starts_with("PART ") || up.starts_with("LETTER ") || (t.len() > 3 && t == up && t.chars().any(|c| c.is_alphabetic()) && !t.ends_with('.'))
+    up.starts_with("CHAPTER ")
+        || up.starts_with("BOOK ")
+        || up.starts_with("PART ")
+        || up.starts_with("LETTER ")
+        || (t.len() > 3 && t == up && t.chars().any(|c| c.is_alphabetic()) && !t.ends_with('.'))
 }
 
 fn first_title(sample: &str) -> Option<String> {

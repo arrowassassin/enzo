@@ -55,8 +55,14 @@ pub fn ingest<R: ReadAt>(file: &R, sink: &mut dyn Sink) -> Result<(), DocError> 
                 let n = name.to_ascii_lowercase();
                 match n.as_str() {
                     "item" => {
-                        let get = |k: &str| attrs.iter().find(|(a, _)| a.eq_ignore_ascii_case(k)).map(|(_, v)| v.clone()).unwrap_or_default();
-                        manifest.push(ManifestItem { id: get("id"), href: get("href"), media: get("media-type"), properties: get("properties") });
+                        let get =
+                            |k: &str| attrs.iter().find(|(a, _)| a.eq_ignore_ascii_case(k)).map(|(_, v)| v.clone()).unwrap_or_default();
+                        manifest.push(ManifestItem {
+                            id: get("id"),
+                            href: get("href"),
+                            media: get("media-type"),
+                            properties: get("properties"),
+                        });
                     }
                     "itemref" => {
                         let idref = attrs.iter().find(|(a, _)| a.eq_ignore_ascii_case("idref")).map(|(_, v)| v.clone()).unwrap_or_default();
@@ -83,7 +89,8 @@ pub fn ingest<R: ReadAt>(file: &R, sink: &mut dyn Sink) -> Result<(), DocError> 
                             meta.series = attrs.iter().find(|(a, _)| a.eq_ignore_ascii_case("content")).map(|(_, v)| v.clone());
                         }
                         if name_attr == Some("calibre:series_index") {
-                            meta.series_index = attrs.iter().find(|(a, _)| a.eq_ignore_ascii_case("content")).and_then(|(_, v)| parse_index(v));
+                            meta.series_index =
+                                attrs.iter().find(|(a, _)| a.eq_ignore_ascii_case("content")).and_then(|(_, v)| parse_index(v));
                         }
                     }
                     "title" => cur_text_target = Some("title"),
@@ -110,7 +117,10 @@ pub fn ingest<R: ReadAt>(file: &R, sink: &mut dyn Sink) -> Result<(), DocError> 
                         }
                     }
                 }
-                if matches!(n.as_str(), "title" | "creator" | "language" | "publisher" | "date" | "description" | "subject" | "identifier" | "meta") {
+                if matches!(
+                    n.as_str(),
+                    "title" | "creator" | "language" | "publisher" | "date" | "description" | "subject" | "identifier" | "meta"
+                ) {
                     cur_text_target = None;
                 }
             }
@@ -152,7 +162,12 @@ pub fn ingest<R: ReadAt>(file: &R, sink: &mut dyn Sink) -> Result<(), DocError> 
         .iter()
         .find(|m| m.properties.split_whitespace().any(|p| p == "cover-image"))
         .or_else(|| cover_id.as_deref().and_then(find_item))
-        .or_else(|| manifest.iter().find(|m| m.media.starts_with("image/") && (m.id.to_ascii_lowercase().contains("cover") || m.href.to_ascii_lowercase().contains("cover"))));
+        .or_else(|| {
+            manifest.iter().find(|m| {
+                m.media.starts_with("image/")
+                    && (m.id.to_ascii_lowercase().contains("cover") || m.href.to_ascii_lowercase().contains("cover"))
+            })
+        });
     if let Some(ci) = cover_item {
         let path = resolve(&opf_dir_base, &ci.href);
         if let Some(e) = zip.find(&path) {
@@ -171,7 +186,8 @@ pub fn ingest<R: ReadAt>(file: &R, sink: &mut dyn Sink) -> Result<(), DocError> 
     let mut chapter_paths: Vec<String> = Vec::new();
     let mut chapter_index: u16 = 0;
     let total = spine.len().max(1) as u32;
-    let mut nav_path: Option<String> = manifest.iter().find(|m| m.properties.split_whitespace().any(|p| p == "nav")).map(|m| resolve(&opf_dir_base, &m.href));
+    let mut nav_path: Option<String> =
+        manifest.iter().find(|m| m.properties.split_whitespace().any(|p| p == "nav")).map(|m| resolve(&opf_dir_base, &m.href));
     for (i, (idref, linear)) in spine.iter().enumerate() {
         let Some(item) = find_item(idref) else { continue };
         if !item.media.contains("html") && !item.media.contains("xml") {
@@ -196,12 +212,10 @@ pub fn ingest<R: ReadAt>(file: &R, sink: &mut dyn Sink) -> Result<(), DocError> 
             let Some(ie) = zip.find(&ipath) else { continue };
             let media = manifest.iter().find(|m| resolve(&opf_dir_base, &m.href) == ipath).map(|m| m.media.clone()).unwrap_or_default();
             let Ok(bytes) = zip.read(ie, 8 * 1024 * 1024) else { continue };
-            match crate::image::decode(&bytes, ImageKind::from_hint(&media), Fit::inside(limits::IMAGE_W, limits::IMAGE_H)) {
-                Ok(bm) => {
-                    let real = sink.image(&bm)?;
-                    id_map.push((*tmp, real, bm.w as u16, bm.h as u16));
-                }
-                Err(_) => {} // leave the placeholder: the renderer draws a frame
+            // On failure the placeholder stays: the renderer draws a frame.
+            if let Ok(bm) = crate::image::decode(&bytes, ImageKind::from_hint(&media), Fit::inside(limits::IMAGE_W, limits::IMAGE_H)) {
+                let real = sink.image(&bm)?;
+                id_map.push((*tmp, real, bm.w as u16, bm.h as u16));
             }
         }
         let patched = patch_images(&qtx, &id_map);
@@ -225,7 +239,10 @@ pub fn ingest<R: ReadAt>(file: &R, sink: &mut dyn Sink) -> Result<(), DocError> 
         }
     }
     if toc.is_empty() {
-        let ncx = toc_id.as_deref().and_then(find_item).or_else(|| manifest.iter().find(|m| m.media.contains("dtbncx") || m.href.ends_with(".ncx")));
+        let ncx = toc_id
+            .as_deref()
+            .and_then(find_item)
+            .or_else(|| manifest.iter().find(|m| m.media.contains("dtbncx") || m.href.ends_with(".ncx")));
         if let Some(n) = ncx {
             let p = resolve(&opf_dir_base, &n.href);
             if let Some(e) = zip.find(&p) {

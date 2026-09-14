@@ -183,7 +183,13 @@ fn unfilter(filter: u8, cur: &mut [u8], prev: &[u8], bpp: usize) {
                 let c = if i >= bpp { prev[i - bpp] as i16 } else { 0 };
                 let p = a + b - c;
                 let (pa, pb, pc) = ((p - a).abs(), (p - b).abs(), (p - c).abs());
-                let pred = if pa <= pb && pa <= pc { a } else if pb <= pc { b } else { c };
+                let pred = if pa <= pb && pa <= pc {
+                    a
+                } else if pb <= pc {
+                    b
+                } else {
+                    c
+                };
                 cur[i] = cur[i].wrapping_add(pred as u8);
             }
         }
@@ -207,7 +213,7 @@ fn to_grey(row: &[u8], out: &mut [u8], w: u32, depth: u8, ctype: u8, palette: &[
         }
     };
     let maxv = if depth == 16 { 255u32 } else { (1u32 << depth) - 1 };
-    for x in 0..w as usize {
+    for (x, out_px) in out.iter_mut().enumerate().take(w as usize) {
         let g = match ctype {
             0 => {
                 let v = sample(x);
@@ -235,7 +241,7 @@ fn to_grey(row: &[u8], out: &mut [u8], w: u32, depth: u8, ctype: u8, palette: &[
             }
             _ => 255,
         };
-        out[x] = g;
+        *out_px = g;
     }
 }
 
@@ -293,7 +299,13 @@ pub(crate) mod tests {
                         let c = if i >= ch { prev[i - ch] as i16 } else { 0 };
                         let p = a + b - c;
                         let (pa, pb, pc) = ((p - a).abs(), (p - b).abs(), (p - c).abs());
-                        let pred = if pa <= pb && pa <= pc { a } else if pb <= pc { b } else { c };
+                        let pred = if pa <= pb && pa <= pc {
+                            a
+                        } else if pb <= pc {
+                            b
+                        } else {
+                            c
+                        };
                         raw.push(row[i].wrapping_sub(pred as u8));
                     }
                 }

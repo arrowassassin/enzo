@@ -344,7 +344,10 @@ mod tests {
 
     #[test]
     fn epub3_wasteland_and_childrens_literature() {
-        for (bytes, title) in [(&include_bytes!("../fixtures/wasteland.epub")[..], "The Waste Land"), (&include_bytes!("../fixtures/childrens-literature.epub")[..], "Children's Literature")] {
+        for (bytes, title) in [
+            (&include_bytes!("../fixtures/wasteland.epub")[..], "The Waste Land"),
+            (&include_bytes!("../fixtures/childrens-literature.epub")[..], "Children's Literature"),
+        ] {
             let mut sink = MemSink::default();
             ingest(Format::Epub, &bytes, "x.epub", &mut sink).expect("ingest");
             assert_eq!(sink.meta.title, title);

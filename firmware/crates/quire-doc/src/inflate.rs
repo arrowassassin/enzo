@@ -116,6 +116,7 @@ pub fn inflate_range<R: ReadAt>(src: R, start: u64, len: u64, framing: Framing) 
 }
 
 /// A byte source that is either stored or inflated, exposing `next_chunk` uniformly.
+#[allow(clippy::large_enum_variant)]
 pub enum ByteStream<R: ReadAt> {
     /// Stored bytes, read in chunks.
     Stored {

@@ -287,7 +287,7 @@ pub fn percent_decode(s: &str) -> String {
     let mut out: Vec<u8> = Vec::with_capacity(b.len());
     let mut i = 0;
     while i < b.len() {
-        if b[i] == b'%' && i + 2 < b.len() + 0 && i + 2 <= b.len() - 1 {
+        if b[i] == b'%' && i + 2 < b.len() {
             let h = |c: u8| (c as char).to_digit(16);
             if let (Some(a), Some(c)) = (h(b[i + 1]), h(b[i + 2])) {
                 out.push((a * 16 + c) as u8);

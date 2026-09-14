@@ -489,7 +489,13 @@ impl Converter {
             "body" => self.body_seen = true,
             "p" => {
                 let cls = attr(attrs, "class").unwrap_or_default().to_ascii_lowercase();
-                let kind = if cls.contains("caption") { ParaKind::Caption } else if cls.contains("center") || cls.contains("centre") { ParaKind::Centered } else { self.current_kind() };
+                let kind = if cls.contains("caption") {
+                    ParaKind::Caption
+                } else if cls.contains("center") || cls.contains("centre") {
+                    ParaKind::Centered
+                } else {
+                    self.current_kind()
+                };
                 self.start_para(kind);
             }
             "div" | "section" | "article" | "aside" | "header" | "footer" | "main" | "figure" | "address" => {
@@ -632,14 +638,13 @@ impl Converter {
                 self.end_para();
                 self.list_stack.pop();
             }
-            "code" | "kbd" | "samp" | "tt" | "em" | "i" | "cite" | "dfn" | "var" | "strong" | "b" | "u" | "ins" | "s" | "strike" | "del" | "sup" | "sub" | "small" | "span" => self.pop_style(),
+            "code" | "kbd" | "samp" | "tt" | "em" | "i" | "cite" | "dfn" | "var" | "strong" | "b" | "u" | "ins" | "s" | "strike"
+            | "del" | "sup" | "sub" | "small" | "span" => self.pop_style(),
             "th" => self.pop_style(),
-            "a" => {
-                if self.link_depth > 0 {
-                    self.link_depth -= 1;
-                    if self.in_para {
-                        self.w.push(&Token::LinkEnd);
-                    }
+            "a" if self.link_depth > 0 => {
+                self.link_depth -= 1;
+                if self.in_para {
+                    self.w.push(&Token::LinkEnd);
                 }
             }
             _ => {}
@@ -739,7 +744,12 @@ pub fn to_qtx(src: &str) -> (Vec<u8>, u32, ConverterInfo) {
     let events = tokenize(src);
     let mut c = Converter::new();
     c.feed(&events);
-    let info = ConverterInfo { images: core::mem::take(&mut c.images), anchors: core::mem::take(&mut c.anchors), title: c.title.take(), text_emitted: c.text_emitted };
+    let info = ConverterInfo {
+        images: core::mem::take(&mut c.images),
+        anchors: core::mem::take(&mut c.anchors),
+        title: c.title.take(),
+        text_emitted: c.text_emitted,
+    };
     let (bytes, chars) = c.finish();
     (bytes, chars, info)
 }

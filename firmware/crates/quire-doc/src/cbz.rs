@@ -93,7 +93,11 @@ pub fn ingest<R: ReadAt>(file: &R, name: &str, sink: &mut dyn Sink) -> Result<()
                     // First page doubles as the cover.
                     if let (Ok(full), Ok(thumb)) = (
                         crate::image::decode(&bytes, ImageKind::from_hint(&e.name), Fit::fill(limits::COVER_W, limits::COVER_H)),
-                        crate::image::decode(&bytes, ImageKind::from_hint(&e.name), Fit { fs: false, ..Fit::fill(limits::THUMB_W, limits::THUMB_H) }),
+                        crate::image::decode(
+                            &bytes,
+                            ImageKind::from_hint(&e.name),
+                            Fit { fs: false, ..Fit::fill(limits::THUMB_W, limits::THUMB_H) },
+                        ),
                     ) {
                         sink.cover(&full, &thumb)?;
                     }
@@ -124,7 +128,10 @@ pub fn ingest_single_image<R: ReadAt>(file: &R, name: &str, sink: &mut dyn Sink)
     let bm = crate::image::decode(&bytes, kind, Fit::inside(PAGE_W, PAGE_H))?;
     let title = crate::title_from_name(name);
     sink.metadata(&Metadata { title: title.clone(), ..Default::default() })?;
-    if let (Ok(full), Ok(thumb)) = (crate::image::decode(&bytes, kind, Fit::fill(limits::COVER_W, limits::COVER_H)), crate::image::decode(&bytes, kind, Fit { fs: false, ..Fit::fill(limits::THUMB_W, limits::THUMB_H) })) {
+    if let (Ok(full), Ok(thumb)) = (
+        crate::image::decode(&bytes, kind, Fit::fill(limits::COVER_W, limits::COVER_H)),
+        crate::image::decode(&bytes, kind, Fit { fs: false, ..Fit::fill(limits::THUMB_W, limits::THUMB_H) }),
+    ) {
         sink.cover(&full, &thumb)?;
     }
     sink.begin_chapter(0, Some(&title))?;

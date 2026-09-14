@@ -164,7 +164,8 @@ pub(crate) mod testzip {
             Builder { data: Vec::new(), cd: Vec::new(), count: 0 }
         }
         pub fn add(&mut self, name: &str, content: &[u8], deflate: bool) -> &mut Self {
-            let (method, payload) = if deflate { (8u16, miniz_oxide::deflate::compress_to_vec(content, 6)) } else { (0u16, content.to_vec()) };
+            let (method, payload) =
+                if deflate { (8u16, miniz_oxide::deflate::compress_to_vec(content, 6)) } else { (0u16, content.to_vec()) };
             let crc = crc32(content);
             let off = self.data.len() as u32;
             let mut h = Vec::new();

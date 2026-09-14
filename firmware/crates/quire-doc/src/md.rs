@@ -7,8 +7,11 @@ use quire_qtx::{style, ParaKind, Token, Writer};
 
 use crate::{DocError, Metadata, Sink, TocEntry};
 
+/// Result of a Markdown conversion: QTX bytes, char count, first heading, TOC (title, depth).
+pub type MdOutput = (alloc::vec::Vec<u8>, u32, Option<String>, alloc::vec::Vec<(String, u8)>);
+
 /// Convert Markdown text to QTX, returning bytes, char count, first heading and TOC.
-pub fn to_qtx(src: &str) -> (alloc::vec::Vec<u8>, u32, Option<String>, alloc::vec::Vec<(String, u8)>) {
+pub fn to_qtx(src: &str) -> MdOutput {
     let mut w = Writer::new();
     let mut opts = Options::empty();
     opts.insert(Options::ENABLE_STRIKETHROUGH);
@@ -102,7 +105,12 @@ pub fn to_qtx(src: &str) -> (alloc::vec::Vec<u8>, u32, Option<String>, alloc::ve
                 _ => {}
             },
             Event::End(tag) => match tag {
-                TagEnd::Paragraph | TagEnd::Heading(_) | TagEnd::Item | TagEnd::TableHead | TagEnd::TableRow | TagEnd::FootnoteDefinition => {
+                TagEnd::Paragraph
+                | TagEnd::Heading(_)
+                | TagEnd::Item
+                | TagEnd::TableHead
+                | TagEnd::TableRow
+                | TagEnd::FootnoteDefinition => {
                     if let (TagEnd::Heading(_), Some((l, t))) = (&tag, heading_buf.take()) {
                         if first_heading.is_none() {
                             first_heading = Some(t.clone());
@@ -143,16 +151,8 @@ pub fn to_qtx(src: &str) -> (alloc::vec::Vec<u8>, u32, Option<String>, alloc::ve
                         w.style(styleflags);
                     }
                 }
-                TagEnd::Link => {
-                    if in_para {
-                        w.push(&Token::LinkEnd);
-                    }
-                }
-                TagEnd::TableCell => {
-                    if in_para {
-                        w.text(" · ");
-                    }
-                }
+                TagEnd::Link if in_para => w.push(&Token::LinkEnd),
+                TagEnd::TableCell if in_para => w.text(" · "),
                 _ => {}
             },
             Event::Text(t) => {
