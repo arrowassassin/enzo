@@ -21,8 +21,10 @@ pub struct Step {
 
 /// Power-on register script, sent after the hardware reset and before the first LUT load.
 ///
-/// Every value is the PapyriX "reverse-exact" X3 init (`Display::initDisplayController`, `_x3Mode`);
-/// register/field names from the UC8253 datasheet.
+/// Every value is the PapyriX "reverse-exact" X3 init (`Display::initDisplayController`, `_x3Mode`
+/// branch, `px-Display.cpp` lines 563–596), checked byte-for-byte; register/field names from the
+/// UC8253 datasheet. PapyriX sends each data byte in its own CS window; we send the command and
+/// its data in one window, which the UC81xx interface treats identically (DC is sampled per byte).
 pub const INIT_SCRIPT: &[Step] = &[
     // 0x00 PSR, panel setting. 0x3F: RES=00 (resolution from TRES), REG=1 (LUT from registers,
     // not OTP), KW/R=1 (black/white mode), UD=1 (gate scan up), SHL=1 (source shift right),
@@ -56,14 +58,21 @@ pub const INIT_SCRIPT: &[Step] = &[
 ];
 
 /// CDI (0x50) data for a full/half sync: border drive active during the image write.
-/// x3-lut-waveforms.md "VCOM Data Interval".
+/// x3-lut-waveforms.md "VCOM Data Interval"; PapyriX `refreshDisplay` (`doFullSync`/`doHalfSync`
+/// branches send `0x50, 0xA9, 0x07`).
 pub const CDI_FULL_SYNC: [u8; 2] = [0xA9, 0x07];
 /// CDI (0x50) data for a fast differential update: border held. Also what PapyriX uses for the
-/// conditioning pass with the `FULL` bank and for the grey pass.
+/// conditioning pass with the `FULL` bank, the no-op turbo settle pass and the grey pass
+/// (`dataInterval0/1 = 0x29, 0x07` in `displayGray`).
 pub const CDI_FAST: [u8; 2] = [0x29, 0x07];
 
 /// Settle delay PapyriX inserts after every non-fast refresh (`if (mode != FAST_REFRESH) delay(200)`).
 pub const SETTLE_MS: u32 = 200;
+
+/// PTL (0x90) payload of the conditioning pass: X 0..791, Y 0..527, PT_SCAN = 1. PapyriX builds
+/// it from `displayWidth - 1` / `displayHeight - 1` (`refreshDisplay`, `postConditionPasses`);
+/// byte-identical to the UC8279 `FULL_WINDOW`.
+pub const PTL_FULL_WINDOW: [u8; 9] = [0x00, 0x00, 0x03, 0x17, 0x00, 0x00, 0x02, 0x0F, 0x01];
 
 /// Nominal frame-group time at PLL 0x09, microseconds (x3-lut-waveforms.md: "approximately 18.2 ms").
 pub const FRAME_GROUP_US: u32 = 18_200;
@@ -193,7 +202,8 @@ impl Bank {
 const GND4: u8 = vs(Gnd, Gnd, Gnd, Gnd);
 
 /// `lut_x3_*_full` — quality refresh. Phase 0 TP=(6,2,6,6), phase 1 TP=(5,1,0,0), RP=1 each:
-/// 26 frame groups, ~472 ms. VS per x3-lut-waveforms.md.
+/// 26 frame groups, ~472 ms. VS per x3-lut-waveforms.md; recovered VS bytes (PapyriX
+/// `lut_x3_*_full`): VCOM 0x00/0x00, WW 0x20/0x00, BW 0xAA/0x80, WB 0x55/0x40, BB 0x10/0x00.
 pub const FULL: LutSet = LutSet {
     vcom: lut(&[phase(GND4, [6, 2, 6, 6], 1), phase(GND4, [5, 1, 0, 0], 1)]),
     ww: lut(&[phase(vs(Gnd, Vdl, Gnd, Gnd), [6, 2, 6, 6], 1), phase(GND4, [5, 1, 0, 0], 1)]),
@@ -213,8 +223,9 @@ pub const TURBO: LutSet = LutSet {
 };
 
 /// `lut_x3_*_half` — scrub bank (FreeInk SDK via PapyriX). Phase 0 TP=(6,1,6,6), phase 1
-/// TP=(4,1,1,0). WW == BW (drive to white: VDL×4 then VDL,VDL,GND,GND) and WB == BB (drive to
-/// black: VDH×4 then VDH,VDH,GND,GND), so the result does not depend on the old frame.
+/// TP=(4,1,1,0): 25 frame groups. WW == BW (drive to white: VDL×4 then VDL,VDL,GND,GND) and
+/// WB == BB (drive to black: VDH×4 then VDH,VDH,GND,GND), so the result does not depend on the
+/// old frame. Recovered VS bytes: VCOM 0x00/0x00, WW = BW 0xAA/0xA0, WB = BB 0x55/0x50.
 pub const HALF: LutSet = LutSet {
     vcom: lut(&[phase(GND4, [6, 1, 6, 6], 1), phase(GND4, [4, 1, 1, 0], 1)]),
     ww: lut(&[phase(vs(Vdl, Vdl, Vdl, Vdl), [6, 1, 6, 6], 1), phase(vs(Vdl, Vdl, Gnd, Gnd), [4, 1, 1, 0], 1)]),
@@ -252,8 +263,8 @@ pub const IMG: LutSet = LutSet {
 };
 
 /// `lut_x3_*_gray` — 4-level grey pass. One phase TP=(3,2,1,1), RP=1: 7 frame groups, ~127 ms.
-/// WW (dark grey): short VDL pulse in sub-phase B; BW (light grey): VDL in sub-phase A;
-/// WB/BB/VCOM: GND hold.
+/// WW (dark grey): short VDL pulse in sub-phase B (VS 0x20); BW (light grey): VDL in sub-phase A
+/// (VS 0x80); WB/BB/VCOM: GND hold (VS 0x00). PapyriX `lut_x3_*_gray` ("gray_tuned").
 pub const GRAY: LutSet = LutSet {
     vcom: lut(&[phase(GND4, [3, 2, 1, 1], 1)]),
     ww: lut(&[phase(vs(Gnd, Vdl, Gnd, Gnd), [3, 2, 1, 1], 1)]),
@@ -293,7 +304,13 @@ mod tests {
     fn unused_phases_are_zero() {
         for set in [&FULL, &TURBO, &HALF, &IMG, &GRAY] {
             for (_, t) in set.tables() {
-                let used = 6 * if core::ptr::eq(set, &IMG) { 3 } else if core::ptr::eq(set, &GRAY) { 1 } else { 2 };
+                let used = 6 * if core::ptr::eq(set, &IMG) {
+                    3
+                } else if core::ptr::eq(set, &GRAY) {
+                    1
+                } else {
+                    2
+                };
                 assert!(t[used..].iter().all(|&b| b == 0));
             }
         }

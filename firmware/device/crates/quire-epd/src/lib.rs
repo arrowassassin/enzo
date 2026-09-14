@@ -32,8 +32,8 @@ pub mod uc8253;
 pub mod uc8279;
 
 pub use plane::{
-    plane_pixel, portrait_to_panel, rotate_bits_to_plane, rotate_frame_to_plane, Rotation, FRAME_H, FRAME_STRIDE, FRAME_W,
-    PANEL_H, PANEL_W, PLANE_BYTES, ROW_BYTES,
+    plane_pixel, portrait_to_panel, rotate_bits_to_plane, rotate_frame_to_plane, Rotation, FRAME_H, FRAME_STRIDE, FRAME_W, PANEL_H,
+    PANEL_W, PLANE_BYTES, ROW_BYTES,
 };
 pub use probe::{classify, probe, ProbeBus, ProbeResult, ProbeSample, Verdict};
 
@@ -182,6 +182,9 @@ pub struct Epd<SPI, DC, RST, BUSY, CS, D> {
     pending: Option<Pending>,
     // UC8253
     loaded_bank: Option<uc8253::Bank>,
+    /// One conditioning pass with the `FULL` bank is still owed after the next full sync
+    /// (PapyriX `_x3InitialFullSyncsRemaining == 1` → `postConditionPasses = 1`).
+    condition_pass_pending: bool,
     // UC8279
     first_refresh: bool,
     initial_gc_remaining: u8,
@@ -218,6 +221,7 @@ where
             gc_interval: DEFAULT_GC_INTERVAL,
             pending: None,
             loaded_bank: None,
+            condition_pass_pending: false,
             first_refresh: true,
             initial_gc_remaining: uc8279::INITIAL_GC_REFRESHES,
             dark_background: false,
@@ -440,13 +444,15 @@ where
     // ------------------------------------------------------------------------------------------
 
     /// Hardware reset pulse. UC8253: high 20 ms, low 10 ms, high 20 ms + 50 ms settle (PapyriX
-    /// `resetDisplay`, `_x3Mode`). UC8279d: high 10 ms, low 50 ms, high 10 ms + 50 ms settle
-    /// (reference "Power-On Register Script" gives low 10 ms; PapyriX `bus.reset(50)` uses 50 —
-    /// the longer pulse is harmless and is what runs in the field).
+    /// `Display::resetDisplay`, `_x3Mode`: `delay(20); LOW; delay(10); HIGH; delay(20); delay(50)`).
+    /// UC8279d: high 10 ms, low 10 ms, high 10 ms + 50 ms settle (x3-uc8279-driver-reference.md
+    /// "Power-On Register Script": "RST HIGH 10 ms, LOW 10 ms, HIGH 10 ms, then 50 ms settle";
+    /// PapyriX calls `bus.reset(50)` whose source we do not have — the 50 is taken to be the
+    /// settle time the document describes).
     fn hardware_reset(&mut self) -> Result<(), Error> {
         let (pre, low, post, settle) = match self.controller {
             Controller::Uc8253 => (20, 10, 20, 50),
-            Controller::Uc8279 => (10, 50, 10, 50),
+            Controller::Uc8279 => (10, 10, 10, 50),
         };
         self.rst.set_high().map_err(|_| Error::Pin)?;
         self.delay.delay_ms(pre);
@@ -460,7 +466,8 @@ where
 
     /// Hardware reset followed by the controller's register script (and, on the UC8253, the
     /// `FULL` LUT bank as PapyriX does). Leaves the panel powered off with no valid baseline: the
-    /// first refresh is a full sync.
+    /// first refresh is a full sync. On the UC8253 that first full sync is followed by one
+    /// conditioning pass with the `FULL` bank (PapyriX `_x3InitialFullSyncsRemaining = 1`).
     pub fn init(&mut self) -> Result<(), Error> {
         self.cs.set_high().map_err(|_| Error::Pin)?;
         self.dc.set_high().map_err(|_| Error::Pin)?;
@@ -472,6 +479,7 @@ where
         self.frames_since_gc = 0;
         self.pending = None;
         self.loaded_bank = None;
+        self.condition_pass_pending = self.controller == Controller::Uc8253;
         self.first_refresh = true;
         self.initial_gc_remaining = uc8279::INITIAL_GC_REFRESHES;
         match self.controller {
@@ -491,7 +499,9 @@ where
     }
 
     /// Turn the analog power off (POF, wait BUSY). No-op when already off. A BUSY timeout still
-    /// marks the panel off and forces a full sync next (`recoverAfterPowerOffTimeout`).
+    /// marks the panel off and forces a full sync next (`recoverAfterPowerOffTimeout`). This is
+    /// PapyriX's `turnOffScreen` tail (`0x02; waitForRefresh`), split out so the caller decides
+    /// when the charge pump goes down.
     pub fn power_off(&mut self) -> Result<(), Error> {
         if self.pending.is_some() {
             return Err(Error::RefreshPending);
@@ -510,8 +520,9 @@ where
         r
     }
 
-    /// Power off (if on) then DSLP 0x07 / 0xA5. Only a hardware reset ([`Epd::wake`]) leaves deep
-    /// sleep; every other method returns [`Error::NotInitialized`] until then.
+    /// Power off (if on) then DSLP 0x07 / 0xA5 (PapyriX `_x3Mode` sleep and
+    /// `Uc8279X3Driver::deepSleep`; reference "Deep Sleep"). Only a hardware reset ([`Epd::wake`])
+    /// leaves deep sleep; every other method returns [`Error::NotInitialized`] until then.
     pub fn sleep(&mut self) -> Result<(), Error> {
         if self.pending.is_some() {
             return Err(Error::RefreshPending);
@@ -622,7 +633,8 @@ where
 
     /// Phase 3 of a B/W refresh, after [`Epd::poll_refresh`] returned `Ok(true)`: the settle delay,
     /// old-frame RAM sync (same `plane` as `begin_refresh`), PTOUT, and on the UC8253 the no-op
-    /// turbo pass after a `Gc`/`Img` (blocking, ~382 ms).
+    /// turbo pass after a `Gc`/`Img` (blocking, ~382 ms) plus, once after [`Epd::init`], the
+    /// conditioning pass after the first full sync (blocking, ~472 ms).
     pub fn finish_refresh(&mut self, plane: &Plane) -> Result<(), Error> {
         let Some(Pending { kind: PendingKind::Bw { mode }, .. }) = self.pending else {
             return Err(Error::NoPendingRefresh);
@@ -663,12 +675,17 @@ where
     // UC8253 sequences (PapyriX Display.cpp, `_x3Mode` branch of refreshDisplay/displayGray)
     // ------------------------------------------------------------------------------------------
 
+    /// Escalation, `refreshDisplay`:
+    /// `doFullSync = FULL_REFRESH || !_x3RedRamSynced || _x3InitialFullSyncsRemaining > 0 ||
+    /// forcedFullSync` (our `Img`; the initial full sync is covered by the baseline being invalid
+    /// after `init`), and `!isScreenOn && FAST_REFRESH → HALF_REFRESH`. Our `Gc` (the `FULL`
+    /// bank as a differential pass) has no PapyriX mode of its own: PapyriX's `FULL_REFRESH` is
+    /// the `Img` full sync, and it only runs the `FULL` bank in its conditioning pass. `Gc` is
+    /// that conditioning pass exposed as a refresh mode.
     fn uc8253_resolve(&self, mode: Mode) -> Mode {
         if !self.baseline_valid || self.force_gc {
-            // `!_x3RedRamSynced || forcedFullSync` → full sync with the img bank.
             Mode::Img
         } else if mode == Mode::Du && !self.powered {
-            // `_x3Mode && !isScreenOn && FAST_REFRESH` → HALF_REFRESH.
             Mode::Half
         } else {
             mode
@@ -679,33 +696,41 @@ where
         let mode = self.uc8253_resolve(mode);
         match mode {
             Mode::Img => {
-                // Full sync: img LUTs, inverted data to both RAMs, border drive active.
+                // `doFullSync`: img LUTs (if not loaded), 0x13 and 0x10 both = inverted frame,
+                // CDI 0xA9 0x07 (border drive active).
                 self.load_uc8253_bank(uc8253::Bank::Img)?;
                 self.send_plane(cmd::DTM2, plane, true)?;
                 self.send_plane(cmd::DTM1, plane, true)?;
                 self.command_data(cmd::CDI, &uc8253::CDI_FULL_SYNC)?;
             }
             Mode::Half => {
+                // `doHalfSync`: half LUTs, 0x13 = frame, CDI 0xA9 0x07.
                 self.load_uc8253_bank(uc8253::Bank::Half)?;
                 self.send_plane(cmd::DTM2, plane, false)?;
                 self.command_data(cmd::CDI, &uc8253::CDI_FULL_SYNC)?;
             }
             Mode::Gc => {
-                // Quality differential pass with the full bank; PapyriX only uses this bank for its
-                // conditioning pass, with CDI 0x29 0x07 (border held), so that is what we send.
+                // Conditioning-pass shape (`postConditionPasses` loop): full LUTs, CDI 0x29 0x07,
+                // 0x13 = frame. PapyriX also wraps the plane write in PTIN / PTL(full) / PTOUT;
+                // that is omitted here (the window is the whole panel, and x3-specifications.md
+                // says the UC8253 has no usable window RAM commands) — see the summary.
                 self.load_uc8253_bank(uc8253::Bank::Full)?;
                 self.send_plane(cmd::DTM2, plane, false)?;
                 self.command_data(cmd::CDI, &uc8253::CDI_FAST)?;
             }
             Mode::Du => {
+                // Fast differential: turbo LUTs, 0x13 = frame (0x10 keeps the old frame),
+                // CDI 0x29 0x07 (border held).
                 self.load_uc8253_bank(uc8253::Bank::Turbo)?;
                 self.send_plane(cmd::DTM2, plane, false)?;
                 self.command_data(cmd::CDI, &uc8253::CDI_FAST)?;
             }
         }
-        // `if (wasOff || doFullSync) sendCommand(0x04); if (wasOff) wait;`
+        // PapyriX: `if (wasOff || doFullSync) { 0x04; if (wasOff) wait; }` for the main refresh
+        // and `if (!isScreenOn) { 0x04; wait; }` for the conditioning pass — so only the full
+        // sync re-sends PON while the panel is already on.
         let was_off = !self.powered;
-        if was_off || matches!(mode, Mode::Img | Mode::Gc) {
+        if was_off || mode == Mode::Img {
             self.command(cmd::PON)?;
             if was_off {
                 self.wait_busy()?;
@@ -717,14 +742,31 @@ where
     }
 
     fn uc8253_finish(&mut self, plane: &Plane, mode: Mode) -> Result<(), Error> {
+        // `if (mode != FAST_REFRESH) delay(200)`.
         if mode != Mode::Du {
             self.delay.delay_ms(uc8253::SETTLE_MS);
         }
-        // Sync RED RAM (0x10) with the non-inverted frame for the next differential update.
+        // Once per init, after the first full sync: one conditioning pass with the FULL bank
+        // (PapyriX `_x3InitialFullSyncsRemaining == 1 → postConditionPasses = 1`): PTIN,
+        // PTL(full window), 0x13 = frame, PTOUT, PON if off, DRF, wait.
+        if mode == Mode::Img && self.condition_pass_pending {
+            self.condition_pass_pending = false;
+            self.load_uc8253_bank(uc8253::Bank::Full)?;
+            self.command_data(cmd::CDI, &uc8253::CDI_FAST)?;
+            self.command(cmd::PTIN)?;
+            self.command_data(cmd::PTL, &uc8253::PTL_FULL_WINDOW)?;
+            self.send_plane(cmd::DTM2, plane, false)?;
+            self.command(cmd::PTOUT)?;
+            self.power_on_if_off()?;
+            self.command(cmd::DRF)?;
+            self.wait_busy()?;
+        }
+        // "Sync RED RAM (0x10) with non-inverted current frame for next fast diff."
         self.send_plane(cmd::DTM1, plane, false)?;
         if matches!(mode, Mode::Img | Mode::Gc) {
-            // One no-op turbo pass on the same frame (x3-lut-waveforms.md "Refresh Flow"): cleans
-            // up the first differential refresh that follows.
+            // `if (doFullSync)`: one no-op turbo pass on the same frame (x3-lut-waveforms.md
+            // "Refresh Flow": "cleans the first differential refresh that follows"). Applied after
+            // `Gc` too, since `Gc` is our stand-in for a quality refresh.
             self.load_uc8253_bank(uc8253::Bank::Turbo)?;
             self.command_data(cmd::CDI, &uc8253::CDI_FAST)?;
             self.send_plane(cmd::DTM2, plane, false)?;
@@ -735,10 +777,12 @@ where
     }
 
     fn uc8253_begin_gray(&mut self, lsb: &Plane, msb: &Plane) -> Result<(), Error> {
-        // LSB → old-data RAM 0x10, MSB → 0x13, grey bank, CDI 0x29 0x07, PON if off, DRF.
+        // PapyriX `copyGrayscaleLsb` (LSB → 0x10), `copyGrayscaleMsb` (MSB → 0x13), then
+        // `displayGray`: the five gray LUTs (always sent — PapyriX does not consult its LUT
+        // cache here), CDI 0x29 0x07, PON if off (wait), DRF (wait).
         self.send_plane(cmd::DTM1, lsb, false)?;
         self.send_plane(cmd::DTM2, msb, false)?;
-        self.loaded_bank = None; // always reload: the bank cache is not trusted across grey passes
+        self.loaded_bank = None;
         self.load_uc8253_bank(uc8253::Bank::Gray)?;
         self.command_data(cmd::CDI, &uc8253::CDI_FAST)?;
         self.power_on_if_off()?;
@@ -750,19 +794,23 @@ where
     // UC8279 sequences (Uc8279X3Driver.cpp display/displayGray, reference "Refresh Sequences")
     // ------------------------------------------------------------------------------------------
 
+    /// `Uc8279X3Driver::display`, up to and including DRF.
     fn uc8279_begin(&mut self, plane: &Plane, mode: Mode) -> Result<Mode, Error> {
+        // `useGc = mode != Fast || !oldPlaneValid_ || forceFullSync_ || initialFullsRemaining_ > 0`.
         let use_gc = mode != Mode::Du || !self.baseline_valid || self.force_gc || self.initial_gc_remaining > 0;
         let resolved = if use_gc && mode == Mode::Du { Mode::Gc } else { mode };
         self.command(cmd::PTIN)?;
         if !self.baseline_valid {
-            // Seed DTM1 white only when there is no baseline (first paint after init, after a
-            // timeout or a grey pass).
+            // `if (!oldPlaneValid_) fillPlane(DTM1, 0xFF); DSP;` — seed DTM1 white only when there
+            // is no baseline (first paint after init, after a timeout or a grey pass).
             self.fill_plane(cmd::DTM1, 0xFF)?;
             self.command(cmd::DSP)?;
         } else if self.dark_background && !use_gc {
+            // `else if (darkBackground_ && !useGc) sendPlaneFlippedInverted(DTM1); DSP;`
             self.send_plane(cmd::DTM1, plane, true)?;
             self.command(cmd::DSP)?;
         }
+        // DTM2 = new frame, DSP; CDI 0x97 first / 0xD7 later; bank; PON if off; DRF.
         self.send_plane(cmd::DTM2, plane, false)?;
         self.command(cmd::DSP)?;
         self.command_data(cmd::CDI, &[if self.first_refresh { uc8279::CDI_FIRST } else { uc8279::CDI_LATER }])?;
@@ -776,6 +824,9 @@ where
         Ok(resolved)
     }
 
+    /// `Uc8279X3Driver::display`, after the DRF wait: CDI 0xD7, DTM1 = frame, DSP, PTOUT, then
+    /// the state updates (`oldPlaneValid_ = true; firstRefresh_ = false; if (useGc &&
+    /// initialFullsRemaining_ > 0) initialFullsRemaining_--`).
     fn uc8279_finish(&mut self, plane: &Plane, mode: Mode) -> Result<(), Error> {
         self.command_data(cmd::CDI, &[uc8279::CDI_LATER])?;
         self.send_plane(cmd::DTM1, plane, false)?;
@@ -789,8 +840,11 @@ where
     }
 
     fn uc8279_begin_gray(&mut self, lsb: &Plane, msb: &Plane) -> Result<(), Error> {
-        // Stock sequence (FUN_42015108 + FUN_42013be0): PTIN, PTL, DTM1 = A (LSB), DSP,
-        // DTM2 = B (MSB), DSP, PTOUT, load XTF_AA, CDI, PON, DRF.
+        // Stock sequence (FUN_42015108 + FUN_42013be0, reference "4-Level Grayscale (XTF AA)"):
+        // PTIN, PTL, DTM1 = A (LSB), DSP, DTM2 = B (MSB), DSP, PTOUT, load XTF_AA, CDI, PON, DRF.
+        // PapyriX splits this over copyGrayscaleLsb/copyGrayscaleMsb/displayGray, each wrapped in
+        // its own PTIN/PTL … PTOUT, and keeps the window open until the refresh completes; the
+        // register content is the same.
         self.command(cmd::PTIN)?;
         self.command_data(cmd::PTL, &uc8279::FULL_WINDOW)?;
         self.send_plane(cmd::DTM1, lsb, false)?;
@@ -806,8 +860,11 @@ where
     }
 }
 
-/// Nominal duration of a refresh, milliseconds, for UI progress hints. UC8279d timings are not
-/// documented; the GC/DU figures are rough field observations from the same class of panel.
+/// Nominal duration of a refresh, milliseconds, for UI progress hints. UC8253 figures come from
+/// the LUT frame-group totals at PLL 0x09 (x3-lut-waveforms.md) and include the no-op turbo pass
+/// after `Gc`/`Img` (not the one-time conditioning pass). UC8279d timings are **not documented
+/// anywhere in the references**; the 400/900 ms figures are guesses for the same class of panel
+/// and only shape a progress hint.
 pub const fn nominal_refresh_ms(controller: Controller, mode: Mode) -> u32 {
     match controller {
         Controller::Uc8253 => match mode {
