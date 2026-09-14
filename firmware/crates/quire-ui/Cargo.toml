@@ -1,0 +1,29 @@
+[package]
+name = "quire-ui"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Quire's screen system: key grammar, screen stack, widgets, the Spine, and every screen of the reader"
+
+[dependencies]
+quire-fs = { path = "../quire-fs" }
+quire-gfx = { path = "../quire-gfx", default-features = false }
+quire-fonts = { path = "../quire-fonts" }
+quire-layout = { path = "../quire-layout" }
+quire-qtx = { path = "../quire-qtx" }
+quire-doc = { path = "../quire-doc" }
+quire-library = { path = "../quire-library" }
+serde = { workspace = true }
+postcard = { workspace = true }
+qrcodegen = { workspace = true }
+
+[features]
+default = []
+std = ["quire-fs/std", "quire-library/std", "quire-doc/std", "quire-gfx/std"]
+
+[dev-dependencies]
+quire-fs = { path = "../quire-fs", features = ["std"] }
+quire-gfx = { path = "../quire-gfx", features = ["std"] }
+quire-library = { path = "../quire-library", features = ["std"] }
+quire-doc = { path = "../quire-doc", features = ["std"] }

@@ -4,7 +4,7 @@
 [workspace]
 resolver = "2"
 members = ["crates/*", "tools/*"]
-exclude = ["device", "crates/quire-ui"]
+exclude = ["device"]
 
 [workspace.package]
 version = "0.1.0"
