@@ -15,6 +15,10 @@ pulldown-cmark = { workspace = true }
 serde = { workspace = true }
 postcard = { workspace = true }
 
+[features]
+default = []
+std = []
+
 [dev-dependencies]
 quire-fs = { path = "../quire-fs", features = ["std"] }
 quire-gfx = { path = "../quire-gfx", features = ["std"] }
