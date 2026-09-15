@@ -20,7 +20,7 @@ import {
 } from '../lib/flash'
 import { md5Hex } from '../lib/md5'
 import { readFlashInto, SERIAL_BUFFER_BYTES } from '../lib/readflash'
-import { downloadAsset, probeLatestRelease, type ReleaseProbe } from '../lib/release'
+import { probeLatestRelease, type ReleaseProbe } from '../lib/release'
 import { useSeo } from '../lib/useSeo'
 
 /* -------------------------------------------------------------------------
@@ -159,7 +159,6 @@ export function Install() {
 
   const [release, setRelease] = useState<ReleaseProbe | null>(null)
   const [image, setImage] = useState<ChosenImage | null>(null)
-  const [imageProgress, setImageProgress] = useState<Progress | null>(null)
   const [imageError, setImageError] = useState('')
 
   const [confirmed, setConfirmed] = useState(false)
@@ -346,28 +345,6 @@ export function Install() {
     [],
   )
 
-  const getFromRelease = useCallback(async () => {
-    if (!release || release.state !== 'available') return
-    setBusy('image')
-    setImageError('')
-    setImage(null)
-    setImageProgress({ done: 0, total: release.size || 1, eta: null })
-    const bump = tracker(setImageProgress)
-    try {
-      const data = await downloadAsset(release, bump)
-      const problem = imageProblem(data, release.asset)
-      if (problem) {
-        setImageError(problem)
-        return
-      }
-      setImage({ name: release.asset, data, source: `from release ${release.tag}` })
-    } catch (err) {
-      setImageError(reason(err))
-    } finally {
-      setImageProgress(null)
-      setBusy(null)
-    }
-  }, [release])
 
   const write = useCallback(
     async (what: ChosenImage, kind: 'install' | 'restore') => {
@@ -694,18 +671,24 @@ export function Install() {
                     <p className="muted">Checking whether a release has been published…</p>
                   ) : release.state === 'available' ? (
                     <>
-                      <button
-                        type="button"
+                      {/* A plain download, not a fetch. GitHub serves release assets
+                          from release-assets.githubusercontent.com, which sends no
+                          access-control-allow-origin, so no page may read one however
+                          it asks. An ordinary download is not subject to that, and the
+                          file picker above takes it from there. */}
+                      <a
                         className="btn btn--ghost"
-                        onClick={() => void getFromRelease()}
-                        disabled={working || !backupSettled}
+                        href={release.url}
+                        download={release.asset}
+                        rel="noreferrer"
                       >
                         <DownloadIcon />
-                        {busy === 'image' ? 'Downloading…' : `Download ${release.asset} (${release.tag})`}
-                      </button>
-                      {imageProgress ? (
-                        <Bar progress={imageProgress} label="Downloading the image" />
-                      ) : null}
+                        {`Download ${release.asset} (${release.tag})`}
+                      </a>
+                      <p className="muted">
+                        {megabytes(release.size)}. It goes to your downloads folder; then choose
+                        it with the file picker.
+                      </p>
                     </>
                   ) : (
                     <p className="muted">
@@ -719,7 +702,7 @@ export function Install() {
                 </div>
               </div>
 
-              {backup && release !== null && release.state !== 'available' ? (
+              {backupSettled && release !== null && release.state !== 'available' ? (
                 <div className="note">
                   <p>
                     Until a version is tagged, the newest build is the{' '}
@@ -746,7 +729,7 @@ export function Install() {
                   ? `${image.name} is ready — ${bytes(image.data.length)} bytes, ${image.source}.`
                   : busy === 'image'
                     ? 'Reading the file…'
-                    : backup
+                    : backupSettled
                       ? 'No image chosen yet.'
                       : 'Take the backup first.'}
               </p>
@@ -774,8 +757,9 @@ export function Install() {
                   onChange={(e) => setConfirmed(e.target.checked)}
                 />
                 <span>
-                  My backup from step 2 is saved, and I have a copy of it somewhere other than
-                  this computer.
+                  {backup
+                    ? 'My backup from step 2 is saved, and I have a copy of it somewhere other than this computer.'
+                    : 'I have a whole-flash backup of this reader, and a copy of it somewhere other than this computer.'}
                 </span>
               </label>
 
