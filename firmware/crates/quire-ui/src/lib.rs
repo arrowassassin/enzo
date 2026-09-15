@@ -20,6 +20,7 @@ pub mod qr;
 pub mod reader;
 pub mod screens;
 pub mod settings;
+pub mod sleeppack;
 pub mod spine;
 pub mod text;
 pub mod theme;
@@ -410,6 +411,24 @@ pub trait Screen<E: Env> {
     }
     /// Called when the screen becomes the top again.
     fn resume(&mut self, _cx: &mut Ctx<E>) {}
+    /// A minute passed while the device sleeps behind this screen and `f` still holds
+    /// its last draw: repaint what the time changes and say which refresh shows it, or
+    /// `Refresh::None` when nothing on the screen tells the time. Default: nothing.
+    fn minute_tick(&mut self, _cx: &mut Ctx<E>, _f: &mut Frame) -> Refresh {
+        Refresh::None
+    }
+}
+
+/// What the frame holds after a draw, when a later draw can build on it instead of
+/// starting from paper.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Held {
+    /// Exactly the reading page (no overlays drawn yet), with the inversion applied to it:
+    /// overlays are then drawn over it without a re-render, so no second frame is needed.
+    Page(reader::RenderKey, bool),
+    /// A sleep screen's draw, at this minute (`now / 60`), with the inversion applied: a
+    /// minute tick while asleep repaints only what the time changes.
+    Sleep(u32, bool),
 }
 
 /// The UI: screen stack plus the state the screens share.
@@ -430,10 +449,8 @@ pub struct Ui<E: Env> {
     /// Whether the keys are locked.
     pub locked: bool,
     frame: Frame,
-    /// What the frame holds when it is exactly the reading page (no overlays drawn yet),
-    /// with the inversion applied to it: overlays are then drawn over it without a
-    /// re-render, so no second frame is ever needed.
-    frame_holds: Option<(reader::RenderKey, bool)>,
+    /// What the frame holds, when the next draw can reuse it (see [`Held`]).
+    frame_holds: Option<Held>,
     /// Set while the platform is asleep (sleep screen shown).
     pub asleep: bool,
     last_saved: u32,
@@ -561,6 +578,11 @@ impl<E: Env> Ui<E> {
             Event::Wake => self.asleep = false,
             _ => {}
         }
+        // Asleep: the platform ticks about once a minute; the sleep screen repaints its
+        // time in the frame it still holds (a DU), and nothing else happens.
+        if matches!(ev, Event::Tick) && self.asleep && is_sleep_screen(self.top_name()) {
+            return self.sleep_tick(env);
+        }
         let action = {
             let locked = self.locked;
             let (mut cx, screens) = self.ctx(env);
@@ -631,6 +653,37 @@ impl<E: Env> Ui<E> {
                 self.save_settings_if_changed(env);
             }
         }
+        refresh
+    }
+
+    /// A tick while asleep: when the minute has changed since the sleep screen was drawn,
+    /// the screen repaints its time in the frame (which still holds its last draw) and a
+    /// DU shows it; within the same minute nothing happens. `Refresh::None` either way
+    /// when the screen shows no time.
+    fn sleep_tick(&mut self, env: &mut E) -> Refresh {
+        let minute = env.now() / 60;
+        let Some(Held::Sleep(drawn, inverted)) = self.frame_holds else {
+            // The frame holds something else (the platform asked for a draw elsewhere):
+            // draw the sleep screen afresh so the next tick can build on it.
+            self.draw(env);
+            return Refresh::Du;
+        };
+        if drawn == minute {
+            return Refresh::None;
+        }
+        let Ui { screens, lib, stats, settings, reader, ingesting, phone_text, locked, frame, .. } = self;
+        let mut cx = Ctx { env, lib, stats, settings, reader, ingesting, phone_text: &mut *phone_text, locked: *locked };
+        let mut refresh = Refresh::None;
+        if let Some(top) = screens.last_mut() {
+            if inverted {
+                frame.invert_rect(frame.bounds());
+            }
+            refresh = top.minute_tick(&mut cx, frame);
+            if inverted {
+                frame.invert_rect(frame.bounds());
+            }
+        }
+        self.frame_holds = Some(Held::Sleep(minute, inverted));
         refresh
     }
 
@@ -771,7 +824,9 @@ impl<E: Env> Ui<E> {
             Some(s) if s.name() == "20-reading" => self.reader.as_ref().map(|r| r.render_key(&self.settings)),
             _ => None,
         };
-        let reuse = has_overlays && page_key.is_some() && self.frame_holds == page_key.map(|k| (k, inverted));
+        let reuse = has_overlays && page_key.is_some() && self.frame_holds == page_key.map(|k| Held::Page(k, inverted));
+        let sleep_base = self.screens.get(start).is_some_and(|s| is_sleep_screen(s.name()));
+        let minute = env.now() / 60;
         let Ui { screens, lib, stats, settings, reader, ingesting, phone_text, locked, frame, .. } = self;
         let mut cx = Ctx { env, lib, stats, settings, reader, ingesting, phone_text: &mut *phone_text, locked: *locked };
         let mut refresh = Refresh::Du;
@@ -794,7 +849,15 @@ impl<E: Env> Ui<E> {
         if inverted {
             frame.invert_rect(frame.bounds());
         }
-        self.frame_holds = if has_overlays { None } else { page_key.map(|k| (k, inverted)) };
+        self.frame_holds = if has_overlays {
+            None
+        } else if let Some(k) = page_key {
+            Some(Held::Page(k, inverted))
+        } else if sleep_base {
+            Some(Held::Sleep(minute, inverted))
+        } else {
+            None
+        };
         refresh
     }
 

@@ -1,14 +1,21 @@
-//! 40 sleep screens (cover, poster, quote, quick resume, custom, charging, empty),
+//! 40 sleep screens (cover, poster, quote, quick resume, images, charging, empty),
 //! 44 the sleep-screen picker with live thumbnails.
+//!
+//! The Images variant shows a loose `.pbm` from the sleep folder or an image of an
+//! installed pack (`sleeppack`), with the live time drawn in the image's clock slot (a
+//! plate over a loose image). While the device sleeps the platform ticks once a minute
+//! and the `Ui` calls [`Screen::minute_tick`] on the screen with the frame it last drew,
+//! so only the slot is repainted: no image is read from the card again.
 
 use alloc::boxed::Box;
 use alloc::string::String;
 use alloc::vec::Vec;
 use quire_fs::Fs;
-use quire_gfx::{draw_text, BlitMode, Frame, Ink, Pattern, Rect, TextStyle};
+use quire_gfx::{draw_text, measure_text, BlitMode, Frame, Ink, Pattern, Rect, TextStyle};
 
 use crate::icons::{self, Icon};
-use crate::settings::SleepVariant;
+use crate::settings::{ImageRotation, SleepVariant};
+use crate::sleeppack::{self, Clock, ClockSlot, ClockStyle, PackInfo, Surface, ALL_PACKS};
 use crate::spine;
 use crate::text::{centered_baseline, draw_centered, draw_label, ellipsis, line_h, wrap};
 use crate::theme::*;
@@ -45,20 +52,55 @@ pub struct SleepScreen {
     preview: bool,
     /// True when drawn for the charging state.
     charging: bool,
+    /// What the last draw put in the frame: what a minute tick has to repaint, and the
+    /// image to keep on a redraw (a battery change must not rotate the picture).
+    drawn: Option<Drawn>,
+}
+
+/// What a sleep screen's draw left in the frame.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum Drawn {
+    /// Nothing on it tells the time.
+    Still,
+    /// It shows the time: redraw every minute.
+    Timed,
+    /// It changes with the day (a finish-by poster, the quote of the day).
+    Daily(u16),
+    /// An image, with its clock if one is drawn.
+    Image {
+        /// The image shown.
+        source: ImageSource,
+        /// Where its time is; a tick repaints just this.
+        clock: Option<Clock>,
+    },
+}
+
+/// An image the Images sleep screen can show.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ImageSource {
+    /// A loose `.pbm` file at this path.
+    Loose(String),
+    /// Image `index` of the installed pack `id`.
+    Pack {
+        /// Pack folder name.
+        id: String,
+        /// Index into the pack's images.
+        index: usize,
+    },
 }
 
 impl SleepScreen {
     /// The configured sleep screen.
     pub fn new() -> Self {
-        SleepScreen { variant: None, preview: false, charging: false }
+        SleepScreen { variant: None, preview: false, charging: false, drawn: None }
     }
     /// A specific variant, as a preview.
     pub fn preview(v: SleepVariant) -> Self {
-        SleepScreen { variant: Some(v), preview: true, charging: false }
+        SleepScreen { variant: Some(v), preview: true, charging: false, drawn: None }
     }
     /// The charging screen.
     pub fn charging() -> Self {
-        SleepScreen { variant: None, preview: false, charging: true }
+        SleepScreen { variant: None, preview: false, charging: true, drawn: None }
     }
 }
 
@@ -86,33 +128,215 @@ pub fn quote_of_day<E: Env>(cx: &Ctx<E>) -> (String, String) {
     (String::from(q), String::from(s))
 }
 
-/// Path of the custom image file for this sleep, chosen by the rotation setting.
-pub fn custom_image_path<E: Env>(cx: &mut Ctx<E>) -> Option<String> {
-    let folder = cx.settings.sleep_folder.clone();
+/// The loose `.pbm` files in the sleep folder, sorted by name.
+fn loose_images<E: Env>(cx: &Ctx<E>) -> Vec<String> {
     let mut files: Vec<String> = cx
         .env
         .fs()
-        .read_dir(&folder)
-        .ok()?
+        .read_dir(&cx.settings.sleep_folder)
+        .unwrap_or_default()
         .into_iter()
         .filter(|e| !e.is_dir && e.name.to_ascii_lowercase().ends_with(".pbm"))
         .map(|e| e.name)
         .collect();
     files.sort();
-    if files.is_empty() {
+    files
+}
+
+/// The pick a rotation makes among `n` items: the fixed choice (`fixed`, when it is one
+/// of them), the day's, or a random one (`random` is only drawn then).
+fn rotate(rotation: ImageRotation, n: usize, fixed: Option<usize>, day: u16, random: impl FnOnce() -> u32) -> usize {
+    match rotation {
+        ImageRotation::Fixed => fixed.unwrap_or(0),
+        ImageRotation::Daily => day as usize % n,
+        ImageRotation::EachSleep => random() as usize % n,
+    }
+}
+
+/// The images the source setting offers, with the fixed choice's place among them.
+enum Pool {
+    /// Every installed pack, flattened in pack order.
+    Packs(Vec<PackInfo>),
+    /// One pack.
+    Pack(String, usize),
+    /// The loose files of the sleep folder.
+    Loose(Vec<String>),
+}
+
+impl Pool {
+    fn len(&self) -> usize {
+        match self {
+            Pool::Packs(packs) => packs.iter().map(|p| p.images).sum(),
+            Pool::Pack(_, n) => *n,
+            Pool::Loose(files) => files.len(),
+        }
+    }
+}
+
+/// The pool the source setting names (an unusable pack falls back to the loose files) and
+/// where the fixed choice sits in it.
+fn image_pool<E: Env>(cx: &Ctx<E>) -> (Pool, Option<usize>) {
+    let s = &*cx.settings;
+    let fs = cx.env.fs();
+    match s.sleep_pack.as_deref() {
+        Some(ALL_PACKS) => {
+            let packs = sleeppack::list_packs(fs, &s.sleep_folder);
+            if packs.iter().any(|p| p.images > 0) {
+                // A fixed choice is "<pack>/<file>"; its flat index is found in its pack.
+                let fixed = s.sleep_image.as_deref().and_then(|f| {
+                    let (id, file) = f.split_once('/')?;
+                    let before: usize = packs.iter().take_while(|p| p.id != id).map(|p| p.images).sum();
+                    let pack = sleeppack::load_pack(fs, &s.sleep_folder, id)?;
+                    Some(before + pack.images.iter().position(|i| i.file == file)?)
+                });
+                return (Pool::Packs(packs), fixed);
+            }
+        }
+        Some(id) => {
+            if let Some(pack) = sleeppack::load_pack(fs, &s.sleep_folder, id) {
+                let fixed = s.sleep_image.as_deref().and_then(|f| pack.images.iter().position(|i| i.file == f));
+                return (Pool::Pack(String::from(id), pack.images.len()), fixed);
+            }
+        }
+        None => {}
+    }
+    let files = loose_images(cx);
+    let fixed = s.sleep_image.as_deref().and_then(|f| files.iter().position(|n| n == f));
+    (Pool::Loose(files), fixed)
+}
+
+/// The image for this sleep, chosen by the source and rotation settings: an image of the
+/// chosen pack (or of all packs), else a loose file in the sleep folder. `None` when the
+/// card has nothing to show.
+pub fn choose_image<E: Env>(cx: &mut Ctx<E>) -> Option<ImageSource> {
+    let (pool, fixed) = image_pool(cx);
+    let n = pool.len();
+    if n == 0 {
         return None;
     }
-    let name = match cx.settings.sleep_rotation {
-        crate::settings::ImageRotation::Fixed => {
-            cx.settings.sleep_image.clone().filter(|n| files.contains(n)).unwrap_or_else(|| files[0].clone())
+    let (rotation, day) = (cx.settings.sleep_rotation, cx.today());
+    let i = rotate(rotation, n, fixed, day, || cx.env.random());
+    match pool {
+        Pool::Packs(packs) => {
+            let mut rest = i;
+            for p in packs {
+                if rest < p.images {
+                    return Some(ImageSource::Pack { id: p.id, index: rest });
+                }
+                rest -= p.images;
+            }
+            None
         }
-        crate::settings::ImageRotation::Daily => files[(quire_library::time::day_of(cx.env.now()) as usize) % files.len()].clone(),
-        crate::settings::ImageRotation::EachSleep => {
-            let i = (cx.env.random() as usize) % files.len();
-            files[i].clone()
+        Pool::Pack(id, _) => Some(ImageSource::Pack { id, index: i }),
+        Pool::Loose(files) => Some(ImageSource::Loose(quire_fs::join(&cx.settings.sleep_folder, &files[i]))),
+    }
+}
+
+/// The image after `src` in its pool (the next of the pack, the next loose file, round
+/// again at the end), for when `src` cannot be read.
+fn next_image<E: Env>(cx: &Ctx<E>, src: &ImageSource) -> Option<ImageSource> {
+    match src {
+        ImageSource::Pack { id, index } => {
+            let pack = sleeppack::load_pack(cx.env.fs(), &cx.settings.sleep_folder, id)?;
+            Some(ImageSource::Pack { id: id.clone(), index: (index + 1) % pack.images.len() })
         }
-    };
-    Some(quire_fs::join(&folder, &name))
+        ImageSource::Loose(path) => {
+            let files = loose_images(cx);
+            let i = files.iter().position(|n| quire_fs::join(&cx.settings.sleep_folder, n) == *path)?;
+            Some(ImageSource::Loose(quire_fs::join(&cx.settings.sleep_folder, &files[(i + 1) % files.len()])))
+        }
+    }
+}
+
+/// The time as the sleep screens show it.
+pub fn clock_text<E: Env>(cx: &Ctx<E>) -> String {
+    quire_library::time::fmt_clock(cx.env.now(), cx.settings.clock_24h)
+}
+
+/// Padding inside the clock plate over a loose image.
+const PLATE_PAD: i32 = 8;
+/// The plate's distance from the top of the frame.
+const PLATE_TOP: i32 = 24;
+
+/// The clock plate over a loose image: a label-style slot, centred near the top, sized
+/// for the widest time the clock setting can produce so it never changes between minutes.
+pub fn plate_clock(frame_w: i32, h24: bool) -> Clock {
+    let style = ClockStyle::Label;
+    let text_style = TextStyle { tracking: style.tracking(), ..TextStyle::INK };
+    let suffixes: &[&str] = if h24 { &[""] } else { &[" am", " pm"] };
+    let mut widest = 0;
+    for d in 0..10u32 {
+        for suffix in suffixes {
+            let t = alloc::format!("{d}{d}:{d}{d}{suffix}");
+            widest = widest.max(measure_text(style.font(), &t, text_style));
+        }
+    }
+    let (asc, desc) = sleeppack::digit_extent(style.font());
+    let w = widest + 2 * PLATE_PAD;
+    let h = asc + desc + 2 * PLATE_PAD;
+    Clock { slot: ClockSlot { x: (frame_w - w) / 2, y: PLATE_TOP, w, h, style, on: Surface::Paper }, plate: true }
+}
+
+/// Paint the time into its slot (and the plate's rule around it).
+pub fn paint_clock(f: &mut Frame, clock: &Clock, time: &str) {
+    sleeppack::draw_clock(f, &clock.slot, time);
+    if clock.plate {
+        f.stroke_rect(clock.slot.rect(), HAIR, Ink::Black);
+    }
+}
+
+/// Draw one image source into the frame with its clock when `with_clock`. `None` when it
+/// cannot be read; otherwise the clock drawn, if any.
+fn draw_image<E: Env>(cx: &Ctx<E>, f: &mut Frame, src: &ImageSource, with_clock: bool, time: &str) -> Option<Option<Clock>> {
+    let fs = cx.env.fs();
+    let (w, h) = (f.width() as i32, f.height() as i32);
+    let mut clock = None;
+    match src {
+        ImageSource::Loose(path) => {
+            f.clear(Ink::White);
+            quire_library::cache::load_pbm_into(fs, path, f, centred(w, h), BlitMode::Or)?;
+        }
+        ImageSource::Pack { id, index } => {
+            let pack = sleeppack::load_pack(fs, &cx.settings.sleep_folder, id)?;
+            if !sleeppack::draw_image_into(fs, &pack, *index, f) {
+                return None;
+            }
+            clock = pack.images.get(*index).and_then(|i| i.clock).map(|slot| Clock { slot, plate: false });
+        }
+    }
+    if !with_clock {
+        return Some(None);
+    }
+    let clock = clock.unwrap_or_else(|| plate_clock(w, cx.settings.clock_24h));
+    paint_clock(f, &clock, time);
+    Some(Some(clock))
+}
+
+/// The Images variant: the image `keep` (what an earlier draw showed) or the rotation's
+/// choice, falling through its pool when a file cannot be read, else the empty state.
+fn draw_images<E: Env>(cx: &mut Ctx<E>, f: &mut Frame, keep: Option<&ImageSource>) -> Drawn {
+    let time = clock_text(cx);
+    let with_clock = cx.settings.sleep_clock;
+    let mut source = keep.cloned().or_else(|| choose_image(cx));
+    let first = source.clone();
+    let mut attempts = 0;
+    while let Some(src) = source.take() {
+        if let Some(clock) = draw_image(cx, f, &src, with_clock, &time) {
+            return Drawn::Image { source: src, clock };
+        }
+        attempts += 1;
+        if attempts < 8 {
+            source = next_image(cx, &src).filter(|n| Some(n) != first.as_ref());
+        }
+    }
+    f.clear(Ink::White);
+    widgets::empty_state(
+        f,
+        f.height() as i32 / 2 - 60,
+        "No sleep images yet",
+        "Download a pack or drop photos from the Drop page, or copy them to the /sleep folder on the card.",
+    );
+    Drawn::Still
 }
 
 /// Where a full-page image of `bw × bh` sits, centred on a `w × h` frame.
@@ -122,6 +346,12 @@ fn centred(w: i32, h: i32) -> impl FnOnce(u32, u32) -> (i32, i32) {
 
 /// Draw a sleep variant into the frame at full size.
 pub fn draw_variant<E: Env>(cx: &mut Ctx<E>, f: &mut Frame, v: SleepVariant, locked: bool) {
+    let _ = draw_variant_keeping(cx, f, v, locked, None);
+}
+
+/// Draw a sleep variant, showing `keep` again for the Images variant; returns what the
+/// frame now holds.
+fn draw_variant_keeping<E: Env>(cx: &mut Ctx<E>, f: &mut Frame, v: SleepVariant, locked: bool, keep: Option<&ImageSource>) -> Drawn {
     f.clear(Ink::White);
     let w = f.width() as i32;
     let h = f.height() as i32;
@@ -200,6 +430,8 @@ pub fn draw_variant<E: Env>(cx: &mut Ctx<E>, f: &mut Frame, v: SleepVariant, loc
             if locked {
                 icons::draw(f, Icon::Lock, w / 2 - 12, h - 80, Ink::Black);
             }
+            // Without a book the poster is a clock; with one its wording follows the day.
+            return if cx.reader.is_none() { Drawn::Timed } else { Drawn::Daily(today) };
         }
         SleepVariant::Quote => {
             let (q, src) = quote_of_day(cx);
@@ -215,6 +447,7 @@ pub fn draw_variant<E: Env>(cx: &mut Ctx<E>, f: &mut Frame, v: SleepVariant, loc
             }
             y += 24;
             draw_label(f, 56, y + fs.ascent(), &src, false);
+            return Drawn::Daily(today);
         }
         SleepVariant::QuickResume => {
             if let Some(r) = cx.reader.as_mut() {
@@ -232,20 +465,10 @@ pub fn draw_variant<E: Env>(cx: &mut Ctx<E>, f: &mut Frame, v: SleepVariant, loc
                 draw_centered(f, fl, w / 2, centered_baseline(fl, card.y, 88), "Press Power", TextStyle::INK);
             }
         }
-        SleepVariant::Custom => {
-            let placed =
-                custom_image_path(cx).and_then(|p| quire_library::cache::load_pbm_into(cx.env.fs(), &p, f, centred(w, h), BlitMode::Or));
-            if placed.is_none() {
-                widgets::empty_state(
-                    f,
-                    h / 2 - 60,
-                    "No sleep images yet",
-                    "Drop photos into the Drop page's Sleep images, or the /sleep folder on the card.",
-                );
-            }
-        }
+        SleepVariant::Custom => return draw_images(cx, f, keep),
         SleepVariant::Blank => {}
     }
+    Drawn::Still
 }
 
 impl<E: Env> Screen<E> for SleepScreen {
@@ -272,6 +495,7 @@ impl<E: Env> Screen<E> for SleepScreen {
                 None => String::from("Charging"),
             };
             draw_centered(f, quire_fonts::ui::body(), w / 2, h / 2 + 40, &line, TextStyle::INK);
+            self.drawn = Some(Drawn::Still);
             return Refresh::Gc;
         }
         if battery.percent <= 2 && !battery.charging && !self.preview {
@@ -283,11 +507,17 @@ impl<E: Env> Screen<E> for SleepScreen {
             for (i, l) in wrap(fb, "Charge with the magnetic cable. Your page is saved.", w - 96).iter().enumerate() {
                 draw_centered(f, fb, w / 2, h / 2 + 24 + i as i32 * line_h(fb), l, TextStyle::INK);
             }
+            self.drawn = Some(Drawn::Still);
             return Refresh::Gc;
         }
         let v = self.variant.unwrap_or(cx.settings.sleep);
         let locked = cx.locked || cx.settings.lock_when_sleeping;
-        draw_variant(cx, f, v, locked && !self.preview);
+        // A redraw (a battery change) keeps the image the first draw chose.
+        let keep = match &self.drawn {
+            Some(Drawn::Image { source, .. }) => Some(source.clone()),
+            _ => None,
+        };
+        self.drawn = Some(draw_variant_keeping(cx, f, v, locked && !self.preview, keep.as_ref()));
         if self.preview {
             let fl = quire_fonts::ui::mono();
             let w = f.width() as i32;
@@ -321,6 +551,25 @@ impl<E: Env> Screen<E> for SleepScreen {
             }
         }
     }
+    fn minute_tick(&mut self, cx: &mut Ctx<E>, f: &mut Frame) -> Refresh {
+        match &self.drawn {
+            Some(Drawn::Image { clock: Some(clock), .. }) => {
+                // The frame still holds the image: repaint the slot only.
+                let clock = *clock;
+                paint_clock(f, &clock, &clock_text(cx));
+                Refresh::Du
+            }
+            Some(Drawn::Timed) => {
+                <Self as Screen<E>>::draw(self, cx, f);
+                Refresh::Du
+            }
+            Some(Drawn::Daily(day)) if *day != cx.today() => {
+                <Self as Screen<E>>::draw(self, cx, f);
+                Refresh::Du
+            }
+            _ => Refresh::None,
+        }
+    }
 }
 
 /// The platform asks for sleep once the sleep screen is drawn: a helper to push it and
@@ -338,7 +587,15 @@ pub struct Picker {
     thumbs: [Option<quire_gfx::Bitmap>; 6],
     /// Focus is in the option rows rather than the grid.
     in_options: bool,
+    /// The installed packs, listed from the card on first use.
+    packs: Option<Vec<PackInfo>>,
 }
+
+/// Height of the picker's option rows: three of them fit under the two rows of
+/// thumbnails with two lines of help above the rail.
+const PICKER_ROW_H: i32 = 44;
+/// Vertical pitch of the thumbnail rows: the 198 px thumbnail, its name, and air.
+const THUMB_PITCH: i32 = 198 + 36;
 
 /// Shrink a full frame 1:4 by counting ink in each 4 × 4 cell, a byte (two cells) at a
 /// time. Text keeps its strokes with `n >= 5`; halftoned images (the cover, the screened
@@ -379,7 +636,11 @@ fn thumb_of(full: &Frame, majority: bool) -> quire_gfx::Bitmap {
 impl Picker {
     /// New, focused on the variant in use.
     pub fn new() -> Self {
-        Picker { focus: 0, opt_focus: 0, thumbs: [None, None, None, None, None, None], in_options: false }
+        Picker { focus: 0, opt_focus: 0, thumbs: [None, None, None, None, None, None], in_options: false, packs: None }
+    }
+    /// The installed packs (listed once).
+    fn packs<E: Env>(&mut self, cx: &Ctx<E>) -> &[PackInfo] {
+        self.packs.get_or_insert_with(|| sleeppack::list_packs(cx.env.fs(), &cx.settings.sleep_folder))
     }
     /// Render the variants whose thumbnail is missing into `f` (the frame the picker is
     /// about to draw into, so no scratch frame is needed) and shrink them.
@@ -398,9 +659,11 @@ impl Picker {
             f.clear(Ink::White);
         }
     }
-    fn options(&self, cx: &Ctx<impl Env>) -> Vec<(&'static str, SettingValue)> {
+    fn options<E: Env>(&mut self, cx: &Ctx<E>) -> Vec<(&'static str, SettingValue)> {
+        let focus = SleepVariant::ALL[self.focus];
+        let packs = self.packs(cx);
         let s = &*cx.settings;
-        match SleepVariant::ALL[self.focus] {
+        match focus {
             SleepVariant::Cover => alloc::vec![("Title band", SettingValue::Toggle(s.sleep_band))],
             SleepVariant::Poster => {
                 alloc::vec![("Show", SettingValue::Choice(String::from(if s.sleep_streak { "Streak" } else { "Finish by" })))]
@@ -409,34 +672,56 @@ impl Picker {
                 "Quotes",
                 SettingValue::Choice(String::from(if s.sleep_quotes_card { "quotes.txt on card" } else { "Built in" }))
             )],
-            SleepVariant::Custom => alloc::vec![
-                ("Folder", SettingValue::Text(s.sleep_folder.clone())),
-                (
-                    "Rotation",
-                    SettingValue::Choice(String::from(match s.sleep_rotation {
-                        crate::settings::ImageRotation::Fixed => "Fixed",
-                        crate::settings::ImageRotation::EachSleep => "Each sleep",
-                        crate::settings::ImageRotation::Daily => "Daily",
-                    }))
-                ),
-            ],
+            SleepVariant::Custom => {
+                let source = match s.sleep_pack.as_deref() {
+                    None => String::from("Loose images"),
+                    Some(ALL_PACKS) => String::from("All packs"),
+                    Some(id) => packs.iter().find(|p| p.id == id).map(|p| p.name.clone()).unwrap_or_else(|| String::from(id)),
+                };
+                alloc::vec![
+                    ("Source", SettingValue::Choice(source)),
+                    (
+                        "Rotation",
+                        SettingValue::Choice(String::from(match s.sleep_rotation {
+                            ImageRotation::Fixed => "Fixed",
+                            ImageRotation::EachSleep => "Each sleep",
+                            ImageRotation::Daily => "Daily",
+                        }))
+                    ),
+                    ("Clock", SettingValue::Toggle(s.sleep_clock)),
+                ]
+            }
             SleepVariant::QuickResume => alloc::vec![("Moon glyph", SettingValue::Toggle(s.sleep_moon))],
             SleepVariant::Blank => Vec::new(),
         }
     }
     fn change<E: Env>(&mut self, cx: &mut Ctx<E>) {
+        let ids: Vec<String> = self.packs(cx).iter().map(|p| p.id.clone()).collect();
         let s = &mut *cx.settings;
         match (SleepVariant::ALL[self.focus], self.opt_focus) {
             (SleepVariant::Cover, _) => s.sleep_band = !s.sleep_band,
             (SleepVariant::Poster, _) => s.sleep_streak = !s.sleep_streak,
             (SleepVariant::Quote, _) => s.sleep_quotes_card = !s.sleep_quotes_card,
+            (SleepVariant::Custom, 0) => {
+                // Loose images → each pack in turn → all packs → loose images.
+                s.sleep_pack = match s.sleep_pack.as_deref() {
+                    None => ids.first().cloned(),
+                    Some(ALL_PACKS) => None,
+                    Some(id) => match ids.iter().position(|i| i == id) {
+                        Some(i) if i + 1 < ids.len() => Some(ids[i + 1].clone()),
+                        Some(_) => Some(String::from(ALL_PACKS)),
+                        None => None,
+                    },
+                };
+            }
             (SleepVariant::Custom, 1) => {
                 s.sleep_rotation = match s.sleep_rotation {
-                    crate::settings::ImageRotation::Fixed => crate::settings::ImageRotation::EachSleep,
-                    crate::settings::ImageRotation::EachSleep => crate::settings::ImageRotation::Daily,
-                    crate::settings::ImageRotation::Daily => crate::settings::ImageRotation::Fixed,
+                    ImageRotation::Fixed => ImageRotation::EachSleep,
+                    ImageRotation::EachSleep => ImageRotation::Daily,
+                    ImageRotation::Daily => ImageRotation::Fixed,
                 }
             }
+            (SleepVariant::Custom, 2) => s.sleep_clock = !s.sleep_clock,
             (SleepVariant::QuickResume, _) => s.sleep_moon = !s.sleep_moon,
             _ => {}
         }
@@ -466,7 +751,7 @@ impl<E: Env> Screen<E> for Picker {
             let Some(bm) = &self.thumbs[i] else { continue };
             let (c, r) = (i % 3, i / 3);
             let x = widgets::INSET + c as i32 * (tw + gap);
-            let y = widgets::CONTENT_TOP + r as i32 * (th + 40);
+            let y = widgets::CONTENT_TOP + r as i32 * THUMB_PITCH;
             let focused = i == self.focus && !self.in_options;
             f.blit(x, y, bm.as_ref(), BlitMode::Or);
             f.stroke_rect(Rect::new(x - 1, y - 1, (tw + 2) as u32, (th + 2) as u32), if focused { 4 } else { 1 }, Ink::Black);
@@ -477,15 +762,21 @@ impl<E: Env> Screen<E> for Picker {
                 icons::draw(f, Icon::Check, right + 6, base - 20, Ink::Black);
             }
         }
-        let mut y = widgets::CONTENT_TOP + 2 * (th + 40) + 4;
+        let mut y = widgets::CONTENT_TOP + 2 * THUMB_PITCH + 2;
         let opts = self.options(cx);
-        let row_h = ROW_H;
+        let row_h = PICKER_ROW_H;
         for (i, (t, v)) in opts.iter().enumerate() {
             setting_row(f, y, row_h, t, v, if self.in_options && i == self.opt_focus { RowState::Focused } else { RowState::Normal });
             y += row_h;
         }
-        let hint = "Options follow the focused thumbnail. Confirm applies it.";
-        draw_text(f, fl, widgets::INSET, y + 12 + fl.ascent(), &ellipsis(fl, hint, w - 2 * widgets::INSET), TextStyle::INK);
+        let hint = if SleepVariant::ALL[self.focus] == SleepVariant::Custom {
+            alloc::format!("Download packs from the Drop page or copy them to {}/packs on the card", cx.settings.sleep_folder)
+        } else {
+            String::from("Options follow the focused thumbnail. Confirm applies it.")
+        };
+        for (i, l) in wrap(fl, &hint, w - 2 * widgets::INSET).iter().take(2).enumerate() {
+            draw_text(f, fl, widgets::INSET, y + 6 + fl.ascent() + i as i32 * line_h(fl), l, TextStyle::INK);
+        }
         rail(f, ["", "Back", "Use", "Preview"], None);
         Refresh::Gc
     }

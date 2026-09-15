@@ -105,6 +105,14 @@ pub fn fixtures() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../crates/quire-doc/fixtures")
 }
 
+/// The repository's sleep-image packs (`sleep-packs/`, next to `firmware/`).
+pub fn sleep_packs() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../sleep-packs")
+}
+
+/// The pack the fixture card installs under `/sleep/packs/`.
+pub const FIXTURE_PACK: &str = "mountains";
+
 /// Build a card with real books ingested, thirty days of reading history, first run
 /// done and Moby-Dick open at chapter 1. Returns the card root.
 pub fn fixture_card(name: &str) -> PathBuf {
@@ -124,6 +132,15 @@ pub fn fixture_card(name: &str) -> PathBuf {
     if advent.exists() {
         std::fs::create_dir_all(dir.join("stories")).unwrap();
         std::fs::copy(&advent, dir.join("stories/advent.z5")).unwrap();
+    }
+    // One real sleep-image pack: the manifest, a plain image and a compressed one (the
+    // rest of its images are left out, so a missing file is exercised too).
+    let pack_src = sleep_packs().join(FIXTURE_PACK);
+    let pack_dst = dir.join("sleep/packs").join(FIXTURE_PACK);
+    std::fs::create_dir_all(&pack_dst).unwrap();
+    for f in ["pack.json", "01.pbm", "02.pbm.z"] {
+        std::fs::copy(pack_src.join(f), pack_dst.join(f))
+            .unwrap_or_else(|e| panic!("sleep pack fixture {}: {e}", pack_src.join(f).display()));
     }
 
     let fs = HostFs::new(&dir);
@@ -528,6 +545,33 @@ pub fn tour_with(sim: &mut Sim, visit: &mut dyn FnMut(&mut Sim, &str, bool)) {
     sim.env.battery.charging = true;
     sim.sleep_as(SleepVariant::Cover, visit, "40-sleep-charging");
     sim.env.battery.charging = false;
+    sim.reset();
+
+    // A pack image with its live clock, then the minute tick while asleep that repaints
+    // only the clock slot.
+    let saved = sim.ui.settings.clone();
+    sim.ui.settings.sleep = SleepVariant::Custom;
+    sim.ui.settings.sleep_pack = Some(String::from(FIXTURE_PACK));
+    sim.ui.settings.sleep_rotation = quire_ui::settings::ImageRotation::Fixed;
+    sim.ui.settings.sleep_image = Some(String::from("02.pbm"));
+    sim.press(Key::Power);
+    visit(sim, "40-sleep-pack", false);
+    sim.env.now += 60;
+    sim.event(Event::Tick);
+    visit(sim, "40-sleep-pack-tick", false);
+    sim.env.now = NOW;
+    sim.event(Event::Wake);
+    sim.ui.settings = saved.clone();
+    sim.reset();
+
+    // The picker with the Images variant focused, its source set to the pack.
+    sim.ui.settings.sleep_pack = Some(String::from(FIXTURE_PACK));
+    sim.ui.settings.sleep_rotation = quire_ui::settings::ImageRotation::Fixed;
+    sim.ui.settings.sleep_image = Some(String::from("02.pbm"));
+    sim.open("44-picker");
+    sim.press(Key::Down);
+    visit(sim, "44-picker-pack", true);
+    sim.ui.settings = saved;
     sim.reset();
 }
 

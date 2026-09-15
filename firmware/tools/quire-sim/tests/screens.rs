@@ -33,6 +33,10 @@ fn every_screen_draws_and_matches_snapshots() {
     assert_eq!(by_name["20-reading-next"].refresh, Refresh::Du);
     assert_eq!(by_name["24-compass"].refresh, Refresh::Du);
     assert_eq!(by_name["40-sleep"].refresh, Refresh::Gc);
+    // A minute tick behind a pack sleep screen repaints the clock slot with a DU.
+    assert_eq!(by_name["40-sleep-pack"].refresh, Refresh::Gc);
+    assert_eq!(by_name["40-sleep-pack-tick"].refresh, Refresh::Du);
+    assert_ne!(seen["40-sleep-pack"], seen["40-sleep-pack-tick"], "the tick changed the frame");
 
     let file = snapshot_file();
     let recorded: BTreeMap<String, u64> = std::fs::read_to_string(&file)

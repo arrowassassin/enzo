@@ -19,7 +19,7 @@ pub enum SleepVariant {
     Poster,
     /// Quote of the day.
     Quote,
-    /// Custom image from the card.
+    /// Images from the card: loose PBMs or an installed pack, with a live clock.
     Custom,
     /// The page itself, screened.
     QuickResume,
@@ -43,7 +43,7 @@ impl SleepVariant {
             SleepVariant::Cover => "Cover",
             SleepVariant::Poster => "Poster",
             SleepVariant::Quote => "Quote",
-            SleepVariant::Custom => "Custom",
+            SleepVariant::Custom => "Images",
             SleepVariant::QuickResume => "Quick resume",
             SleepVariant::Blank => "Blank",
         }
@@ -103,7 +103,8 @@ pub struct Settings {
     pub sleep_rotation: ImageRotation,
     /// Custom image folder.
     pub sleep_folder: String,
-    /// Custom image chosen (file name).
+    /// Images sleep, fixed rotation: the chosen image. A file name in the sleep folder
+    /// (loose images) or in the pack; `<pack id>/<file>` when rotating across all packs.
     pub sleep_image: Option<String>,
     /// Quick resume moon glyph.
     pub sleep_moon: bool,
@@ -181,6 +182,12 @@ pub struct Settings {
     pub publisher_fonts: bool,
     /// Saved words (dictionary).
     pub saved_words: Vec<String>,
+    /// Images sleep: the source. `None` shows the loose `.pbm` files in the sleep folder;
+    /// `Some(id)` an installed pack (`<sleep_folder>/packs/<id>/`); `Some("*")` rotates
+    /// across every installed pack.
+    pub sleep_pack: Option<String>,
+    /// Images sleep: draw the live time (in a pack image's slot, or a plate over a loose image).
+    pub sleep_clock: bool,
 }
 
 impl Default for Settings {
@@ -239,6 +246,8 @@ impl Default for Settings {
             publisher_styles: true,
             publisher_fonts: false,
             saved_words: Vec::new(),
+            sleep_pack: None,
+            sleep_clock: true,
         }
     }
 }

@@ -172,7 +172,10 @@ fn efficiency_numbers() {
         kb(BYTES.load(Relaxed) / 40),
         kb(PEAK.load(Relaxed).saturating_sub(live0))
     );
-    println!("live heap on reading page (book open, frame + frame_cache + next_frame): {} KB", kb(LIVE.load(Relaxed).saturating_sub(live_start)));
+    println!(
+        "live heap on reading page (book open, frame + frame_cache + next_frame): {} KB",
+        kb(LIVE.load(Relaxed).saturating_sub(live_start))
+    );
     // Skim.
     rows.push(measure(&mut sim, "reading: hold Right (Long + 6 Repeats + Release)", |s| {
         s.hold(Key::Right, 6);
