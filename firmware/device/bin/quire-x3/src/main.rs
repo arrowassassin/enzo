@@ -244,7 +244,9 @@ async fn main(spawner: embassy_executor::Spawner) -> ! {
         let mut held = 0u32;
         for _ in 0..10 {
             let (g1, _, _) = keys.raw();
-            if quire_board::keys::Ladders::decode(&quire_board::keys::levels::GROUP1, quire_board::keys::levels::IDLE_ABOVE, g1) == Some(quire_board::keys::Key::Back) {
+            if quire_board::keys::Ladders::decode(&quire_board::keys::levels::GROUP1, quire_board::keys::levels::IDLE_ABOVE, g1)
+                == Some(quire_board::keys::Key::Back)
+            {
                 held += 1;
             } else {
                 break;
@@ -558,7 +560,16 @@ async fn main(spawner: embassy_executor::Spawner) -> ! {
 fn install_from_card(ui: &mut Ui<DeviceEnv>, env: &mut DeviceEnv, display: &mut Display, path: &str) {
     use quire_ui::net::NetEvent;
     let Some(flash) = quire_board::flash::shared() else {
-        refresh_after_idle(ui, env, display, Event::Net(NetEvent::OtaProgress { done: 0, total: 100, finished: Some(Err(alloc::string::String::from("flash unavailable"))) }));
+        refresh_after_idle(
+            ui,
+            env,
+            display,
+            Event::Net(NetEvent::OtaProgress {
+                done: 0,
+                total: 100,
+                finished: Some(Err(alloc::string::String::from("flash unavailable"))),
+            }),
+        );
         return;
     };
     let mut shown = u32::MAX;
@@ -582,7 +593,12 @@ fn install_from_card(ui: &mut Ui<DeviceEnv>, env: &mut DeviceEnv, display: &mut 
         }
         Err(e) => {
             println!("ota: {e}");
-            refresh_after_idle(ui, env, display, Event::Net(NetEvent::OtaProgress { done: 0, total: 100, finished: Some(Err(alloc::format!("{e}"))) }));
+            refresh_after_idle(
+                ui,
+                env,
+                display,
+                Event::Net(NetEvent::OtaProgress { done: 0, total: 100, finished: Some(Err(alloc::format!("{e}"))) }),
+            );
         }
     }
 }

@@ -48,7 +48,15 @@ serde = { version = "1.0", default-features = false, features = ["derive", "allo
 serde_json = { version = "1.0.151", default-features = false, features = ["alloc"] }
 postcard = { version = "1.1", default-features = false, features = ["alloc"] }
 # Software SHA-256 for verifying firmware images (the OTA writer and the recovery app).
-sha2 = { version = "0.10", default-features = false }
+# `force-soft-compact`: the smallest SHA-256/384/512 (image and TLS hashing are not hot).
+sha2 = { version = "0.10", default-features = false, features = ["force-soft-compact"] }
+# The HTTP client (framing only: request writer, response/chunked reader) and TLS 1.3.
+# reqwless 0.14 pairs with embedded-tls 0.18, whose verifier takes one CA and matches the
+# host against the CN only; quire-net brings its own verifier (chain + root store + SAN)
+# on embedded-tls 0.19, so reqwless is used without its TLS feature.
+reqwless = { version = "0.14.0", default-features = false }
+embedded-tls = { version = "0.19.0", default-features = false, features = ["alloc"] }
+rand_core = { version = "0.6.4", default-features = false }
 
 [profile.release]
 codegen-units = 1
@@ -69,4 +77,29 @@ opt-level = 3
 opt-level = 3
 # The recovery app has to fit the 512 KB factory partition.
 [profile.release.package.quire-recovery]
+opt-level = "z"
+# The TLS stack and its arithmetic are cold code (one request at a time): smallest.
+[profile.release.package.embedded-tls]
+opt-level = "z"
+[profile.release.package.p256]
+opt-level = "z"
+[profile.release.package.primeorder]
+opt-level = "z"
+[profile.release.package.elliptic-curve]
+opt-level = "z"
+[profile.release.package.crypto-bigint]
+opt-level = "z"
+[profile.release.package.ecdsa]
+opt-level = "z"
+[profile.release.package.aes]
+opt-level = "z"
+[profile.release.package.aes-gcm]
+opt-level = "z"
+[profile.release.package.ghash]
+opt-level = "z"
+[profile.release.package.reqwless]
+opt-level = "z"
+[profile.release.package.httparse]
+opt-level = "z"
+[profile.release.package.quire-net]
 opt-level = "z"

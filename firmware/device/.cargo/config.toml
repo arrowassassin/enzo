@@ -6,6 +6,8 @@ runner = "espflash flash --monitor --chip esp32c3 --partition-table partitions.c
 rustflags = [
   "-C", "link-arg=-Tlinkall.x",
   "-C", "force-frame-pointers",
+  # The TLS AES-GCM runs one connection at a time: the small AES tables over the fast ones.
+  "--cfg", "aes_compact",
 ]
 
 [env]

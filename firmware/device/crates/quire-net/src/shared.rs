@@ -51,6 +51,10 @@ pub struct Inner {
     pub sleep_packs: Vec<(String, String, u16, u64, bool)>,
     /// An OTA is running.
     pub ota_busy: bool,
+    /// The title of the running download the user asked to cancel.
+    pub cancel: Option<String>,
+    /// Minutes east of UTC (from settings), for certificate validity checks.
+    pub tz_minutes: i16,
 }
 
 impl Inner {
@@ -84,6 +88,8 @@ impl Inner {
             weather: None,
             sleep_packs: Vec::new(),
             ota_busy: false,
+            cancel: None,
+            tz_minutes: 0,
         }
     }
 }
@@ -203,6 +209,88 @@ pub fn transfer_finished(title: &str, result: Result<(), String>) {
     });
 }
 
+/// Queue a download (a Bookshop or OPDS book): it waits its turn in the list.
+pub fn download_queued(title: &str, author: &str, url: &str, total: Option<u64>) {
+    with(|i| {
+        if i.downloads.iter().any(|d| d.url == url && matches!(d.state, DownloadState::Queued | DownloadState::Working)) {
+            return;
+        }
+        i.downloads.retain(|d| d.url != url);
+        if i.downloads.len() >= MAX_DOWNLOADS {
+            let done = i.downloads.iter().position(|d| !matches!(d.state, DownloadState::Queued | DownloadState::Working));
+            i.downloads.remove(done.unwrap_or(0));
+        }
+        i.downloads.push(Download {
+            title: String::from(title),
+            author: String::from(author),
+            url: String::from(url),
+            done: 0,
+            total,
+            state: DownloadState::Queued,
+            book: None,
+        });
+        changed(i);
+    });
+}
+
+/// The next queued download, if any: (title, author, url, total).
+pub fn next_queued() -> Option<(String, String, String, Option<u64>)> {
+    with(|i| {
+        i.downloads.iter().find(|d| d.state == DownloadState::Queued).map(|d| (d.title.clone(), d.author.clone(), d.url.clone(), d.total))
+    })
+}
+
+/// Set a download's state by title.
+pub fn download_state(title: &str, state: DownloadState) {
+    with(|i| {
+        if let Some(d) = i.downloads.iter_mut().find(|d| d.title == title) {
+            d.state = state;
+            changed(i);
+        }
+    });
+}
+
+/// Cancel the download at `index` in the list: a queued one is dropped, the running
+/// one is asked to stop (its loop checks [`cancelled`]).
+pub fn cancel_download(index: usize) {
+    with(|i| {
+        let Some(d) = i.downloads.get_mut(index) else { return };
+        match d.state {
+            DownloadState::Queued | DownloadState::Retrying(_) => d.state = DownloadState::Failed(String::from("cancelled")),
+            DownloadState::Working => i.cancel = Some(d.title.clone()),
+            _ => return,
+        }
+        changed(i);
+    });
+}
+
+/// Whether the running download `title` was cancelled (and clears the flag).
+pub fn cancelled(title: &str) -> bool {
+    with(|i| {
+        if i.cancel.as_deref() == Some(title) {
+            i.cancel = None;
+            true
+        } else {
+            false
+        }
+    })
+}
+
+/// Queue the failed download at `index` again. Returns whether there was one.
+pub fn retry_download(index: usize) -> bool {
+    with(|i| {
+        let Some(d) = i.downloads.get_mut(index) else { return false };
+        if matches!(d.state, DownloadState::Failed(_)) {
+            d.state = DownloadState::Queued;
+            d.done = 0;
+            changed(i);
+            true
+        } else {
+            false
+        }
+    })
+}
+
 /// The `Event` that tells the UI the transfer list changed.
 pub fn downloads_event() -> Event {
     Event::Net(NetEvent::Downloads)
@@ -288,6 +376,24 @@ mod tests {
         }
         h.refresh();
         assert!(h.downloads().len() <= MAX_DOWNLOADS);
+    }
+
+    #[test]
+    fn queue_cancel_retry() {
+        download_queued("Walden", "Thoreau", "https://x/w.epub", Some(5));
+        download_queued("Walden", "Thoreau", "https://x/w.epub", Some(5));
+        let (t, _, u, _) = next_queued().unwrap();
+        assert_eq!((t.as_str(), u.as_str()), ("Walden", "https://x/w.epub"));
+        let idx = with(|i| i.downloads.iter().position(|d| d.title == "Walden").unwrap());
+        cancel_download(idx);
+        assert!(with(|i| matches!(i.downloads[idx].state, DownloadState::Failed(_))));
+        assert!(retry_download(idx));
+        download_state("Walden", DownloadState::Working);
+        cancel_download(idx);
+        assert!(cancelled("Walden"));
+        assert!(!cancelled("Walden"));
+        transfer_finished("Walden", Err(String::from("cancelled")));
+        with(|i| i.downloads.retain(|d| d.title != "Walden"));
     }
 
     #[test]

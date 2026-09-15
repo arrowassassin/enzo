@@ -24,6 +24,7 @@ embassy-sync = { workspace = true }
 edge-mdns = { workspace = true }
 edge-captive = { workspace = true }
 edge-dhcp = { workspace = true }
+sha2 = { workspace = true }
 
 # Everything that needs the radio, the executor or the network stack.
 esp-hal = { workspace = true, optional = true }
@@ -34,6 +35,9 @@ embassy-time = { workspace = true, optional = true }
 embassy-futures = { workspace = true, optional = true }
 embassy-executor = { workspace = true, optional = true }
 picoserve = { workspace = true, optional = true }
+reqwless = { workspace = true, optional = true }
+embedded-tls = { workspace = true, optional = true }
+rand_core = { workspace = true, optional = true }
 
 [build-dependencies]
 flate2 = "1.1.10"
@@ -54,4 +58,7 @@ hal = [
     "dep:embassy-futures",
     "dep:embassy-executor",
     "dep:picoserve",
+    "dep:reqwless",
+    "dep:embedded-tls",
+    "dep:rand_core",
 ]

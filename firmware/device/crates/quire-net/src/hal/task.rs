@@ -6,7 +6,7 @@ use alloc::boxed::Box;
 use alloc::string::String;
 use core::net::Ipv4Addr;
 
-use embassy_futures::join::{join, join4};
+use embassy_futures::join::join4;
 use embassy_futures::select::{select, Either};
 use embassy_net::{Config as NetConfigV4, DhcpConfig, Ipv4Cidr, Stack, StackResources, StaticConfigV4};
 use embassy_time::{Duration, Timer};
@@ -14,7 +14,7 @@ use esp_hal::peripherals::WIFI;
 use esp_radio::wifi::WifiController;
 use quire_ui::{Event, Settings, WifiState};
 
-use super::{captive, dhcp, fetch, http, mdns, now_ms, wifi};
+use super::{calibre, captive, dhcp, fetch, http, mdns, now_ms, wifi};
 use crate::proto::hotspot;
 use crate::proto::wifi_bin::{scan_list, NetConfig};
 use crate::proto::wsmsg;
@@ -101,14 +101,15 @@ async fn idle_command(fs: &'static dyn CardFs, flags: &mut Flags) -> Mode {
             NetCommand::Hotspot => return Mode::Hotspot,
             NetCommand::WifiOff => {}
             cmd => {
-                let _ = common(cmd, fs, flags).await;
+                let _ = common(cmd, fs, flags, false).await;
             }
         }
     }
 }
 
-/// Arms every mode handles the same way. `Some(outcome)` ends the session.
-async fn common(cmd: NetCommand, fs: &'static dyn CardFs, flags: &mut Flags) -> Option<Outcome> {
+/// Arms every mode handles the same way. `Some(outcome)` ends the session. `online`
+/// says a station session (with its fetch worker) is running.
+async fn common(cmd: NetCommand, fs: &'static dyn CardFs, flags: &mut Flags, online: bool) -> Option<Outcome> {
     match cmd {
         NetCommand::WifiOff => return Some(Outcome::Off),
         NetCommand::Forget(ssid) => {
@@ -120,10 +121,9 @@ async fn common(cmd: NetCommand, fs: &'static dyn CardFs, flags: &mut Flags) -> 
         }
         NetCommand::Reading(b) => flags.reading = b,
         NetCommand::Typing(b) => ws_broadcast(wsmsg::typing_event(b)),
-        NetCommand::Fetch(req) => fetch::fetch(req).await,
-        NetCommand::Ota(s) => fetch::ota(s).await,
-        NetCommand::Calibre(b) => fetch::calibre(b).await,
-        NetCommand::SyncNow => fetch::sync_now().await,
+        cmd @ (NetCommand::Fetch(_) | NetCommand::Ota(_) | NetCommand::Calibre(_) | NetCommand::SyncNow) => {
+            fetch::enqueue(cmd, online).await
+        }
         NetCommand::WifiOn | NetCommand::Scan | NetCommand::Join { .. } | NetCommand::Hotspot => {}
     }
     None
@@ -193,7 +193,7 @@ async fn session(wifi: &mut WIFI<'static>, fs: &'static dyn CardFs, seed: u64, m
                 }
             }
             Mode::Station { target } => {
-                let servers = join(http, station_mdns(stack, &hostname));
+                let servers = join4(http, station_mdns(stack, &hostname), fetch::worker(stack, fs), calibre::run(stack, fs, &hostname));
                 match select(servers, station_commands(&mut controller, stack, fs, &mut cfg, &hostname, target, flags)).await {
                     Either::First(_) => Outcome::Off,
                     Either::Second(o) => o,
@@ -209,6 +209,8 @@ async fn session(wifi: &mut WIFI<'static>, fs: &'static dyn CardFs, seed: u64, m
     with(|i| {
         i.mirror = None;
         i.mirror_clients = 0;
+        i.calibre_status.clear();
+        i.cancel = None;
     });
     drop(controller);
     drop(resources);
@@ -312,7 +314,7 @@ async fn station_commands(
                 }
                 NetCommand::Forget(ssid) => {
                     let leaving = current.as_deref() == Some(ssid.as_str());
-                    let _ = common(NetCommand::Forget(ssid), fs, flags).await;
+                    let _ = common(NetCommand::Forget(ssid), fs, flags, true).await;
                     *cfg = load_config(fs);
                     if leaving {
                         let _ = controller.disconnect_async().await;
@@ -320,7 +322,7 @@ async fn station_commands(
                     }
                 }
                 cmd => {
-                    if let Some(o) = common(cmd, fs, flags).await {
+                    if let Some(o) = common(cmd, fs, flags, true).await {
                         return o;
                     }
                 }
@@ -385,7 +387,7 @@ async fn hotspot_commands(fs: &'static dyn CardFs, cfg: &mut NetConfig, flags: &
                 }
                 cmd => {
                     let was_forget = matches!(cmd, NetCommand::Forget(_));
-                    if let Some(o) = common(cmd, fs, flags).await {
+                    if let Some(o) = common(cmd, fs, flags, false).await {
                         return o;
                     }
                     if was_forget {
