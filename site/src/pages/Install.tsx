@@ -148,6 +148,8 @@ export function Install() {
   const [backupProgress, setBackupProgress] = useState<Progress | null>(null)
   const [backup, setBackup] = useState<{ file: string; sha: string | null } | null>(null)
   const [backupError, setBackupError] = useState('')
+  /** Set when someone says they already hold a backup, so step 2 can be passed. */
+  const [backupHeld, setBackupHeld] = useState(false)
 
   const [release, setRelease] = useState<ReleaseProbe | null>(null)
   const [image, setImage] = useState<ChosenImage | null>(null)
@@ -292,6 +294,7 @@ export function Install() {
         saveFile(`${name}.sha256`, new Blob([`${sha}  ${name}\n`], { type: 'text/plain' }))
       }
       setBackupProgress(null)
+      setBackupHeld(false)
       setBackup({ file: name, sha })
     } catch (err) {
       setBackupProgress(null)
@@ -406,8 +409,8 @@ export function Install() {
 
   const working = busy !== null
   const connectState: StepState = device ? 'done' : 'ready'
-  const backupState: StepState = !device ? 'locked' : backup ? 'done' : 'ready'
-  const imageState: StepState = !backup ? 'locked' : image ? 'done' : 'ready'
+  const backupState: StepState = !device ? 'locked' : backup || backupHeld ? 'done' : 'ready'
+  const imageState: StepState = !backup && !backupHeld ? 'locked' : image ? 'done' : 'ready'
   const installState: StepState = !image ? 'locked' : installed ? 'done' : 'ready'
 
   return (
@@ -565,6 +568,19 @@ export function Install() {
                         ? 'Try the backup again'
                         : 'Back up the stock firmware'}
                 </button>
+                {/* Someone on their second reader, or coming back to a half-finished
+                    install, already has the only file this step can produce. Reading
+                    it again costs them five minutes and tells them nothing new. */}
+                {!backup && !backupHeld ? (
+                  <button
+                    type="button"
+                    className="btn btn--ghost"
+                    onClick={() => setBackupHeld(true)}
+                    disabled={working || !device}
+                  >
+                    I already have one
+                  </button>
+                ) : null}
               </div>
 
               {backupProgress ? <Bar progress={backupProgress} label="Reading the flash" /> : null}
@@ -572,7 +588,9 @@ export function Install() {
               <p className="status" aria-live="polite">
                 {backup
                   ? `Saved ${backup.file} — ${bytes(FLASH_BYTES)} bytes, the exact size a whole-flash image has to be.`
-                  : busy === 'backup'
+                  : backupHeld
+                    ? 'Taken as read: you have a backup already.'
+                    : busy === 'backup'
                     ? 'Reading the flash. Do not detach the cable.'
                     : device
                       ? 'Nothing read yet.'
@@ -608,6 +626,26 @@ export function Install() {
                     </strong>{' '}
                     — a second disk, a USB stick, a cloud folder. A backup that lives only on the
                     machine you are about to experiment with is half a backup.
+                  </p>
+                </div>
+              ) : null}
+
+              {backupHeld && !backup ? (
+                <div className="note">
+                  <p>
+                    Nothing has been read, so nothing here has been checked. Before you go on,
+                    make sure the file you are relying on is {bytes(FLASH_BYTES)} bytes and is
+                    somewhere other than this computer. <a href="#restore-title">Putting the stock
+                    firmware back</a> will ask for it.
+                  </p>
+                  <p>
+                    <button
+                      type="button"
+                      className="btn btn--ghost"
+                      onClick={() => setBackupHeld(false)}
+                    >
+                      Actually, read it now
+                    </button>
                   </p>
                 </div>
               ) : null}
