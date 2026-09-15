@@ -300,6 +300,30 @@ impl DropService {
         Resp::ok_json(settings_json::to_json(&Settings::load(&self.dfs()), pin_set))
     }
 
+    /// `POST /api/fetch` with `{"url": "...", "title": "...", "author": "..."}`: queue a
+    /// download of a book from the phone's clipboard; it runs while the station session
+    /// is up and shows on the Downloads screen like any Bookshop download.
+    async fn fetch(&self, body: &[u8]) -> Resp {
+        let Ok(text) = core::str::from_utf8(body) else { return Resp::error(StatusCode::BAD_REQUEST, "not UTF-8") };
+        let Some(v) = crate::proto::jsonlite::parse(text.as_bytes()) else { return Resp::error(StatusCode::BAD_REQUEST, "not JSON") };
+        let url = v.get("url").and_then(|u| u.as_str()).unwrap_or_default();
+        if !(url.starts_with("http://") || url.starts_with("https://")) || url.len() > 1024 {
+            return Resp::error(StatusCode::BAD_REQUEST, "url must be http or https");
+        }
+        let title = v.get("title").and_then(|t| t.as_str()).filter(|t| !t.is_empty()).unwrap_or_else(|| {
+            url.rsplit('/')
+                .next()
+                .map(|s| s.split('?').next().unwrap_or(s))
+                .filter(|s| !s.is_empty())
+                .map(String::from)
+                .unwrap_or_else(|| String::from("Download"))
+        });
+        let author = v.get("author").and_then(|a| a.as_str()).unwrap_or_default();
+        let online = matches!(crate::wifi_state(), quire_ui::WifiState::Connected { .. });
+        super::fetch::enqueue(crate::NetCommand::Fetch(quire_ui::net::FetchRequest::Book { url, title, author, size: None }), online).await;
+        Resp::Text(StatusCode::OK, "queued")
+    }
+
     async fn settings_put(&self, body: &[u8]) -> Resp {
         let Ok(text) = core::str::from_utf8(body) else { return Resp::error(StatusCode::BAD_REQUEST, "not UTF-8") };
         let dfs = self.dfs();
@@ -698,7 +722,13 @@ impl PathRouterService for DropService {
                 self.sleep_put(&parts, &mut reader, content_length).await
             }
             Route::Screen => self.screen().await,
-            Route::Fetch => Resp::error(StatusCode::NOT_IMPLEMENTED, "not implemented yet"),
+            Route::Fetch => {
+                let body = read_small(&mut request.body_connection.body().reader(), content_length, MAX_JSON_BODY).await;
+                match body {
+                    Ok(b) => self.fetch(&b).await,
+                    Err(()) => Resp::error(StatusCode::PAYLOAD_TOO_LARGE, "body too large"),
+                }
+            }
             Route::Ws => unreachable!(),
             Route::NotFound => Resp::Text(StatusCode::NOT_FOUND, "Not found"),
             Route::MethodNotAllowed => Resp::Text(StatusCode::METHOD_NOT_ALLOWED, "Method not allowed"),

@@ -1,10 +1,13 @@
 //! Just enough X.509 to verify a TLS server: a DER walker, the certificate fields path
-//! building needs, the root store (`roots/roots.bin`), chain verification and host name
-//! matching (RFC 6125: SAN dNSNames with one left-most wildcard label, CN as the
-//! fallback). Signatures are RSA PKCS#1 v1.5 and ECDSA P-256/P-384 over SHA-256/384/512.
+//! building needs, the root store (`roots/roots.bin`), chain verification (`cA`,
+//! `pathLenConstraint` and dNSName name constraints honoured) and host name matching
+//! (RFC 6125: SAN dNSNames with one left-most wildcard label, SAN iPAddresses for
+//! address hosts, the CN only when there is no SAN at all). Signatures are RSA PKCS#1
+//! v1.5 and ECDSA P-256/P-384 over SHA-256/384/512.
 //!
-//! Limits, by design: no name constraints, no revocation, no policy checks, no path
-//! length checks beyond `cA`, no Ed25519, at most six certificates per chain.
+//! Limits, by design: no revocation, no policy or key usage checks, name constraints
+//! only on the host being verified, no public suffix list for wildcards, no Ed25519, at
+//! most six certificates per chain.
 
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -26,12 +29,15 @@ pub enum CertError {
     Untrusted,
     /// A signature in the chain does not verify.
     BadSignature,
-    /// A certificate is not valid now.
+    /// A certificate is not valid now (or, with the clock unset, had already expired
+    /// when this firmware was built).
     Expired,
     /// The leaf does not name the host.
     HostMismatch,
-    /// An intermediate is not a CA.
+    /// An intermediate is not a CA, or sits deeper than its issuer's path length allows.
     NotCa,
+    /// An intermediate's name constraints exclude the host.
+    NameConstraint,
 }
 
 /// A public key, borrowed from its certificate or copied out of it.
@@ -73,6 +79,7 @@ const OID_ECDSA_SHA512: &[u8] = &[0x2a, 0x86, 0x48, 0xce, 0x3d, 0x04, 0x03, 0x04
 const OID_CN: &[u8] = &[0x55, 0x04, 0x03];
 const OID_SAN: &[u8] = &[0x55, 0x1d, 0x11];
 const OID_BASIC_CONSTRAINTS: &[u8] = &[0x55, 0x1d, 0x13];
+const OID_NAME_CONSTRAINTS: &[u8] = &[0x55, 0x1d, 0x1e];
 
 const TAG_SEQUENCE: u8 = 0x30;
 const TAG_INTEGER: u8 = 0x02;
@@ -165,6 +172,10 @@ pub struct Cert<'a> {
     pub san: Option<&'a [u8]>,
     /// The `cA` flag of basic constraints (`None` without the extension).
     pub is_ca: Option<bool>,
+    /// The `pathLenConstraint`: how many CAs may follow this one towards the leaf.
+    pub path_len: Option<u64>,
+    /// The `NameConstraints` extension's contents, when present.
+    pub name_constraints: Option<&'a [u8]>,
 }
 
 fn alg_oid(alg: &[u8]) -> Option<(&[u8], Option<&[u8]>)> {
@@ -215,7 +226,8 @@ pub fn parse_time(tag: u8, b: &[u8]) -> Option<u64> {
         TAG_GENERALIZED_TIME => (two_digits(b)? * 100 + two_digits(b.get(2..)?)?, &b[4..]),
         _ => return None,
     };
-    if rest.len() < 10 || rest[rest.len() - 1] != b'Z' {
+    // Exactly `MMDDHHMMSSZ`: RFC 5280 allows no fractions and no other zone.
+    if rest.len() != 11 || rest[10] != b'Z' {
         return None;
     }
     let (mo, d, h, mi, s) =
@@ -266,6 +278,8 @@ impl<'a> Cert<'a> {
         f.skip_optional(0x82);
         let mut san = None;
         let mut is_ca = None;
+        let mut path_len = None;
+        let mut name_constraints = None;
         if f.peek_tag() == Some(0xa3) {
             let (_, ext_wrap, _) = f.read()?;
             let exts = Der::new(ext_wrap).expect(TAG_SEQUENCE)?;
@@ -283,16 +297,23 @@ impl<'a> Cert<'a> {
                     OID_BASIC_CONSTRAINTS => {
                         let bc = Der::new(value).expect(TAG_SEQUENCE)?;
                         let mut b = Der::new(bc);
-                        is_ca = Some(match b.read() {
-                            Some((TAG_BOOLEAN, body, _)) => body.first().is_some_and(|v| *v != 0),
+                        is_ca = Some(match b.peek_tag() {
+                            Some(TAG_BOOLEAN) => b.read()?.1.first().is_some_and(|v| *v != 0),
                             _ => false,
                         });
+                        if let Some(TAG_INTEGER) = b.peek_tag() {
+                            let n = b.read()?.1;
+                            // Over eight bytes is as good as unlimited.
+                            path_len =
+                                Some(n.iter().try_fold(0u64, |acc, b| acc.checked_mul(256).map(|a| a + *b as u64)).unwrap_or(u64::MAX));
+                        }
                     }
+                    OID_NAME_CONSTRAINTS => name_constraints = Some(Der::new(value).expect(TAG_SEQUENCE)?),
                     _ => {}
                 }
             }
         }
-        Some(Cert { tbs, issuer, subject, not_before, not_after, spki, sig_alg, signature, san, is_ca })
+        Some(Cert { tbs, issuer, subject, not_before, not_after, spki, sig_alg, signature, san, is_ca, path_len, name_constraints })
     }
 
     /// The public key.
@@ -300,27 +321,50 @@ impl<'a> Cert<'a> {
         key_of(self.spki)
     }
 
-    /// Whether the certificate names `host` (SAN dNSNames, else the CN).
+    /// Whether the certificate names `host`: an address must be a SAN iPAddress, a name
+    /// must match a SAN dNSName, or the CN when the certificate has no SAN at all.
     pub fn matches_host(&self, host: &str) -> bool {
         let host = host.trim_end_matches('.');
+        let ip = host.parse::<core::net::Ipv4Addr>().ok();
         if let Some(san) = self.san {
             let mut d = Der::new(san);
-            let mut any_dns = false;
             while let Some((tag, body, _)) = d.read() {
-                if tag == 0x82 {
-                    any_dns = true;
-                    if let Ok(name) = core::str::from_utf8(body) {
-                        if name_matches(name, host) {
-                            return true;
-                        }
-                    }
+                match (tag, ip) {
+                    (0x87, Some(ip)) if body == ip.octets() => return true,
+                    (0x82, None) if core::str::from_utf8(body).is_ok_and(|name| name_matches(name, host)) => return true,
+                    _ => {}
                 }
             }
-            if any_dns {
-                return false;
+            return false;
+        }
+        ip.is_none() && self.common_name().is_some_and(|cn| name_matches(&cn, host))
+    }
+
+    /// Whether this CA's name constraints (RFC 5280 §4.2.1.10, dNSName subtrees) allow
+    /// `host`: it must be inside a permitted subtree when any is named, and outside every
+    /// excluded one. Other name forms are not constrained here.
+    pub fn allows_host(&self, host: &str) -> bool {
+        let Some(nc) = self.name_constraints else { return true };
+        let host = host.trim_end_matches('.');
+        let (mut permitted_any, mut permitted_hit) = (false, false);
+        let mut d = Der::new(nc);
+        while let Some((which, subtrees, _)) = d.read() {
+            let mut s = Der::new(subtrees);
+            while let Some((_, subtree, _)) = s.read() {
+                let Some((tag, base, _)) = Der::new(subtree).read() else { return false };
+                if tag != 0x82 {
+                    continue;
+                }
+                let Ok(base) = core::str::from_utf8(base) else { return false };
+                let hit = in_subtree(host, base);
+                match which {
+                    0xa0 => (permitted_any, permitted_hit) = (true, permitted_hit || hit),
+                    0xa1 if hit => return false,
+                    _ => {}
+                }
             }
         }
-        self.common_name().is_some_and(|cn| name_matches(&cn, host))
+        !permitted_any || permitted_hit
     }
 
     /// The subject's CN, for logs and the CN fallback.
@@ -368,6 +412,23 @@ pub fn key_of(spki: &[u8]) -> Result<Key, CertError> {
             _ => Err(CertError::Unsupported),
         },
         _ => Err(CertError::Unsupported),
+    }
+}
+
+/// Whether `host` is `base` or below it (`.base` in the constraint: strictly below).
+fn in_subtree(host: &str, base: &str) -> bool {
+    if base.is_empty() {
+        return true;
+    }
+    let below = |tail: &str| {
+        host.len() > tail.len()
+            && host.is_char_boundary(host.len() - tail.len())
+            && host[host.len() - tail.len()..].eq_ignore_ascii_case(tail)
+    };
+    if base.starts_with('.') {
+        below(base)
+    } else {
+        host.eq_ignore_ascii_case(base) || below(&alloc::format!(".{base}"))
     }
 }
 
@@ -448,9 +509,15 @@ pub fn roots(store: &[u8]) -> impl Iterator<Item = Root<'_>> {
 /// Most certificates walked from the leaf.
 const MAX_CHAIN: usize = 6;
 
+/// 2026-09-01T00:00:00Z: when the clock is unset, a certificate that had already expired
+/// by the time this code was written is still rejected (the RTC starts at 1970 until
+/// NTP, so without this an attacker could replay any expired certificate at boot).
+pub const CLOCK_FLOOR: u64 = 1_788_220_800;
+
 /// Verify the chain a server sent (leaf first, in any order after that) for `host` at
-/// time `now` (seconds; `None` skips the validity check) against `store`. Returns the
-/// leaf's key for the TLS signature check.
+/// time `now` (seconds; `None` when the clock is unset, which only checks that nothing
+/// expired before [`CLOCK_FLOOR`]) against `store`. Returns the leaf's key for the TLS
+/// signature check.
 pub fn verify_chain(entries: &[&[u8]], host: &str, now: Option<u64>, store: &[u8]) -> Result<Key, CertError> {
     let leaf_der = *entries.first().ok_or(CertError::Malformed)?;
     let leaf = Cert::parse(leaf_der).ok_or(CertError::Malformed)?;
@@ -460,13 +527,19 @@ pub fn verify_chain(entries: &[&[u8]], host: &str, now: Option<u64>, store: &[u8
     let leaf_key = leaf.key()?;
     let mut cur = leaf;
     for depth in 0..MAX_CHAIN {
-        if let Some(t) = now {
-            if t < cur.not_before || t > cur.not_after {
-                return Err(CertError::Expired);
-            }
+        match now {
+            Some(t) if t < cur.not_before || t > cur.not_after => return Err(CertError::Expired),
+            None if cur.not_after < CLOCK_FLOOR => return Err(CertError::Expired),
+            _ => {}
         }
-        if depth > 0 && cur.is_ca != Some(true) {
-            return Err(CertError::NotCa);
+        if depth > 0 {
+            // A CA, allowed this deep by its own path length, whose constraints admit the host.
+            if cur.is_ca != Some(true) || cur.path_len.is_some_and(|n| n < depth as u64 - 1) {
+                return Err(CertError::NotCa);
+            }
+            if !cur.allows_host(host) {
+                return Err(CertError::NameConstraint);
+            }
         }
         let alg = cur.sig_alg.ok_or(CertError::Unsupported)?;
         // A root that issued this certificate ends the walk.
@@ -499,6 +572,13 @@ mod tests {
     const ROOT_P384: &[u8] = include_bytes!("../../testdata/ca-p384.der");
     const LEAF_P384: &[u8] = include_bytes!("../../testdata/leaf-p384-chain.der");
     const LEAF_RSA: &[u8] = include_bytes!("../../testdata/leaf-rsa.der");
+    const INTER_PATHLEN0: &[u8] = include_bytes!("../../testdata/inter-pathlen0.der");
+    const INTER_UNDER_PATHLEN0: &[u8] = include_bytes!("../../testdata/inter-under-pathlen0.der");
+    const LEAF_PATHLEN0: &[u8] = include_bytes!("../../testdata/leaf-pathlen0.der");
+    const LEAF_UNDER_PATHLEN0: &[u8] = include_bytes!("../../testdata/leaf-under-pathlen0.der");
+    const INTER_CONSTRAINED: &[u8] = include_bytes!("../../testdata/inter-constrained.der");
+    const LEAF_CONSTRAINED: &[u8] = include_bytes!("../../testdata/leaf-constrained.der");
+    const LEAF_BY_LEAF: &[u8] = include_bytes!("../../testdata/leaf-by-leaf.der");
     const TEST_STORE: &[u8] = include_bytes!("../../testdata/roots.bin");
     /// 2026-10-01T00:00:00Z, inside every fixture's validity (leaves: one year from the
     /// day make.sh ran, 2026-09-15).
@@ -531,7 +611,81 @@ mod tests {
         assert!(matches!(c.key().unwrap(), Key::P256(_)));
         let i = Cert::parse(INTER_RSA).unwrap();
         assert_eq!(i.is_ca, Some(true));
+        assert_eq!(i.path_len, None);
+        assert!(i.name_constraints.is_none());
         assert!(matches!(i.key().unwrap(), Key::Rsa { .. }));
+        assert_eq!(Cert::parse(INTER_PATHLEN0).unwrap().path_len, Some(0));
+        assert_eq!(Cert::parse(INTER_UNDER_PATHLEN0).unwrap().path_len, None);
+        assert!(Cert::parse(INTER_CONSTRAINED).unwrap().name_constraints.is_some());
+        assert_eq!(Cert::parse(LEAF_BY_LEAF).unwrap().is_ca, Some(false));
+        assert_eq!(Cert::parse(ROOT_RSA).unwrap().is_ca, Some(true));
+    }
+
+    #[test]
+    fn host_matching_uses_san_ip_and_cn_only_without_san() {
+        // An address host matches a SAN iPAddress, never a dNSName, a CN or a wildcard.
+        let rsa = Cert::parse(LEAF_RSA).unwrap();
+        assert!(rsa.matches_host("rsa.example.test"));
+        assert!(rsa.matches_host("192.0.2.7"));
+        assert!(!rsa.matches_host("192.0.2.8"));
+        let p256 = Cert::parse(LEAF_P256).unwrap();
+        assert!(!p256.matches_host("192.0.2.7"));
+        assert!(p256.matches_host("x.example.test."));
+        // With a SAN the CN is ignored; without one it is the fallback.
+        let inter = Cert::parse(INTER_RSA).unwrap();
+        assert_eq!(inter.common_name().as_deref(), Some("Quire Test Intermediate"));
+        assert!(!inter.matches_host("Quire Test Intermediate"));
+        assert!(inter.matches_host("inter.example.test"));
+        let root = Cert::parse(ROOT_RSA).unwrap();
+        assert!(root.san.is_none());
+        assert!(root.matches_host("Quire Test Root RSA"));
+        assert!(!root.matches_host("192.0.2.7"));
+    }
+
+    #[test]
+    fn path_length_and_ca_flag() {
+        assert!(verify_chain(&[LEAF_PATHLEN0, INTER_PATHLEN0], "pl.example.test", Some(NOW), TEST_STORE).is_ok());
+        // One CA too many under a pathlen:0 intermediate.
+        assert_eq!(
+            verify_chain(&[LEAF_UNDER_PATHLEN0, INTER_UNDER_PATHLEN0, INTER_PATHLEN0], "deep.example.test", Some(NOW), TEST_STORE),
+            Err(CertError::NotCa)
+        );
+        // A leaf (CA:false) signing a leaf.
+        assert_eq!(verify_chain(&[LEAF_BY_LEAF, LEAF_RSA, INTER_RSA], "byleaf.example.test", Some(NOW), TEST_STORE), Err(CertError::NotCa));
+    }
+
+    #[test]
+    fn name_constraints() {
+        let chain = [LEAF_CONSTRAINED, INTER_CONSTRAINED];
+        assert!(verify_chain(&chain, "x.allowed.test", Some(NOW), TEST_STORE).is_ok());
+        assert!(verify_chain(&chain, "allowed.test", Some(NOW), TEST_STORE).is_ok());
+        assert_eq!(verify_chain(&chain, "y.bad.allowed.test", Some(NOW), TEST_STORE), Err(CertError::NameConstraint));
+        assert_eq!(verify_chain(&chain, "books.example.test", Some(NOW), TEST_STORE), Err(CertError::NameConstraint));
+        let inter = Cert::parse(INTER_CONSTRAINED).unwrap();
+        assert!(inter.allows_host("X.ALLOWED.TEST"));
+        assert!(!inter.allows_host("xallowed.test"));
+        assert!(!inter.allows_host("allowed.test.example"));
+        assert!(Cert::parse(INTER_RSA).unwrap().allows_host("anything.example"));
+        assert!(in_subtree("a.b.c", ""));
+        assert!(in_subtree("a.b.c", ".b.c"));
+        assert!(!in_subtree("b.c", ".b.c"));
+        assert!(in_subtree("b.c", "b.c"));
+        assert!(!in_subtree("ab.c", "b.c"));
+    }
+
+    #[test]
+    fn clock_floor_without_a_clock() {
+        assert_eq!(parse_time(TAG_GENERALIZED_TIME, b"20260901000000Z"), Some(CLOCK_FLOOR));
+        // The leaf's notAfter (UTCTime, 2027) rewritten to 2020: rejected with and without
+        // the clock, before any signature is looked at.
+        let mut der = LEAF_P256.to_vec();
+        let i = der.windows(4).position(|w| w == b"\x17\x0d27").expect("notAfter");
+        der[i + 2..i + 4].copy_from_slice(b"20");
+        let c = Cert::parse(&der).unwrap();
+        assert!(c.not_after < CLOCK_FLOOR);
+        assert_eq!(verify_chain(&[&der, INTER_RSA], "books.example.test", None, TEST_STORE), Err(CertError::Expired));
+        assert_eq!(verify_chain(&[&der, INTER_RSA], "books.example.test", Some(NOW), TEST_STORE), Err(CertError::Expired));
+        assert!(verify_chain(&[LEAF_P256, INTER_RSA], "books.example.test", None, TEST_STORE).is_ok());
     }
 
     #[test]
@@ -580,6 +734,10 @@ mod tests {
         assert_eq!(parse_time(TAG_GENERALIZED_TIME, b"20261001000000Z"), Some(NOW));
         assert_eq!(parse_time(TAG_UTC_TIME, b"491231235959Z"), Some(2_524_607_999));
         assert_eq!(parse_time(TAG_UTC_TIME, b"7001010000"), None);
+        assert_eq!(parse_time(TAG_UTC_TIME, b"700101000000Z0"), None);
+        assert_eq!(parse_time(TAG_UTC_TIME, b"700101000000+0100"), None);
+        assert_eq!(parse_time(TAG_GENERALIZED_TIME, b"20261001000000.5Z"), None);
+        assert_eq!(parse_time(TAG_GENERALIZED_TIME, b"20261301000000Z"), None);
         assert!(name_matches("*.wikipedia.org", "en.wikipedia.org"));
         assert!(!name_matches("*.wikipedia.org", "a.en.wikipedia.org"));
         assert!(!name_matches("*.org", "wikipedia.org"));

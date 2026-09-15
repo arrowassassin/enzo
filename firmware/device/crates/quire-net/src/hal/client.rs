@@ -1,9 +1,9 @@
 //! The HTTP(S) client the fetchers share: one request at a time over the session's
 //! stack, DNS through the stack, TLS through [`super::tls`], the response framed by
 //! reqwless (status line, headers, content-length and chunked bodies). Redirects are
-//! followed (five at most), `Range` requests resume downloads, and bodies stream to a
-//! sink in pieces of at most 4 KB, so a book never sits in RAM. Every buffer is
-//! allocated for the request and freed with it.
+//! followed (five at most, never from https down to http), `Range` requests resume
+//! downloads, and bodies stream to a sink in pieces of at most 4 KB, so a book never
+//! sits in RAM. Every buffer is allocated for the request and freed with it.
 
 use alloc::boxed::Box;
 use alloc::string::String;
@@ -219,7 +219,13 @@ pub async fn fetch(
             Hop::Done(h) => return Ok(h),
             Hop::Redirect(status, location) => {
                 log::info!("http: {status} -> {location}");
-                url = url.resolve(&location).ok_or(Error::Url)?;
+                let next = url.resolve(&location).ok_or(Error::Url)?;
+                // Never step down from HTTPS: for updates the channel is the integrity check.
+                if url.https && !next.https {
+                    log::warn!("http: refusing redirect to plain http");
+                    return Err(Error::Url);
+                }
+                url = next;
                 if status == 303 || (matches!(status, 301 | 302) && method == Method::Post) {
                     method = Method::Get;
                     body = None;
@@ -326,6 +332,9 @@ async fn hop(
         let _ = write!(head, "Content-Length: {}\r\n", b.len());
     }
     for (k, v) in headers {
+        if k.contains(['\r', '\n']) || v.contains(['\r', '\n']) {
+            return Err(Error::Url);
+        }
         let _ = write!(head, "{k}: {v}\r\n");
     }
     head.push_str("\r\n");

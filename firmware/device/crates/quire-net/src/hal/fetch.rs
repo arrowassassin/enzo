@@ -196,6 +196,10 @@ async fn download_file(
     let mut on_head = |h: &Head| -> Result<(), String> {
         let mut s = st.borrow_mut();
         let resumed = have.is_some() && h.range_start == have;
+        // A partial reply from any other offset cannot be spliced onto the file.
+        if h.status == 206 && !resumed {
+            return Err(String::from("The server answered with the wrong range."));
+        }
         let start = if resumed { have.unwrap_or(0) } else { 0 };
         s.total = h.content_length.map(|len| len + start);
         s.done = start;

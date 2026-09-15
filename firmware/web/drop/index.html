@@ -33,7 +33,7 @@ h2{font-size:15px;margin:18px 0 8px;text-transform:uppercase;letter-spacing:.6px
 .bar{height:6px;background:var(--line);border-radius:3px;overflow:hidden;margin-top:6px}.bar i{display:block;height:100%;background:var(--fg);width:0;transition:width .2s}
 .st{font-size:12px;white-space:nowrap}.st.ok{color:var(--ok)}.st.err{color:var(--err)}.st.warn{color:var(--warn)}
 .acts{display:flex;gap:6px;flex-wrap:wrap}.acts button{background:none;border:1px solid var(--line);border-radius:6px;padding:4px 8px;font:inherit;font-size:12px;cursor:pointer;color:var(--fg)}
-input[type=text],input[type=number],input[type=password],textarea,select{font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--fg);width:100%}
+input[type=text],input[type=url],input[type=number],input[type=password],textarea,select{font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--fg);width:100%}
 textarea{min-height:60px;font-family:ui-monospace,Menlo,monospace;font-size:12px}
 .f{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line)}.f label{font-size:14px}.f small{display:block;color:var(--mut);font-size:11px}
 .f.wide{grid-template-columns:1fr}
@@ -64,6 +64,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}td,th{text-align:left;p
 <section id="t-drop">
  <div class="zone" id="zone"><strong>Drop books here</strong><p>or tap to choose files · EPUB, TXT, MD, FB2, CBZ, QBK</p><input type="file" id="pick" multiple hidden></div>
  <div id="queue"></div>
+ <div class="card" style="margin-top:10px"><strong>Fetch a link</strong><p class="dim" style="font-size:12px;margin:4px 0 8px">Paste the address of a book (EPUB, PDF, TXT…); the reader downloads it itself while it is on Wi-Fi.</p><div style="display:flex;gap:8px;align-items:center"><input type="url" id="furl" placeholder="https://…"><button class="btn sec sm" id="fetchbtn">Fetch</button></div><span id="fetchmsg" class="st"></span></div>
  <p class="dim" id="dropnote" style="font-size:12px"></p>
 </section>
 <section id="t-lib" hidden>
@@ -110,6 +111,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}td,th{text-align:left;p
 const $=s=>document.querySelector(s), $$=s=>Array.from(document.querySelectorAll(s));
 const CHUNK=1<<20, MIR_W=264, MIR_H=396;
 let pin=localStorage.getItem('quire-pin')||'', status=null, ws=null, wsTimer=null, tab='drop', mirrorOn=false;
+$('#fetchbtn').onclick=async()=>{const url=$('#furl').value.trim();if(!/^https?:\/\//.test(url)){$('#fetchmsg').textContent='Enter an http(s) address';return}$('#fetchmsg').textContent='queueing…';try{const r=await fetch('/api/fetch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url})});$('#fetchmsg').textContent=r.ok?'Queued; see Downloads on the reader':'Could not queue ('+r.status+')';if(r.ok)$('#furl').value=''}catch(e){$('#fetchmsg').textContent='Reader not reachable'}};
 function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),2600)}
 function fmtB(n){if(n==null)return '–';if(n<1024)return n+' B';if(n<1048576)return (n/1024).toFixed(0)+' KB';if(n<1073741824)return (n/1048576).toFixed(1)+' MB';return (n/1073741824).toFixed(2)+' GB'}
 function fmtT(s){s=Math.round(s);const h=Math.floor(s/3600),m=Math.floor(s%3600/60);return h?h+'h '+m+'m':m+'m'}

@@ -174,6 +174,98 @@ mod tests {
         assert!(!verify_pss(PublicKey { n: N, e: E }, Hash::Sha256, &d, SIG_V15));
     }
 
+    const N4096: &[u8] = include_bytes!("../../testdata/rsa4096-n.bin");
+
+    #[test]
+    fn known_answers_all_hashes_and_sizes() {
+        let key = PublicKey { n: N, e: E };
+        for (hash, sig) in [
+            (Hash::Sha384, &include_bytes!("../../testdata/rsa2048-sig-pkcs1-sha384.bin")[..]),
+            (Hash::Sha512, &include_bytes!("../../testdata/rsa2048-sig-pkcs1-sha512.bin")[..]),
+        ] {
+            assert!(verify_pkcs1v15(key, hash, &hash.digest(&[MSG]), sig), "{hash:?}");
+            assert!(!verify_pkcs1v15(key, hash, &hash.digest(&[b"other"]), sig), "{hash:?}");
+            assert!(!verify_pss(key, hash, &hash.digest(&[MSG]), sig), "{hash:?}");
+        }
+        for (hash, sig) in [
+            (Hash::Sha384, &include_bytes!("../../testdata/rsa2048-sig-pss-sha384.bin")[..]),
+            (Hash::Sha512, &include_bytes!("../../testdata/rsa2048-sig-pss-sha512.bin")[..]),
+        ] {
+            assert!(verify_pss(key, hash, &hash.digest(&[MSG]), sig), "{hash:?}");
+            assert!(!verify_pss(key, hash, &hash.digest(&[b"other"]), sig), "{hash:?}");
+            assert!(!verify_pkcs1v15(key, hash, &hash.digest(&[MSG]), sig), "{hash:?}");
+        }
+        // TLS 1.3 fixes the salt length to the digest length: a shorter salt is rejected.
+        let salt20 = include_bytes!("../../testdata/rsa2048-sig-pss-sha256-salt20.bin");
+        assert!(!verify_pss(key, Hash::Sha256, &Hash::Sha256.digest(&[MSG]), salt20));
+        // 4096-bit keys (several roots have them).
+        let big = PublicKey { n: N4096, e: E };
+        let d = Hash::Sha256.digest(&[MSG]);
+        assert!(verify_pkcs1v15(big, Hash::Sha256, &d, include_bytes!("../../testdata/rsa4096-sig-pkcs1-sha256.bin")));
+        assert!(!verify_pkcs1v15(big, Hash::Sha256, &d, SIG_V15));
+        assert!(!verify_pkcs1v15(key, Hash::Sha256, &d, include_bytes!("../../testdata/rsa4096-sig-pkcs1-sha256.bin")));
+        let d = Hash::Sha512.digest(&[MSG]);
+        assert!(verify_pss(big, Hash::Sha512, &d, include_bytes!("../../testdata/rsa4096-sig-pss-sha512.bin")));
+        assert!(!verify_pss(big, Hash::Sha384, &Hash::Sha384.digest(&[MSG]), include_bytes!("../../testdata/rsa4096-sig-pss-sha512.bin")));
+    }
+
+    /// With e = 1 the "signature" is the encoded message itself, which lets the padding
+    /// parser be probed with every malformed encoding Bleichenbacher-style forgeries rely
+    /// on (nothing here is a real key).
+    #[test]
+    fn pkcs1v15_padding_is_strict() {
+        let key = PublicKey { n: N, e: &[1] };
+        let d = Hash::Sha256.digest(&[MSG]);
+        let t: Vec<u8> = [Hash::Sha256.digest_info_prefix(), &d].concat();
+        let k = N.len();
+        let good = |ps_len: usize, t: &[u8]| {
+            let mut em = alloc::vec![0x00, 0x01];
+            em.extend(core::iter::repeat_n(0xff, ps_len));
+            em.push(0);
+            em.extend_from_slice(t);
+            em
+        };
+        let em = good(k - t.len() - 3, &t);
+        assert_eq!(em.len(), k);
+        assert!(verify_pkcs1v15(key, Hash::Sha256, &d, &em));
+        // Trailing garbage after the digest (the 2006 forgery), with a short PS.
+        let mut short = good(8, &t);
+        short.resize(k, 0);
+        assert!(!verify_pkcs1v15(key, Hash::Sha256, &d, &short));
+        // Garbage inside PS, a missing separator, the wrong block type, a shifted start.
+        let mut bad = em.clone();
+        bad[5] = 0x00;
+        assert!(!verify_pkcs1v15(key, Hash::Sha256, &d, &bad));
+        let mut bad = em.clone();
+        bad[k - t.len() - 1] = 0xff;
+        assert!(!verify_pkcs1v15(key, Hash::Sha256, &d, &bad));
+        let mut bad = em.clone();
+        bad[1] = 0x02;
+        assert!(!verify_pkcs1v15(key, Hash::Sha256, &d, &bad));
+        let mut bad = em.clone();
+        bad[0] = 0x01;
+        assert!(!verify_pkcs1v15(key, Hash::Sha256, &d, &bad));
+        // DigestInfo without the NULL parameters, or naming another hash.
+        let mut no_null = t.clone();
+        no_null.drain(15..17);
+        no_null[1] -= 2;
+        no_null[3] -= 2;
+        assert!(!verify_pkcs1v15(key, Hash::Sha256, &d, &good(k - no_null.len() - 3, &no_null)));
+        let mut other_oid = t.clone();
+        other_oid[14] = 0x02;
+        assert!(!verify_pkcs1v15(key, Hash::Sha256, &d, &good(k - other_oid.len() - 3, &other_oid)));
+        // A digest of the wrong length, and the wrong digest.
+        assert!(!verify_pkcs1v15(key, Hash::Sha256, &d[..31], &em));
+        assert!(!verify_pkcs1v15(key, Hash::Sha256, &Hash::Sha256.digest(&[b"x"]), &em));
+        // A signature that is not below the modulus, however encoded.
+        assert!(!verify_pkcs1v15(key, Hash::Sha256, &d, N));
+        let mut over = alloc::vec![0u8; k + 1];
+        over[1..].copy_from_slice(&em);
+        assert!(verify_pkcs1v15(key, Hash::Sha256, &d, &over));
+        over[0] = 1;
+        assert!(!verify_pkcs1v15(key, Hash::Sha256, &d, &over));
+    }
+
     #[test]
     fn rejects_odd_keys() {
         assert!(!verify_pkcs1v15(PublicKey { n: &[0u8; 256], e: E }, Hash::Sha256, &[0u8; 32], SIG_V15));

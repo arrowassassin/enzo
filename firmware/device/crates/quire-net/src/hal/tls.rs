@@ -4,7 +4,9 @@
 //! chip's hardware RNG for the key share. Record buffers are the caller's, allocated
 //! for one request.
 
+use alloc::rc::Rc;
 use alloc::vec::Vec;
+use core::cell::Cell;
 
 use embassy_net::tcp::TcpSocket;
 use embassy_time::{with_timeout, Duration};
@@ -73,16 +75,18 @@ pub fn now_utc() -> Option<u64> {
 }
 
 /// The verifier: chain and host at the Certificate message, the handshake signature at
-/// CertificateVerify.
+/// CertificateVerify. `done` is set only once both passed: embedded-tls itself does not
+/// insist on either message, so [`open`] checks it after the handshake.
 pub struct Verifier {
     host: alloc::string::String,
     leaf: Option<Key>,
     transcript: Option<<Aes128GcmSha256 as TlsCipherSuite>::Hash>,
+    done: Rc<Cell<bool>>,
 }
 
 impl Verifier {
-    fn new() -> Self {
-        Verifier { host: alloc::string::String::new(), leaf: None, transcript: None }
+    fn new(done: Rc<Cell<bool>>) -> Self {
+        Verifier { host: alloc::string::String::new(), leaf: None, transcript: None, done }
     }
 }
 
@@ -101,6 +105,7 @@ impl TlsVerifier<Aes128GcmSha256> for Verifier {
                 CertificateEntryRef::RawPublicKey(_) => None,
             })
             .collect();
+        self.done.set(false);
         match x509::verify_chain(&entries, &self.host, now_utc(), x509::ROOTS) {
             Ok(key) => {
                 self.leaf = Some(key);
@@ -121,18 +126,25 @@ impl TlsVerifier<Aes128GcmSha256> for Verifier {
         msg.resize(64, 0x20);
         msg.extend_from_slice(b"TLS 1.3, server CertificateVerify\0");
         msg.extend_from_slice(&transcript.finalize());
-        let r = match verify.signature_scheme {
-            SignatureScheme::EcdsaSecp256r1Sha256 => x509::verify(key, SigAlg::Ecdsa(Hash::Sha256), &msg, verify.signature),
-            SignatureScheme::EcdsaSecp384r1Sha384 => x509::verify(key, SigAlg::Ecdsa(Hash::Sha384), &msg, verify.signature),
-            SignatureScheme::RsaPssRsaeSha256 => x509::verify_pss(key, Hash::Sha256, &msg, verify.signature),
-            SignatureScheme::RsaPssRsaeSha384 => x509::verify_pss(key, Hash::Sha384, &msg, verify.signature),
-            SignatureScheme::RsaPssRsaeSha512 => x509::verify_pss(key, Hash::Sha512, &msg, verify.signature),
+        // RFC 8446 §4.2.3: each ECDSA scheme is bound to its curve.
+        let r = match (verify.signature_scheme, key) {
+            (SignatureScheme::EcdsaSecp256r1Sha256, Key::P256(_)) => x509::verify(key, SigAlg::Ecdsa(Hash::Sha256), &msg, verify.signature),
+            (SignatureScheme::EcdsaSecp384r1Sha384, Key::P384(_)) => x509::verify(key, SigAlg::Ecdsa(Hash::Sha384), &msg, verify.signature),
+            (SignatureScheme::RsaPssRsaeSha256, Key::Rsa { .. }) => x509::verify_pss(key, Hash::Sha256, &msg, verify.signature),
+            (SignatureScheme::RsaPssRsaeSha384, Key::Rsa { .. }) => x509::verify_pss(key, Hash::Sha384, &msg, verify.signature),
+            (SignatureScheme::RsaPssRsaeSha512, Key::Rsa { .. }) => x509::verify_pss(key, Hash::Sha512, &msg, verify.signature),
             _ => return Err(TlsError::InvalidSignatureScheme),
         };
-        r.map_err(|e| {
-            log::warn!("tls: handshake signature: {e:?}");
-            TlsError::InvalidSignature
-        })
+        match r {
+            Ok(()) => {
+                self.done.set(true);
+                Ok(())
+            }
+            Err(e) => {
+                log::warn!("tls: handshake signature: {e:?}");
+                Err(TlsError::InvalidSignature)
+            }
+        }
     }
 }
 
@@ -143,15 +155,10 @@ pub struct Provider {
 }
 
 impl Provider {
-    /// A provider for one connection.
-    pub fn new() -> Self {
-        Provider { rng: HwRng::new(), verifier: Verifier::new() }
-    }
-}
-
-impl Default for Provider {
-    fn default() -> Self {
-        Self::new()
+    /// A provider for one connection; `done` reads true once the server proved its
+    /// identity (verified chain and CertificateVerify).
+    pub fn new(done: Rc<Cell<bool>>) -> Self {
+        Provider { rng: HwRng::new(), verifier: Verifier::new(done) }
     }
 }
 
@@ -177,7 +184,13 @@ pub type Tls<'a> = TlsConnection<'a, TcpSocket<'a>, Aes128GcmSha256>;
 pub async fn open<'a>(socket: TcpSocket<'a>, host: &str, read_buf: &'a mut [u8], write_buf: &'a mut [u8]) -> Result<Tls<'a>, TlsError> {
     let config = TlsConfig::new().with_server_name(host);
     let mut conn = TlsConnection::new(socket, read_buf, write_buf);
-    match with_timeout(HANDSHAKE_TIMEOUT, conn.open(TlsContext::new(&config, Provider::new()))).await {
+    let done = Rc::new(Cell::new(false));
+    match with_timeout(HANDSHAKE_TIMEOUT, conn.open(TlsContext::new(&config, Provider::new(done.clone())))).await {
+        // A handshake without a Certificate and CertificateVerify is unauthenticated.
+        Ok(Ok(())) if !done.get() => {
+            log::warn!("tls: {host} sent no verified certificate");
+            Err(TlsError::InvalidCertificate)
+        }
         Ok(Ok(())) => Ok(conn),
         Ok(Err(e)) => Err(e),
         Err(_) => Err(TlsError::Io(embedded_io_async::ErrorKind::TimedOut)),

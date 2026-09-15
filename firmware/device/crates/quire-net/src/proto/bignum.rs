@@ -144,6 +144,12 @@ impl Modulus {
         Some(x)
     }
 
+    /// Big-endian bytes as limbs, only when they are strictly below the modulus.
+    pub fn below(&self, bytes: &[u8]) -> Option<Limbs> {
+        let x = from_be(bytes, self.n.len())?;
+        (!ge(&x, &self.n)).then_some(x)
+    }
+
     /// Montgomery product a·b·R^-1 mod n (CIOS).
     pub fn mont_mul(&self, a: &[u32], b: &[u32]) -> Limbs {
         let k = self.n.len();
@@ -264,10 +270,7 @@ impl Modulus {
     /// s^e mod n as big-endian bytes of the modulus length, for a small public
     /// exponent (RSA); `None` when `s` is not below the modulus.
     pub fn pow_small(&self, s: &[u8], e: &[u8]) -> Option<Vec<u8>> {
-        let s = from_be(s, self.n.len())?;
-        if ge(&s, &self.n) {
-            return None;
-        }
+        let s = self.below(s)?;
         let e = strip(e);
         if e.is_empty() || e.len() > 4 {
             return None;
