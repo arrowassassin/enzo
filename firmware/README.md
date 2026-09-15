@@ -55,3 +55,21 @@ Values that were taken from the community's measurements of the X3 and should be
 - Panel: the boot-time probe tells the original UC8253 (10 MHz SPI, LUTs in registers) from the UC8279 (20 MHz) on the shared SPI bus (SCLK 8, MOSI 10, MISO 7; panel CS 21, DC 4, RST 5, BUSY 6; card CS 12, card rail GPIO13). The default rotation is portrait; *Settings → Keys → Left-handed* flips it.
 - I²C on GPIO20/GPIO0 at 400 kHz: BQ27220 gauge at 0x55, DS3231 clock at 0x68, QMI8658 IMU at 0x6B or 0x6A.
 - Light sleep in 30 s slices with the RTC re-read on each wake; deep sleep after the power-off timeout with the card rail held low.
+
+## Power
+
+Three states, and the reader moves between them on its own:
+
+| State | What is running | Datasheet draw |
+| --- | --- | --- |
+| Reading | The loop naps in 25 ms slices once a page has been still for 1.5 s, sampling the keys on each wake | ~1 mA, against ~20 mA awake at 160 MHz |
+| Light sleep | 30 s slices; the panel is down, the card's rail comes down after two minutes, the sleep screen repaints its clock once a minute | ~130 µA |
+| Deep sleep | Everything off but the RTC; only the Power key wakes it | ~5 µA |
+
+The keys are ADC ladders, not plain GPIOs, so there is no pad level for light sleep to wake on: the nap is a timer wake short enough that a key cannot be pressed and released inside one, and the first sample that sees contact returns the loop to 100 Hz so debounce runs at its usual spacing. Power is a real GPIO and does have a level wake. The loop does not nap while the radio is up (sleeping would stop the executor under a live session), while a key is down, or on USB power.
+
+The card's rail is the one thing left drawing real current through a sleep, so it comes down two minutes in — but only while the sleep screen can repaint its clock without reading anything (`Ui::sleep_tick_needs_fs`). Coming back is a full power cycle and the 400 kHz initialisation handshake, retried three times; a card that will not answer leaves the reader where a card pulled out mid-session would.
+
+The nap's own cost is the number to check first: entering and leaving light sleep is not free, and at forty naps a second an entry and exit costing much more than a couple of milliseconds would eat the saving and add latency with it. If it proves expensive, `NAP_MS` is the dial — a longer slice saves more and answers a key later.
+
+None of these figures is measured. They are the ESP32-C3 datasheet's numbers against the 650 mAh cell (642 mAh in the gauge's configuration), and the card's idle draw — the term that decides whether a long light sleep costs 1 % of the battery or all of it — is not known at all. The gauge reports current in register `0x0C` and the firmware already reads it, so a unit on the bench can settle every row of that table.

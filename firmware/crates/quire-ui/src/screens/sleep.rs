@@ -570,6 +570,12 @@ impl<E: Env> Screen<E> for SleepScreen {
             _ => Refresh::None,
         }
     }
+    fn minute_tick_needs_fs(&self) -> bool {
+        // An image is already in the frame and only its clock slot is repainted; a still
+        // screen has nothing to repaint at all. Everything else redraws, and a redraw
+        // reads the card (the quote file, the pack, the library).
+        !matches!(self.drawn, Some(Drawn::Image { .. }) | Some(Drawn::Still))
+    }
 }
 
 /// The platform asks for sleep once the sleep screen is drawn: a helper to push it and

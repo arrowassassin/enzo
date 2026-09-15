@@ -417,6 +417,13 @@ pub trait Screen<E: Env> {
     fn minute_tick(&mut self, _cx: &mut Ctx<E>, _f: &mut Frame) -> Refresh {
         Refresh::None
     }
+    /// Whether [`Screen::minute_tick`] has to read the filesystem to do its work. The
+    /// platform cuts the card's power rail during a long sleep, and asks this before it
+    /// does: a screen that answers `false` keeps its clock ticking through the dark.
+    /// Default: `true`, because a screen that redraws itself reads whatever it drew from.
+    fn minute_tick_needs_fs(&self) -> bool {
+        true
+    }
 }
 
 /// What the frame holds after a draw, when a later draw can build on it instead of
@@ -660,6 +667,19 @@ impl<E: Env> Ui<E> {
     /// the screen repaints its time in the frame (which still holds its last draw) and a
     /// DU shows it; within the same minute nothing happens. `Refresh::None` either way
     /// when the screen shows no time.
+    /// Whether the next sleeping minute tick needs the card.
+    ///
+    /// The platform cuts the card's power rail once a light sleep has run long enough to
+    /// be worth it; it asks this first. `true` when the frame no longer holds the sleep
+    /// screen (the tick redraws from scratch, which reads the card) or when the screen
+    /// itself says it reads.
+    pub fn sleep_tick_needs_fs(&self) -> bool {
+        if !matches!(self.frame_holds, Some(Held::Sleep(..))) {
+            return true;
+        }
+        self.screens.last().is_none_or(|s| s.minute_tick_needs_fs())
+    }
+
     fn sleep_tick(&mut self, env: &mut E) -> Refresh {
         let minute = env.now() / 60;
         let Some(Held::Sleep(drawn, inverted)) = self.frame_holds else {
