@@ -63,6 +63,9 @@ fn map<E: core::error::Error>(e: embedded_sdmmc::Error<E>) -> FsError {
 #[derive(Clone)]
 pub struct SdFs {
     vm: &'static Vm,
+    /// The shared SPI bus, kept so the card can be taken back down to its initialisation
+    /// rate and up again after its power rail has been cut for a sleep.
+    bus: &'static SharedBus,
     volume: RawVolume,
     root: RawDirectory,
     /// Bytes on the card, from the CSD.
@@ -80,7 +83,23 @@ impl SdFs {
         let vm = vm_cell.init(VolumeManager::new_with_limits(card, Clock, 0x1000));
         let volume = vm.open_raw_volume(VolumeIdx(0)).map_err(|e| alloc::format!("volume: {e:?}"))?;
         let root = vm.open_root_dir(volume).map_err(|e| alloc::format!("root: {e:?}"))?;
-        Ok(SdFs { vm, volume, root, card_bytes })
+        Ok(SdFs { vm, bus, volume, root, card_bytes })
+    }
+
+    /// Bring the card back after its power rail was cut.
+    ///
+    /// Only the SPI-level initialisation is lost with the power: it is the same card with
+    /// the same filesystem, so the volume and directory handles stay valid and the block
+    /// cache still holds blocks that nothing has written. What has to be redone is the
+    /// initialisation handshake, and that only answers at 400 kHz, so the bus drops to the
+    /// rate `mount` uses and goes back to 20 MHz afterwards.
+    pub fn reacquire(&self) -> Result<(), String> {
+        self.vm.device(|card| card.mark_card_uninit());
+        self.bus.set_rate(Role::Card, 400_000);
+        // `num_bytes` runs the handshake; the size is already known from the mount.
+        let r = self.vm.device(|card| card.num_bytes()).map_err(|e| alloc::format!("card: {e:?}"));
+        self.bus.set_rate(Role::Card, 20_000_000);
+        r.map(|_| ())
     }
 
     /// The volume manager (for the developer screen).

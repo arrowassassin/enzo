@@ -10,7 +10,7 @@ mod display;
 mod env;
 
 use alloc::vec::Vec;
-use core::sync::atomic::Ordering;
+use core::sync::atomic::{AtomicU32, Ordering};
 
 use embassy_time::{Duration, Instant, Timer};
 use esp_backtrace as _;
@@ -121,12 +121,48 @@ impl quire_epd::ProbeBus for ProbePins<'_> {
     }
 }
 
+/// Milliseconds the system timer missed while the clocks were off in a light sleep.
+///
+/// Everything that asks the time — the wall clock, the one-second tick, the idle
+/// timeouts — reads it through [`uptime_ms`], so accounting for a sleep here is enough to
+/// keep the whole device's sense of time straight across one.
+static SLEPT_MS: AtomicU32 = AtomicU32::new(0);
+
 fn uptime_ms() -> u32 {
-    Instant::now().as_millis() as u32
+    (Instant::now().as_millis() as u32).wrapping_add(SLEPT_MS.load(Ordering::Relaxed))
 }
 
 fn tick_uptime() {
     UPTIME_MS.store(uptime_ms(), Ordering::Relaxed);
+}
+
+/// Light sleep for at most `ms`, waking early if the Power key goes down.
+///
+/// The system timer is clocked from a crystal that light sleep gates, so it does not
+/// advance while the core is down; the RTC's own counter does. Measuring both and booking
+/// the difference keeps the device's sense of time straight whether the sleep ran its full
+/// length or the Power key cut it short after a second — and books nothing at all on a
+/// part or a HAL where the system timer turns out to keep running.
+fn doze(rtc: &mut Rtc<'static>, ms: u32) {
+    let before_sys = Instant::now().as_millis() as u32;
+    let before_rtc = (rtc.current_time_us() / 1000) as u32;
+    {
+        // SAFETY: GPIO3 is also held as the `Input` in `keys`; the wake source only
+        // programs the RTC wake bits of the same pad and does not change its mode.
+        let mut wake_pin = unsafe { esp_hal::peripherals::GPIO3::steal() };
+        let mut pins: [(&mut dyn RtcPinWithResistors, WakeupLevel); 1] = [(&mut wake_pin, WakeupLevel::Low)];
+        let gpio = RtcioWakeupSource::new(&mut pins);
+        let timer = TimerWakeupSource::new(core::time::Duration::from_millis(ms as u64));
+        rtc.sleep_light(&[&timer, &gpio]);
+    }
+    let slept = ((rtc.current_time_us() / 1000) as u32).wrapping_sub(before_rtc);
+    let counted = (Instant::now().as_millis() as u32).wrapping_sub(before_sys);
+    let missed = slept.saturating_sub(counted);
+    if missed > 0 {
+        // The core has no atomic read-modify-write, and none is needed: every sleep is
+        // entered and left from the one executor.
+        SLEPT_MS.store(SLEPT_MS.load(Ordering::Relaxed).wrapping_add(missed), Ordering::Relaxed);
+    }
 }
 
 /// Draw a full-screen message (before the UI exists, or when the card is missing).
@@ -565,12 +601,49 @@ async fn main(spawner: embassy_executor::Spawner) -> ! {
             r.prefetch_next(&env.fs);
         }
 
-        if !worked {
-            Timer::after(Duration::from_millis(10)).await;
-        } else {
+        if worked {
             embassy_futures::yield_now().await;
+        } else if can_nap(&keys, &env, now_ms, last_activity) {
+            doze(&mut rtc, NAP_MS);
+        } else {
+            Timer::after(Duration::from_millis(10)).await;
         }
     }
+}
+
+/// How long one nap lasts.
+///
+/// Reading is almost all idle: between one page turn and the next the loop has nothing to
+/// do, but sitting in the executor at 160 MHz still costs around 20 mA, where light sleep
+/// costs about 130 µA. Napping in slices and sampling the keys on each wake takes the idle
+/// draw down by better than a factor of ten.
+///
+/// The keys are ADC ladders rather than plain GPIOs, so there is no level for the pad to
+/// wake on (see `02-hardware.md` §10.7): the slice is a timer wake instead, short enough
+/// that no key can be pressed and released inside one. The Power key is a real GPIO and
+/// does have a level wake, so it is answered the instant it goes down.
+const NAP_MS: u32 = 25;
+
+/// Quiet time before napping starts.
+///
+/// A run of page turns — holding Down, or reading quickly — stays at the full 100 Hz, so
+/// nothing about turning pages changes. It is only once the reader has settled on a page
+/// that the loop starts to nap through it.
+const NAP_AFTER_MS: u32 = 1_500;
+
+/// Whether the loop may nap instead of spinning.
+///
+/// Sleeping stops the executor, so it is only safe when nothing else needs to run: the
+/// radio has to be off (a session in progress would lose its connections), and nothing
+/// may be touching a key. It is also pointless on USB power, where there is no battery to
+/// save and a sleep would only interrupt the serial console.
+fn can_nap(keys: &Keys, env: &DeviceEnv, now_ms: u32, last_activity: u32) -> bool {
+    // The state is read from the field rather than through `Env::wifi`, which clones its
+    // strings: this is asked on every idle pass.
+    !keys.machine.any_touched()
+        && matches!(env.wifi, quire_ui::WifiState::Off)
+        && !env.battery.charging
+        && now_ms.wrapping_sub(last_activity) >= NAP_AFTER_MS
 }
 
 /// Write an update file from the card into the other slot, showing progress on the
@@ -674,22 +747,27 @@ async fn light_sleep_until_wake(
 ) {
     let off_after_ms = (ui.settings.power_off_after_min as u32).saturating_mul(60_000);
     let mut slept_ms = 0u32;
+    let mut card_off = false;
     loop {
-        {
-            // SAFETY: GPIO3 is also held as the `Input` in `keys`; the wake source only
-            // programs the RTC wake bits of the same pad and does not change its mode.
-            let mut wake_pin = unsafe { esp_hal::peripherals::GPIO3::steal() };
-            let mut pins: [(&mut dyn RtcPinWithResistors, WakeupLevel); 1] = [(&mut wake_pin, WakeupLevel::Low)];
-            let gpio = RtcioWakeupSource::new(&mut pins);
-            let timer = TimerWakeupSource::new(core::time::Duration::from_secs(30));
-            rtc.sleep_light(&[&timer, &gpio]);
+        // Past the threshold the card's rail comes down for the rest of the sleep, for as
+        // long as the screen can keep its clock without reading anything. Should it ever
+        // need the card again, the card comes back first and the repaint is unaffected.
+        let needs_fs = ui.sleep_tick_needs_fs();
+        if card_off && needs_fs {
+            wake_card(sd_power, &env.fs).await;
+            card_off = false;
+        } else if !card_off && !needs_fs && slept_ms >= CARD_OFF_AFTER_MS {
+            card_off = true;
+            sd_power.set_low();
+            power::hold_sd_rail(true);
         }
+        doze(rtc, 30_000);
         tick_uptime();
-        // The system timer paused: catch the clock up from the RTC (or by the slice).
         slept_ms = slept_ms.saturating_add(30_000);
-        match i2c::read_clock(i2c_bus) {
-            Some(t) => env.set_clock(t),
-            None => env.set_clock(env.now().wrapping_add(30)),
+        // `uptime_ms` has already been credited with the slice, so the clock has moved on
+        // by itself; the chip is read to correct the drift, not to carry the time.
+        if let Some(t) = i2c::read_clock(i2c_bus) {
+            env.set_clock(t);
         }
         env.tick_clock();
         // Debounce: the key has to be down for a moment.
@@ -705,6 +783,9 @@ async fn light_sleep_until_wake(
             while keys.raw().2 {
                 Timer::after(Duration::from_millis(10)).await;
             }
+            if card_off {
+                wake_card(sd_power, &env.fs).await;
+            }
             keys.machine = KeyMachine::new();
             return;
         }
@@ -719,6 +800,39 @@ async fn light_sleep_until_wake(
             display.sleep();
         }
     }
+}
+
+/// Light sleep this long before the card's power rail comes down.
+///
+/// A powered card is the one thing left drawing real current while the reader sleeps, and
+/// a sleep is usually long: minutes in a pocket, hours in a bag. Waiting a little first
+/// means a reader picked straight back up never pays for the handshake that brings the
+/// card back, and a reader left alone stops paying for the card within two minutes.
+const CARD_OFF_AFTER_MS: u32 = 2 * 60_000;
+
+/// Bring the card back after [`CARD_OFF_AFTER_MS`] cut its rail.
+///
+/// A card that will not answer is not fatal here — it is the same state as a card pulled
+/// out mid-session, which every path that touches the filesystem already has to handle —
+/// but it is worth a few tries first, since a full power cycle is exactly what the card
+/// saw at boot.
+async fn wake_card(sd_power: &mut Output<'static>, fs: &SdFs) {
+    power::release_holds();
+    sd_power.set_high();
+    Timer::after(Duration::from_millis(50)).await;
+    for attempt in 1..=3u32 {
+        match fs.reacquire() {
+            Ok(()) => return,
+            Err(e) => {
+                println!("card: re-acquire after sleep failed ({attempt}/3): {e}");
+                sd_power.set_low();
+                Timer::after(Duration::from_millis(200)).await;
+                sd_power.set_high();
+                Timer::after(Duration::from_millis(50 * attempt as u64)).await;
+            }
+        }
+    }
+    println!("card: not answering after the sleep; leaving the rail up");
 }
 
 /// Power everything down and enter deep sleep; only the Power key wakes the device.

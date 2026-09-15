@@ -114,6 +114,8 @@ Quire targets one device today, the Xteink X3.
 | Motion | QMI8658 IMU on I2C, behind two settings that are off by default: tilt to turn the page, shake to refresh the panel |
 | Port | A four-pin magnetic pogo connector to the ESP32-C3's USB-Serial/JTAG. There is no USB-C socket |
 
+Battery is the other constraint. Reading is almost all idle, so the loop light-sleeps in 25 ms slices once a page has been still for a moment and samples the keys on each wake, which takes the idle draw from roughly 20 mA down to about 1 mA; a run of page turns stays at full speed, and the loop does not nap while the radio is up or while the reader is on USB power. A sleeping reader powers the panel down, cuts the card's rail two minutes in, and repaints the sleep-screen clock once a minute until the power-off timeout sends it to deep sleep at a few microamps. These are the datasheet's numbers rather than measurements — see [firmware/README.md](firmware/README.md) for what is known and what is not.
+
 Memory is the constraint that shapes everything. The ESP32-C3 maps at most 4 MB of flash for code and constants together, so the firmware has to stay under 4 MB whatever the 6 MB slot allows: the dictionary therefore lives outside the firmware in its own partition. RAM is 313 KB of DRAM plus a 64 KB region the bootloader leaves behind, split into a 144 KB main heap, the 52 KB panel plane, the network statics and a 40 KB main stack. The reading page holds about 115 KB of heap, which is why the radio runs as sessions that end when a transfer is done rather than staying up.
 
 ### Porting elsewhere
@@ -357,7 +359,7 @@ cargo clippy --release -- -D warnings
 cargo build --release
 ```
 
-Most of the integration testing runs in the simulator. `firmware/tools/quire-sim/tests` holds a 142-screen snapshot tour plus grammar, fuzz, persistence, overflow, reader, glyph, apps, sleep and efficiency suites; `quire-net` carries 82 protocol tests and `quire-board` 21 host tests of its pure logic.
+Most of the integration testing runs in the simulator. `firmware/tools/quire-sim/tests` holds a 142-screen snapshot tour plus grammar, fuzz, persistence, overflow, reader, glyph, apps, sleep and efficiency suites; `quire-net` carries 82 protocol tests and `quire-board` 22 host tests of its pure logic.
 
 The snapshot tour compares a hash per screen against `firmware/tools/quire-sim/snapshots.txt`. When a change alters a screen on purpose, look at the rendering before you accept it:
 

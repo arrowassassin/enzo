@@ -148,6 +148,16 @@ impl KeyMachine {
         self.slots.iter().any(|s| s.held.is_some())
     }
 
+    /// Whether any input read as pressed in the last sample, before debounce believed it.
+    ///
+    /// The nap between page turns ends on this rather than on [`KeyMachine::any_held`]:
+    /// one sample showing contact is enough to bring the loop back to full speed, so the
+    /// two agreeing samples a press needs are taken 10 ms apart as usual and no tap is
+    /// ever missed for having started inside a nap.
+    pub fn any_touched(&self) -> bool {
+        self.slots.iter().any(|s| s.held.is_some() || s.candidate.is_some())
+    }
+
     /// Whether Power is held right now.
     pub fn power_held(&self) -> bool {
         self.slots[2].held == Some(Key::Power)
@@ -202,6 +212,33 @@ mod tests {
         assert!((2..=3).contains(&repeats), "{repeats} repeats in 500 ms");
         assert_eq!(*ev.last().unwrap(), KeyEvent { key: Key::Right, kind: KeyKind::Release });
         assert!(!ev.iter().any(|e| e.kind == KeyKind::Press));
+    }
+
+    #[test]
+    fn a_tap_that_starts_during_a_nap_is_not_missed() {
+        // Idle sampling naps in 25 ms slices; the first sample that sees contact reports
+        // `any_touched`, which is what returns the loop to 10 ms sampling. The two
+        // agreeing samples a press needs are then taken at the usual spacing, so a tap
+        // that began inside a nap still presses.
+        let mut m = KeyMachine::new();
+        let mut out = Vec::new();
+        let mut t = 0u32;
+        for _ in 0..2 {
+            out.extend(m.sample(4095, 4095, false, t));
+            assert!(!m.any_touched());
+            t += 25;
+        }
+        out.extend(m.sample(2694, 4095, false, t));
+        assert!(m.any_touched(), "first contact has to end the nap");
+        for _ in 0..4 {
+            t += 10;
+            out.extend(m.sample(2694, 4095, false, t));
+        }
+        for _ in 0..2 {
+            t += 10;
+            out.extend(m.sample(4095, 4095, false, t));
+        }
+        assert_eq!(out, [KeyEvent::press(Key::Confirm)]);
     }
 
     #[test]
