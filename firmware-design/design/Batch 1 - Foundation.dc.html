@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
+<link href="https://fonts.googleapis.com/css2?family=Literata:ital,opsz,wght@0,7..72,400..700;1,7..72,400..700&amp;family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&amp;family=JetBrains+Mono:wght@400;500;700&amp;display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#EDEBE6;font-family:'Atkinson Hyperlegible',sans-serif;color:#000}
+a{color:#000}a:hover{color:#444}
+</style>
+</helmet>
+<section id="batch1" style="padding:64px;display:flex;flex-direction:column;gap:48px;align-items:flex-start">
+
+<div style="background:#fff;outline:1px solid #C9C5BC;padding:32px 40px;max-width:1060px">
+<div style="font-family:Literata,serif;font-size:30px">Quire — Batch 1 · Foundation</div>
+<div style="font:12px/1.7 'JetBrains Mono',monospace;color:#666;margin-top:8px">528 × 792 · 1-bit ink on paper · Literata / Atkinson Hyperlegible / JetBrains Mono · boards <a href="#1a">1a</a> typography · <a href="#1b">1b</a> components · <a href="#1c">1c</a> signatures</div>
+<div style="font:12px/1.7 'JetBrains Mono',monospace;color:#000;margin-top:16px;border-top:1px solid #000;padding-top:12px">where the brief is silent, chosen like a book:<br>· rail labels: sentence case mono 18, 1 px cell dividers, empty cell = centred 2 px dot<br>· dot screen = 2 px checkerboard (exactly 50%); disabled content sits beneath it<br>· missing cover = white title plate over 6 px-pitch hatch, so the title stays legible<br>· compass: the four choices replace the rail — 26 px label over an 18 px context line at the key cells; Up/Down choices are rotated edge labels<br>· home layer + compass screen the exposed page at 50% so the layer owns the keys<br>· QR codes drawn as placeholder patterns at spec module sizes; firmware encodes real URLs<br>two-press audit: no screens in this batch; all component key mappings follow §2 grammar. boards are documents — refresh n/a.</div>
+</div>
+
+<div style="display:flex;gap:72px;align-items:flex-start">
+
+<!-- ======================= 1a TYPOGRAPHY ======================= -->
+<div id="1a" style="display:flex;flex-direction:column;gap:12px">
+<div style="font:13px 'JetBrains Mono',monospace"><span style="border:1px solid #000;padding:2px 6px;background:#fff">1a</span> typography board · 1:1 · brief §4</div>
+<div style="background:#fff;outline:1px solid #C9C5BC;padding:48px;width:1060px">
+<div style="font-family:Literata,serif;font-size:32px;padding-bottom:10px;border-bottom:4px solid #000">Typography</div>
+<div style="font:12px/1.6 'JetBrains Mono',monospace;color:#666;margin:10px 0 36px">8 px grid · 24 px outer margins · line height 1.3 for UI · reading 1.45 default</div>
+
+<div style="display:grid;grid-template-columns:230px 1fr;row-gap:30px;align-items:baseline">
+<div style="font:12px 'JetBrains Mono',monospace;color:#666">sans · 18 · small caps · +.08em</div>
+<div style="font-size:18px;letter-spacing:.08em;text-transform:uppercase">Time left · Contents · Finish by</div>
+<div style="font:12px 'JetBrains Mono',monospace;color:#666">sans · 22 · body</div>
+<div style="font-size:22px">Couldn't join HomeNet. Check the password.</div>
+<div style="font:12px 'JetBrains Mono',monospace;color:#666">sans · 26 · list title</div>
+<div style="font-size:26px">The Count of Monte Cristo</div>
+<div style="font:12px 'JetBrains Mono',monospace;color:#666">serif · 32 · screen title</div>
+<div style="font-family:Literata,serif;font-size:32px">Library</div>
+<div style="font:12px 'JetBrains Mono',monospace;color:#666">serif · 44 · poster numeral</div>
+<div><span style="font-family:Literata,serif;font-size:44px">4 h 12</span><div style="font-size:18px;letter-spacing:.08em;text-transform:uppercase;margin-top:2px">Time left</div></div>
+<div style="font:12px 'JetBrains Mono',monospace;color:#666">serif · 56 · hero numeral</div>
+<div style="font-family:Literata,serif;font-size:56px">212 h</div>
+<div style="font:12px 'JetBrains Mono',monospace;color:#666">mono · 18 · edge labels, times</div>
+<div style="font-family:'JetBrains Mono',monospace;font-size:18px">Contents · Close · 21:47 · 51% · 2 h 03 left</div>
+</div>
+
+<div style="margin-top:44px;display:grid;grid-template-columns:230px 1fr;row-gap:20px;align-items:center">
+<div style="font:12px 'JetBrains Mono',monospace;color:#666">4 px heavy rule</div><div style="height:4px;background:#000"></div>
+<div style="font:12px 'JetBrains Mono',monospace;color:#666">2 px rule</div><div style="height:2px;background:#000"></div>
+<div style="font:12px 'JetBrains Mono',monospace;color:#666">1 px hairline (Spine, inert)</div><div style="height:1px;background:#000"></div>
+</div>
+
+<div style="margin-top:44px;font-size:18px;letter-spacing:.08em;text-transform:uppercase;border-bottom:2px solid #000;padding-bottom:6px">Reading sizes</div>
+<div style="display:grid;grid-template-columns:230px 1fr;row-gap:18px;align-items:baseline;margin-top:20px">
+<div style="font:12px 'JetBrains Mono',monospace;color:#666">reading · 20</div><div style="font-family:Literata,serif;font-size:20px;white-space:nowrap;overflow:hidden">It is a truth universally acknowledged, that a single man in possession of a good fortune,</div>
+<div style="font:12px 'JetBrains Mono',monospace;color:#666">reading · 22</div><div style="font-family:Literata,serif;font-size:22px;white-space:nowrap;overflow:hidden">It is a truth universally acknowledged, that a single man in possession</div>
+<div style="font:12px 'JetBrains Mono',monospace;color:#666">reading · 24</div><div style="font-family:Literata,serif;font-size:24px;white-space:nowrap;overflow:hidden">It is a truth universally acknowledged, that a single man</div>
+<div style="font:12px 'JetBrains Mono',monospace;color:#666">reading · 26 — default</div><div style="font-family:Literata,serif;font-size:26px;white-space:nowrap;overflow:hidden;box-shadow:inset 4px 0 #000;padding-left:14px">It is a truth universally acknowledged, that a single man</div>
+<div style="font:12px 'JetBrains Mono',monospace;color:#666">reading · 28</div><div style="font-family:Literata,serif;font-size:28px;white-space:nowrap;overflow:hidden">It is a truth universally acknowledged, that a single</div>
+<div style="font:12px 'JetBrains Mono',monospace;color:#666">reading · 31</div><div style="font-family:Literata,serif;font-size:31px;white-space:nowrap;overflow:hidden">It is a truth universally acknowledged, that a</div>
+<div style="font:12px 'JetBrains Mono',monospace;color:#666">reading · 34</div><div style="font-family:Literata,serif;font-size:34px;white-space:nowrap;overflow:hidden">It is a truth universally acknowledged,</div>
+<div style="font:12px 'JetBrains Mono',monospace;color:#666">reading · 38</div><div style="font-family:Literata,serif;font-size:38px;white-space:nowrap;overflow:hidden">It is a truth universally</div>
+</div>
+
+<div style="margin-top:44px;font-size:18px;letter-spacing:.08em;text-transform:uppercase;border-bottom:2px solid #000;padding-bottom:6px">Line height</div>
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:28px;margin-top:20px">
+<div><div style="font:12px 'JetBrains Mono',monospace;color:#666;margin-bottom:8px">1.30 · compact</div><div lang="en" style="font-family:Literata,serif;font-size:22px;line-height:1.3;text-align:justify;hyphens:auto">Miss Brooke had that kind of beauty which seems to be thrown into relief by poor dress.</div></div>
+<div><div style="font:12px 'JetBrains Mono',monospace;color:#666;margin-bottom:8px">1.45 · default</div><div lang="en" style="font-family:Literata,serif;font-size:22px;line-height:1.45;text-align:justify;hyphens:auto">Miss Brooke had that kind of beauty which seems to be thrown into relief by poor dress.</div></div>
+<div><div style="font:12px 'JetBrains Mono',monospace;color:#666;margin-bottom:8px">1.60 · open</div><div lang="en" style="font-family:Literata,serif;font-size:22px;line-height:1.6;text-align:justify;hyphens:auto">Miss Brooke had that kind of beauty which seems to be thrown into relief by poor dress.</div></div>
+</div>
+
+<div style="margin-top:44px;font-size:18px;letter-spacing:.08em;text-transform:uppercase;border-bottom:2px solid #000;padding-bottom:6px">Chapter opening</div>
+<div style="width:464px;margin-top:28px">
+<div style="font-family:Literata,serif;font-size:56px;line-height:1">1</div>
+<div style="font-family:Literata,serif;font-size:32px;margin-top:8px">Loomings</div>
+<div style="height:4px;background:#000;width:64px;margin:16px 0 20px"></div>
+<div lang="en" style="font-family:Literata,serif;font-size:26px;line-height:1.45;text-align:justify;hyphens:auto"><span style="float:left;font-family:Literata,serif;font-size:102px;line-height:.82;padding:6px 10px 0 0">C</span>all me Ishmael. Some years ago—never mind how long precisely—having little or no money in my purse, and nothing particular to interest me on shore, I thought I would sail about a little and see the watery part of the world.</div>
+<div style="font:12px 'JetBrains Mono',monospace;color:#666;margin-top:14px;clear:both">56 numeral · 32 title · 4 px rule · three-line drop cap (toggle)</div>
+</div>
+</div>
+</div>
+
+<!-- ======================= 1b COMPONENTS ======================= -->
+<div id="1b" style="display:flex;flex-direction:column;gap:12px">
+<div style="font:13px 'JetBrains Mono',monospace"><span style="border:1px solid #000;padding:2px 6px;background:#fff">1b</span> components board · 1:1 · brief §5</div>
+<div style="background:#fff;outline:1px solid #C9C5BC;padding:48px;width:1900px">
+<div style="font-family:Literata,serif;font-size:32px;padding-bottom:10px;border-bottom:4px solid #000">Components</div>
+<div style="display:grid;grid-template-columns:repeat(3,584px);gap:40px;align-items:start;margin-top:36px">
+
+<!-- patterns -->
+<div>
+<div style="font:12px 'JetBrains Mono',monospace;color:#666;margin-bottom:10px">00 patterns — instead of grey</div>
+<div style="display:flex;gap:16px">
+<div style="width:128px"><div style="height:64px;border:1px solid #000;background:repeating-linear-gradient(180deg,#000 0 1px,#fff 1px 6px)"></div><div style="font:11px 'JetBrains Mono',monospace;color:#666;margin-top:6px">hatch · secondary surface</div></div>
+<div style="width:128px"><div style="height:64px;border:1px solid #000;background:conic-gradient(#000 0 25%,#fff 0 50%,#000 0 75%,#fff 0) 0 0/4px 4px"></div><div style="font:11px 'JetBrains Mono',monospace;color:#666;margin-top:6px">50% dot screen · disabled</div></div>
+<div style="width:128px"><div style="height:64px;border:1px solid #000;box-shadow:inset 4px 0 #000;display:flex;align-items:center;padding-left:14px;font-size:22px">Row</div><div style="font:11px 'JetBrains Mono',monospace;color:#666;margin-top:6px">4 px bar · selected</div></div>
+<div style="width:128px"><div style="height:64px;background:#000;color:#fff;display:flex;align-items:center;padding-left:14px;font-size:22px">Row</div><div style="font:11px 'JetBrains Mono',monospace;color:#666;margin-top:6px">inversion · focused</div></div>
+</div>
+</div>
+
+<!-- 01 running head -->
+<div>
+<div style="font:12px 'JetBrains Mono',monospace;color:#666;margin-bottom:10px">01 running head — screens · reading page</div>
+<div style="width:528px;border:1px solid #C9C5BC;padding:24px 24px 20px;background:#fff">
+<div style="font-family:Literata,serif;font-size:32px;padding-bottom:8px;border-bottom:4px solid #000">Library</div>
+</div>
+<div style="width:528px;border:1px solid #C9C5BC;border-top:none;padding:20px 32px;background:#fff;display:flex;justify-content:space-between;font-size:18px;letter-spacing:.08em;text-transform:uppercase"><span>Middlemarch</span><span>Chapter 1</span></div>
+</div>
+
+<!-- 02 edge rail -->
+<div>
+<div style="font:12px 'JetBrains Mono',monospace;color:#666;margin-bottom:10px">02 edge-label rail — 40 px · 4 px rule · four cells over the four keys</div>
+<div style="width:528px;height:40px;border-top:4px solid #000;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px;background:#fff;outline:1px solid #C9C5BC">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Library</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Close</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Continue</div>
+<div style="display:flex;align-items:center;justify-content:center">Bookshop</div>
+</div>
+<div style="width:528px;height:40px;border-top:4px solid #000;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px;background:#fff;outline:1px solid #C9C5BC;margin-top:16px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="15,4 7,12 15,20"></polyline></svg></div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><div style="width:2px;height:2px;background:#000"></div></div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Open</div>
+<div style="display:flex;align-items:center;justify-content:center"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="9,4 17,12 9,20"></polyline></svg></div>
+</div>
+<div style="font:11px 'JetBrains Mono',monospace;color:#666;margin-top:6px">empty cell = centred 2 px dot · chevrons where a word won't fit</div>
+</div>
+
+<!-- 03 side labels -->
+<div>
+<div style="font:12px 'JetBrains Mono',monospace;color:#666;margin-bottom:10px">03 side labels — right edge, beside Up and Down, only when they act</div>
+<div style="width:200px;height:200px;border:1px solid #C9C5BC;background:#fff;position:relative">
+<div style="position:absolute;right:4px;top:24px;writing-mode:vertical-rl;font-family:'JetBrains Mono',monospace;font-size:18px">Drop</div>
+<div style="position:absolute;right:4px;bottom:24px;writing-mode:vertical-rl;font-family:'JetBrains Mono',monospace;font-size:18px">Stats</div>
+<div style="position:absolute;right:36px;top:44px;font:11px 'JetBrains Mono',monospace;color:#666">↑ Up key</div>
+<div style="position:absolute;right:36px;bottom:44px;font:11px 'JetBrains Mono',monospace;color:#666">↓ Down key</div>
+</div>
+</div>
+
+<!-- 04 compass -->
+<div>
+<div style="font:12px 'JetBrains Mono',monospace;color:#666;margin-bottom:10px">04 compass overlay — lower 40% · choices replace the rail · full refresh open/close</div>
+<div style="width:528px;height:317px;border-top:2px solid #000;outline:1px solid #C9C5BC;background:#fff;position:relative;display:flex;flex-direction:column">
+<div style="position:absolute;right:4px;top:16px;writing-mode:vertical-rl;font-family:'JetBrains Mono',monospace;font-size:18px;border:1px solid #000;padding:4px 0">Type</div>
+<div style="position:absolute;right:4px;top:110px;writing-mode:vertical-rl;font-family:'JetBrains Mono',monospace;font-size:18px;border:1px solid #000;padding:4px 0">More</div>
+<div style="padding:20px 0 0 28px;font-family:'JetBrains Mono',monospace;font-size:18px;width:fit-content">Middlemarch · Chapter 1 · p 9 of 1408</div>
+<div style="flex:1;display:flex;align-items:center;justify-content:center;gap:10px;font-size:18px;margin-right:48px"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><path d="M7,3 h10 v18 l-5,-4.5 -5,4.5 z"></path></svg>hold Confirm — bookmark this page</div>
+<div style="height:104px;border-top:4px solid #000;display:grid;grid-template-columns:1fr 1fr 1fr 1fr">
+<div style="border-right:1px solid #000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:0 6px"><span style="font-size:23px;text-align:center">Contents</span><span style="font-size:18px;color:#000;font-family:'JetBrains Mono',monospace">Ch 1 of 86</span></div>
+<div style="border-right:1px solid #000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:0 6px"><span style="font-size:23px;text-align:center">Close</span><span style="font-size:18px;font-family:'JetBrains Mono',monospace">—</span></div>
+<div style="border-right:1px solid #000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:0 6px"><span style="font-size:23px;text-align:center">Bookmark</span><span style="font-size:18px;font-family:'JetBrains Mono',monospace">not set</span></div>
+<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:0 6px"><span style="font-size:23px;text-align:center">Go to</span><span style="font-size:18px;font-family:'JetBrains Mono',monospace">1% · p 9</span></div>
+</div>
+</div>
+<div style="font:11px 'JetBrains Mono',monospace;color:#666;margin-top:6px">Up/Down choices ride the right edge as rotated labels · label 26 over context 18 at each key cell</div>
+</div>
+
+<!-- 05 home layer card -->
+<div>
+<div style="font:12px 'JetBrains Mono',monospace;color:#666;margin-bottom:10px">05 home layer — card over the upper 60% · one press to open and close</div>
+<div style="width:528px;height:475px;border-bottom:2px solid #000;outline:1px solid #C9C5BC;background:#fff;padding:40px 32px 0;display:flex;flex-direction:column">
+<div style="font-family:Literata,serif;font-size:32px">Middlemarch</div>
+<div style="font-size:22px;margin-top:4px">George Eliot</div>
+<div style="font-size:22px;margin-top:20px">38 min left in this chapter</div>
+<div style="font-size:22px">Finish by Thursday</div>
+<div style="height:1px;background:#000;margin:24px 0 14px"></div>
+<div style="font-size:18px;letter-spacing:.08em;text-transform:uppercase">Recent</div>
+<div style="height:48px;display:flex;align-items:center;justify-content:space-between"><span style="font-size:22px">The Count of Monte Cristo</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">12 h 40</span></div>
+<div style="height:48px;display:flex;align-items:center;justify-content:space-between;border-top:1px solid #000"><span style="font-size:22px">Meditations</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">1 h 05</span></div>
+<div style="height:48px;display:flex;align-items:center;justify-content:space-between;border-top:1px solid #000"><span style="font-size:22px">The Time Machine</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">finished</span></div>
+</div>
+<div style="font:11px 'JetBrains Mono',monospace;color:#666;margin-top:6px">rail beneath: Library · Close · Continue · Bookshop — side: Drop / Stats (see 1c)</div>
+</div>
+
+<!-- 06 jump -->
+<div>
+<div style="font:12px 'JetBrains Mono',monospace;color:#666;margin-bottom:10px">06 jump — search line + one list of everything (fragment; full page in 1c)</div>
+<div style="width:528px;outline:1px solid #C9C5BC;background:#fff">
+<div style="height:64px;border-bottom:2px solid #000;display:flex;align-items:center;justify-content:space-between;padding:0 20px"><div style="display:flex;align-items:center;gap:6px"><span style="font-family:'JetBrains Mono',monospace;font-size:26px">we</span><span style="display:inline-block;width:2px;height:30px;background:#000"></span></div><span style="font-size:18px">Type on your phone</span></div>
+<div style="height:56px;display:flex;align-items:center;justify-content:space-between;padding:0 20px;border-bottom:1px solid #000"><span style="font-size:26px">Weather</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">21°</span></div>
+<div style="height:56px;display:flex;align-items:center;justify-content:space-between;padding:0 20px;background:#000;color:#fff"><span style="font-size:26px">Wikipedia</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px"></span></div>
+</div>
+<div style="font:11px 'JetBrains Mono',monospace;color:#666;margin-top:6px">typed from the phone, the list filters live · focused row inverts</div>
+</div>
+
+<!-- 07 list rows -->
+<div>
+<div style="font:12px 'JetBrains Mono',monospace;color:#666;margin-bottom:10px">07 list row — 56 px · 88 px with thumbnail · four states</div>
+<div style="width:528px;outline:1px solid #C9C5BC;background:#fff">
+<div style="height:56px;display:flex;align-items:center;justify-content:space-between;padding:0 20px;border-bottom:1px solid #000"><span style="font-size:26px">Pride and Prejudice</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">3 h 24</span></div>
+<div style="height:56px;display:flex;align-items:center;justify-content:space-between;padding:0 20px;background:#000;color:#fff"><span style="font-size:26px">Middlemarch</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">4 h 12</span></div>
+<div style="height:56px;display:flex;align-items:center;justify-content:space-between;padding:0 20px;border-top:1px solid #000;border-bottom:1px solid #000;box-shadow:inset 4px 0 #000"><span style="font-size:26px">Meditations</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">1 h 05</span></div>
+<div style="height:56px;position:relative;border-bottom:1px solid #000"><div style="height:100%;display:flex;align-items:center;justify-content:space-between;padding:0 20px"><span style="font-size:26px">Sync</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">Wi-Fi off</span></div><div style="position:absolute;inset:0;background:conic-gradient(#fff 0 25%,#0000 0 50%,#fff 0 75%,#0000 0) 0 0/4px 4px"></div></div>
+<div style="height:88px;display:flex;align-items:center;gap:16px;padding:0 20px"><div style="width:48px;height:72px;border:1px solid #000;background:repeating-linear-gradient(180deg,#000 0 1px,#fff 1px 6px)"></div><div style="flex:1"><div style="font-size:26px">Moby-Dick</div><div style="font-size:18px">Herman Melville</div></div><span style="font-family:'JetBrains Mono',monospace;font-size:18px">62%</span></div>
+</div>
+<div style="font:11px 'JetBrains Mono',monospace;color:#666;margin-top:6px">default · focused (inverted) · selected-not-focused (4 px bar) · disabled (dot screen) · 88 px thumbnail</div>
+</div>
+
+<!-- 08 cover cell -->
+<div>
+<div style="font:12px 'JetBrains Mono',monospace;color:#666;margin-bottom:10px">08 cover grid cell — 152 × 228 · 2 px frame · 6 px on focus</div>
+<div style="display:flex;gap:32px;align-items:flex-start">
+<div style="width:156px"><div style="width:152px;height:228px;border:2px solid #000;background:repeating-linear-gradient(180deg,#000 0 1px,#fff 1px 6px);position:relative;overflow:hidden"><div style="position:absolute;left:12px;right:12px;top:40px;background:#fff;border:1px solid #000;padding:12px 6px;text-align:center"><div style="font-family:Literata,serif;font-size:22px;line-height:1.15;overflow-wrap:break-word">Meditations</div><div style="font-size:16px;margin-top:8px">Marcus Aurelius</div></div></div><div style="font-size:22px;margin-top:8px">Meditations</div><div style="font-size:18px">Marcus Aurelius</div></div>
+<div style="width:164px"><div style="width:152px;height:228px;border:6px solid #000;background:repeating-linear-gradient(180deg,#000 0 1px,#fff 1px 6px);position:relative;overflow:hidden"><div style="position:absolute;left:8px;right:8px;top:36px;background:#fff;border:1px solid #000;padding:12px 6px;text-align:center"><div style="font-family:Literata,serif;font-size:22px;line-height:1.15;overflow-wrap:break-word">Meditations</div><div style="font-size:16px;margin-top:8px">Marcus Aurelius</div></div></div><div style="font:11px 'JetBrains Mono',monospace;color:#666;margin-top:8px">focused</div></div>
+</div>
+<div style="font:11px 'JetBrains Mono',monospace;color:#666;margin-top:6px">real covers dithered Floyd–Steinberg · missing cover = typographic plate over hatch</div>
+</div>
+
+<!-- 09 poster tiles -->
+<div>
+<div style="font:12px 'JetBrains Mono',monospace;color:#666;margin-bottom:10px">09 poster numerals — 2-col tiles, 2 px rules between, no boxes</div>
+<div style="width:480px;display:grid;grid-template-columns:1fr 1fr;background:#fff;outline:1px solid #C9C5BC">
+<div style="padding:24px 28px;border-right:2px solid #000;border-bottom:2px solid #000"><div style="font-family:Literata,serif;font-size:44px">1 h 42</div><div style="font-size:18px;letter-spacing:.08em;text-transform:uppercase;margin-top:4px">Read</div></div>
+<div style="padding:24px 28px;border-bottom:2px solid #000"><div style="font-family:Literata,serif;font-size:44px">86</div><div style="font-size:18px;letter-spacing:.08em;text-transform:uppercase;margin-top:4px">Pages</div></div>
+<div style="padding:24px 28px;border-right:2px solid #000"><div style="font-family:Literata,serif;font-size:44px">12</div><div style="font-size:18px;letter-spacing:.08em;text-transform:uppercase;margin-top:4px">Streak days</div></div>
+<div style="padding:24px 28px"><div style="font-family:Literata,serif;font-size:44px">Thu</div><div style="font-size:18px;letter-spacing:.08em;text-transform:uppercase;margin-top:4px">Finish by</div></div>
+</div>
+</div>
+
+<!-- 10 setting rows -->
+<div>
+<div style="font:12px 'JetBrains Mono',monospace;color:#666;margin-bottom:10px">10 setting rows — toggle · stepper (focused) · choice · slider · disabled</div>
+<div style="width:528px;outline:1px solid #C9C5BC;background:#fff">
+<div style="height:56px;display:flex;align-items:center;justify-content:space-between;padding:0 20px;border-bottom:1px solid #000"><span style="font-size:22px">Drop caps</span><div style="width:56px;height:28px;border:2px solid #000;display:flex;justify-content:flex-end"><div style="width:24px;height:24px;background:#000"></div></div></div>
+<div style="height:56px;display:flex;align-items:center;justify-content:space-between;padding:0 20px;background:#000;color:#fff"><span style="font-size:22px">Type size</span><span style="font-family:'JetBrains Mono',monospace;font-size:22px">‹ 26 ›</span></div>
+<div style="height:56px;display:flex;align-items:center;justify-content:space-between;padding:0 20px;border-bottom:1px solid #000;border-top:1px solid #000"><span style="font-size:22px">Alignment</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">Justified ›</span></div>
+<div style="height:56px;display:flex;align-items:center;justify-content:space-between;padding:0 20px;border-bottom:1px solid #000"><span style="font-size:22px">Margins</span><div style="display:flex;align-items:center;gap:14px"><div style="width:180px;height:2px;background:#000;position:relative"><div style="position:absolute;left:40%;top:-7px;width:16px;height:16px;background:#000"></div></div><span style="font-family:'JetBrains Mono',monospace;font-size:18px">32</span></div></div>
+<div style="height:56px;position:relative"><div style="height:100%;display:flex;align-items:center;justify-content:space-between;padding:0 20px"><span style="font-size:22px">Publisher fonts</span><div style="width:56px;height:28px;border:2px solid #000"><div style="width:24px;height:24px;background:#000"></div></div></div><div style="position:absolute;inset:0;background:conic-gradient(#fff 0 25%,#0000 0 50%,#fff 0 75%,#0000 0) 0 0/4px 4px"></div></div>
+</div>
+</div>
+
+<!-- 11 dialog -->
+<div>
+<div style="font:12px 'JetBrains Mono',monospace;color:#666;margin-bottom:10px">11 dialog card — two actions on Back and Confirm · always GC</div>
+<div style="width:528px;background:#fff;outline:1px solid #C9C5BC;padding:24px">
+<div style="border:2px solid #000;padding:28px 28px 24px">
+<div style="font-family:Literata,serif;font-size:32px">Delete this book?</div>
+<div style="font-size:22px;margin-top:12px;line-height:1.3">Middlemarch and its bookmarks will be removed from the card.</div>
+</div>
+<div style="height:40px;border-top:4px solid #000;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px;margin-top:24px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><div style="width:2px;height:2px;background:#000"></div></div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Cancel</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Delete</div>
+<div style="display:flex;align-items:center;justify-content:center"><div style="width:2px;height:2px;background:#000"></div></div>
+</div>
+</div>
+</div>
+
+<!-- 12 working card -->
+<div>
+<div style="font:12px 'JetBrains Mono',monospace;color:#666;margin-bottom:10px">12 working card — stepped bar, never a spinner</div>
+<div style="width:528px;background:#fff;outline:1px solid #C9C5BC;padding:24px">
+<div style="border:2px solid #000;padding:28px">
+<div style="font-family:Literata,serif;font-size:32px">Downloading</div>
+<div style="font-size:22px;margin-top:8px">Middlemarch — George Eliot</div>
+<div style="height:16px;border:2px solid #000;margin-top:20px;padding:2px"><div style="height:8px;width:62%;background:repeating-linear-gradient(90deg,#000 0 10px,#fff 10px 12px)"></div></div>
+<div style="font-family:'JetBrains Mono',monospace;font-size:18px;margin-top:10px">1.4 MB of 2.1 MB · gutenberg.org</div>
+</div>
+</div>
+</div>
+
+<!-- 13 empty state -->
+<div>
+<div style="font:12px 'JetBrains Mono',monospace;color:#666;margin-bottom:10px">13 empty state — the rail shows the action that fixes it</div>
+<div style="width:528px;height:300px;background:#fff;outline:1px solid #C9C5BC;display:flex;flex-direction:column">
+<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px"><div style="font-family:Literata,serif;font-size:32px">Nothing here yet</div><div style="font-size:18px">Books you add appear here.</div></div>
+<div style="height:40px;border-top:4px solid #000;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><div style="width:2px;height:2px;background:#000"></div></div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Back</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Bookshop</div>
+<div style="display:flex;align-items:center;justify-content:center">Drop</div>
+</div>
+</div>
+</div>
+
+<!-- 14 keyboard -->
+<div>
+<div style="font:12px 'JetBrains Mono',monospace;color:#666;margin-bottom:10px">14 keyboard — 48 × 56 keys · phone strip always above · T9 for search</div>
+<div style="width:528px;background:#fff;outline:1px solid #C9C5BC;padding:24px">
+<div style="height:56px;border:2px solid #000;display:flex;align-items:center;gap:14px;padding:4px 12px"><canvas data-qr="1" data-mods="21" data-px="2" data-seed="11" style="width:48px;height:48px;image-rendering:pixelated"></canvas><span style="font-size:18px">Type on your phone</span><span style="font-family:'JetBrains Mono',monospace;font-size:14px;margin-left:auto">quire.local/type</span></div>
+<div style="height:56px;border:2px solid #000;border-top:none;display:flex;align-items:center;padding:0 16px"><span style="font-family:'JetBrains Mono',monospace;font-size:26px">mob</span><span style="display:inline-block;width:2px;height:30px;background:#000;margin-left:2px"></span></div>
+<div style="margin-top:16px">
+<sc-for list="{{ kbRows }}" as="row" hint-placeholder-count="4">
+<div style="display:flex">
+<sc-for list="{{ row.keys }}" as="k" hint-placeholder-count="10">
+<div style="width:48px;height:56px;border:1px solid #000;margin:-1px 0 0 -1px;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:22px;background:{{ k.bg }};color:{{ k.fg }}">{{ k.c }}</div>
+</sc-for>
+</div>
+</sc-for>
+<div style="display:flex">
+<div style="width:96px;height:56px;border:1px solid #000;margin:-1px 0 0 -1px;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:18px">?123</div>
+<div style="width:240px;height:56px;border:1px solid #000;margin:-1px 0 0 -1px;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:18px">Space</div>
+<div style="width:96px;height:56px;border:1px solid #000;margin:-1px 0 0 -1px;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:18px">Del</div>
+<div style="width:48px;height:56px;border:1px solid #000;margin:-1px 0 0 -1px;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:18px;background:#000;color:#fff">✓</div>
+</div>
+</div>
+<div style="display:flex;gap:16px;align-items:center;margin-top:20px">
+<div style="display:flex">
+<sc-for list="{{ t9 }}" as="k" hint-placeholder-count="8">
+<div style="width:52px;height:44px;border:1px solid #000;margin-left:-1px;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:16px;background:{{ k.bg }};color:{{ k.fg }}">{{ k.c }}</div>
+</sc-for>
+</div>
+<span style="font:11px 'JetBrains Mono',monospace;color:#666">compact T9 · search</span>
+</div>
+</div>
+</div>
+
+<!-- 15 spine compact -->
+<div>
+<div style="font:12px 'JetBrains Mono',monospace;color:#666;margin-bottom:10px">15 spine — fore-edge strip · skim label variant (three states at 1c)</div>
+<div style="display:flex;gap:48px;background:#fff;outline:1px solid #C9C5BC;padding:24px;width:528px">
+<div style="display:flex;gap:12px"><div style="position:relative;width:12px;height:320px"><div style="position:absolute;top:0;left:0;width:12px;height:198px;background:repeating-linear-gradient(180deg,#000 0 1px,#0000 1px 4px)"></div><div style="position:absolute;top:198px;left:0;width:6px;height:122px;background:repeating-linear-gradient(180deg,#000 0 1px,#0000 1px 4px)"></div><div style="position:absolute;top:197px;left:0;width:12px;height:2px;background:#000"></div><div style="position:absolute;right:0;top:36px;width:3px;height:3px;background:#000"></div><div style="position:absolute;right:0;top:88px;width:3px;height:3px;background:#000"></div><div style="position:absolute;right:0;top:150px;width:3px;height:3px;background:#000"></div><div style="position:absolute;right:0;top:236px;width:3px;height:3px;background:#000"></div><div style="position:absolute;right:0;top:284px;width:3px;height:3px;background:#000"></div></div><div style="font:11px/1.6 'JetBrains Mono',monospace;color:#666;width:130px">12 px strip · read = full-width hairlines · unread = 6 px · notch = chapter · 2 px bar = here</div></div>
+<div style="position:relative;width:220px;height:320px"><div style="position:absolute;right:0;width:12px;height:320px"><div style="position:absolute;top:0;left:0;width:12px;height:163px;background:repeating-linear-gradient(180deg,#000 0 1px,#0000 1px 4px)"></div><div style="position:absolute;top:163px;left:0;width:6px;height:157px;background:repeating-linear-gradient(180deg,#000 0 1px,#0000 1px 4px)"></div><div style="position:absolute;top:162px;left:0;width:12px;height:2px;background:#000"></div></div><div style="position:absolute;right:24px;top:140px;border:2px solid #000;background:#fff;padding:6px 10px;font-family:'JetBrains Mono',monospace;font-size:18px;white-space:nowrap">Ch 14 · 51%<br>2 h 03 left</div><div style="position:absolute;right:12px;top:163px;width:12px;height:1px;background:#000"></div><div style="position:absolute;left:0;bottom:0;font:11px 'JetBrains Mono',monospace;color:#666">skim: label rides the bar</div></div>
+</div>
+</div>
+
+<!-- 16 specimen -->
+<div>
+<div style="font:12px 'JetBrains Mono',monospace;color:#666;margin-bottom:10px">16 specimen — live paragraph in the current settings (Type screen, first run)</div>
+<div style="width:528px;background:#fff;outline:1px solid #C9C5BC;padding:28px 32px">
+<div lang="en" style="font-family:Literata,serif;font-size:26px;line-height:1.45;text-align:justify;hyphens:auto">Miss Brooke had that kind of beauty which seems to be thrown into relief by poor dress.</div>
+<div style="font-family:'JetBrains Mono',monospace;font-size:18px;margin-top:16px;border-top:1px solid #000;padding-top:10px">Literata 26 · 1.45 · margins 32 · justified</div>
+</div>
+</div>
+
+<!-- 18 phone window pointer -->
+<div>
+<div style="font:12px 'JetBrains Mono',monospace;color:#666;margin-bottom:10px">17 phone window — full design on the signature board <a href="#1c">1c</a></div>
+<div style="width:200px;background:#fff;outline:1px solid #C9C5BC;padding:20px;display:flex;gap:16px;align-items:center"><div style="width:66px;height:99px;border:2px solid #000;position:relative"><div style="position:absolute;inset:6px;background:repeating-linear-gradient(180deg,#000 0 1px,#fff 1px 5px)"></div></div><div style="font:11px/1.6 'JetBrains Mono',monospace;color:#666">device mirrored 1:2 · seven remote keys · keyboard</div></div>
+</div>
+
+<!-- 19 icons -->
+<div style="grid-column:span 2">
+<div style="font:12px 'JetBrains Mono',monospace;color:#666;margin-bottom:10px">18 icons — the whole set · 2 px stroke · 24 px grid · words do the rest</div>
+<div style="background:#fff;outline:1px solid #C9C5BC;padding:24px;display:flex;flex-wrap:wrap;gap:20px;width:1208px">
+<div style="width:64px;text-align:center"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><rect x="1" y="7" width="19" height="10"></rect><rect x="22" y="10" width="2" height="4" fill="#000" stroke="none"></rect></svg><div style="font:10px 'JetBrains Mono',monospace;color:#666">batt 0</div></div>
+<div style="width:64px;text-align:center"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><rect x="1" y="7" width="19" height="10"></rect><rect x="22" y="10" width="2" height="4" fill="#000" stroke="none"></rect><rect x="4" y="10" width="3" height="4" fill="#000" stroke="none"></rect></svg><div style="font:10px 'JetBrains Mono',monospace;color:#666">batt 25</div></div>
+<div style="width:64px;text-align:center"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><rect x="1" y="7" width="19" height="10"></rect><rect x="22" y="10" width="2" height="4" fill="#000" stroke="none"></rect><rect x="4" y="10" width="6" height="4" fill="#000" stroke="none"></rect></svg><div style="font:10px 'JetBrains Mono',monospace;color:#666">batt 50</div></div>
+<div style="width:64px;text-align:center"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><rect x="1" y="7" width="19" height="10"></rect><rect x="22" y="10" width="2" height="4" fill="#000" stroke="none"></rect><rect x="4" y="10" width="9" height="4" fill="#000" stroke="none"></rect></svg><div style="font:10px 'JetBrains Mono',monospace;color:#666">batt 75</div></div>
+<div style="width:64px;text-align:center"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><rect x="1" y="7" width="19" height="10"></rect><rect x="22" y="10" width="2" height="4" fill="#000" stroke="none"></rect><rect x="4" y="10" width="13" height="4" fill="#000" stroke="none"></rect></svg><div style="font:10px 'JetBrains Mono',monospace;color:#666">batt 100</div></div>
+<div style="width:64px;text-align:center"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><rect x="1" y="7" width="19" height="10"></rect><rect x="22" y="10" width="2" height="4" fill="#000" stroke="none"></rect><polyline points="11,6 8,12 13,12 10,18"></polyline></svg><div style="font:10px 'JetBrains Mono',monospace;color:#666">charging</div></div>
+<div style="width:64px;text-align:center"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><path d="M2,10 a14,14 0 0 1 20,0"></path><path d="M5.5,13.5 a9,9 0 0 1 13,0"></path><path d="M9,17 a4.5,4.5 0 0 1 6,0"></path><circle cx="12" cy="20" r="1.5" fill="#000" stroke="none"></circle></svg><div style="font:10px 'JetBrains Mono',monospace;color:#666">wi-fi</div></div>
+<div style="width:64px;text-align:center"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><path d="M2,10 a14,14 0 0 1 20,0"></path><path d="M5.5,13.5 a9,9 0 0 1 13,0"></path><path d="M9,17 a4.5,4.5 0 0 1 6,0"></path><circle cx="12" cy="20" r="1.5" fill="#000" stroke="none"></circle><line x1="3" y1="3" x2="21" y2="21"></line></svg><div style="font:10px 'JetBrains Mono',monospace;color:#666">wi-fi off</div></div>
+<div style="width:64px;text-align:center"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><path d="M7,3 h10 v18 l-5,-4.5 -5,4.5 z"></path></svg><div style="font:10px 'JetBrains Mono',monospace;color:#666">bookmark</div></div>
+<div style="width:64px;text-align:center"><svg width="24" height="24" viewBox="0 0 24 24" fill="#000" stroke="#000" stroke-width="2"><path d="M7,3 h10 v18 l-5,-4.5 -5,4.5 z"></path></svg><div style="font:10px 'JetBrains Mono',monospace;color:#666">bm set</div></div>
+<div style="width:64px;text-align:center"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><polyline points="12,7 12,12 16,14"></polyline></svg><div style="font:10px 'JetBrains Mono',monospace;color:#666">clock</div></div>
+<div style="width:64px;text-align:center"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><path d="M20,14.5 A8.5,8.5 0 1 1 9.5,4 A7,7 0 0 0 20,14.5 z"></path></svg><div style="font:10px 'JetBrains Mono',monospace;color:#666">moon</div></div>
+<div style="width:64px;text-align:center"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><circle cx="12" cy="12" r="4"></circle><line x1="12" y1="1" x2="12" y2="4"></line><line x1="12" y1="20" x2="12" y2="23"></line><line x1="1" y1="12" x2="4" y2="12"></line><line x1="20" y1="12" x2="23" y2="12"></line><line x1="4.5" y1="4.5" x2="6.5" y2="6.5"></line><line x1="17.5" y1="17.5" x2="19.5" y2="19.5"></line><line x1="4.5" y1="19.5" x2="6.5" y2="17.5"></line><line x1="17.5" y1="6.5" x2="19.5" y2="4.5"></line></svg><div style="font:10px 'JetBrains Mono',monospace;color:#666">sun</div></div>
+<div style="width:64px;text-align:center"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="4,13 10,19 20,6"></polyline></svg><div style="font:10px 'JetBrains Mono',monospace;color:#666">check</div></div>
+<div style="width:64px;text-align:center"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><line x1="5" y1="5" x2="19" y2="19"></line><line x1="19" y1="5" x2="5" y2="19"></line></svg><div style="font:10px 'JetBrains Mono',monospace;color:#666">close</div></div>
+<div style="width:64px;text-align:center"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="15,4 7,12 15,20"></polyline></svg><div style="font:10px 'JetBrains Mono',monospace;color:#666">chev L</div></div>
+<div style="width:64px;text-align:center"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="9,4 17,12 9,20"></polyline></svg><div style="font:10px 'JetBrains Mono',monospace;color:#666">chev R</div></div>
+<div style="width:64px;text-align:center"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="4,15 12,7 20,15"></polyline></svg><div style="font:10px 'JetBrains Mono',monospace;color:#666">chev U</div></div>
+<div style="width:64px;text-align:center"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="4,9 12,17 20,9"></polyline></svg><div style="font:10px 'JetBrains Mono',monospace;color:#666">chev D</div></div>
+<div style="width:64px;text-align:center"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><line x1="21" y1="12" x2="4" y2="12"></line><polyline points="10,6 4,12 10,18"></polyline></svg><div style="font:10px 'JetBrains Mono',monospace;color:#666">arrow L</div></div>
+<div style="width:64px;text-align:center"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><line x1="3" y1="12" x2="20" y2="12"></line><polyline points="14,6 20,12 14,18"></polyline></svg><div style="font:10px 'JetBrains Mono',monospace;color:#666">arrow R</div></div>
+<div style="width:64px;text-align:center"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><line x1="12" y1="21" x2="12" y2="4"></line><polyline points="6,10 12,4 18,10"></polyline></svg><div style="font:10px 'JetBrains Mono',monospace;color:#666">arrow U</div></div>
+<div style="width:64px;text-align:center"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><line x1="12" y1="3" x2="12" y2="20"></line><polyline points="6,14 12,20 18,14"></polyline></svg><div style="font:10px 'JetBrains Mono',monospace;color:#666">arrow D</div></div>
+<div style="width:64px;text-align:center"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect><rect x="14" y="14" width="3" height="3" fill="#000" stroke="none"></rect><rect x="18" y="18" width="3" height="3" fill="#000" stroke="none"></rect></svg><div style="font:10px 'JetBrains Mono',monospace;color:#666">qr</div></div>
+<div style="width:64px;text-align:center"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><rect x="5" y="11" width="14" height="9"></rect><path d="M8,11 v-3 a4,4 0 0 1 8,0 v3"></path></svg><div style="font:10px 'JetBrains Mono',monospace;color:#666">lock</div></div>
+<div style="width:64px;text-align:center"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><path d="M12,3 L22,20 H2 z"></path><line x1="12" y1="9" x2="12" y2="14"></line><rect x="11" y="16" width="2" height="2" fill="#000" stroke="none"></rect></svg><div style="font:10px 'JetBrains Mono',monospace;color:#666">warning</div></div>
+</div>
+</div>
+
+</div>
+</div>
+</div>
+
+<!-- ======================= 1c SIGNATURE ======================= -->
+<div id="1c" style="display:flex;flex-direction:column;gap:12px">
+<div style="font:13px 'JetBrains Mono',monospace"><span style="border:1px solid #000;padding:2px 6px;background:#fff">1c</span> signature board · the six elements · 1:1</div>
+<div style="background:#fff;outline:1px solid #C9C5BC;padding:48px;width:1900px">
+<div style="font-family:Literata,serif;font-size:32px;padding-bottom:10px;border-bottom:4px solid #000">Signatures</div>
+<div style="display:flex;flex-wrap:wrap;gap:56px;align-items:flex-start;margin-top:36px">
+
+<!-- sig 1: home layer over the page -->
+<div>
+<div style="font:12px 'JetBrains Mono',monospace;color:#666;margin-bottom:10px">1 · the book is the home screen — Home is a layer, one press (Back) · DU</div>
+<div style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden">
+<div lang="en" style="position:absolute;inset:0;padding:76px 44px 24px 32px;font-family:Literata,serif;font-size:26px;line-height:1.45;text-align:justify;hyphens:auto">
+<p>Miss Brooke had that kind of beauty which seems to be thrown into relief by poor dress. Her hand and wrist were so finely formed that she could wear sleeves not less bare of style than those in which the Blessed Virgin appeared to Italian painters; and her profile as well as her stature and bearing seemed to gain the more dignity from her plain garments.</p>
+<p style="text-indent:1.2em">Yet those who approached Dorothea, though prejudiced against her by this alarming hearsay, found that she had a charm unaccountably reconcilable with it.</p>
+</div>
+<div style="position:absolute;left:0;right:0;top:475px;bottom:40px;background:conic-gradient(#fff 0 25%,#0000 0 50%,#fff 0 75%,#0000 0) 0 0/4px 4px"></div>
+<div style="position:absolute;top:0;left:0;right:0;height:475px;background:#fff;border-bottom:2px solid #000;padding:40px 32px 0">
+<div style="font-family:Literata,serif;font-size:32px">Middlemarch</div>
+<div style="font-size:22px;margin-top:4px">George Eliot</div>
+<div style="font-size:22px;margin-top:20px">38 min left in this chapter</div>
+<div style="font-size:22px">Finish by Thursday</div>
+<div style="height:1px;background:#000;margin:22px 0 12px"></div>
+<div style="font-size:18px;letter-spacing:.08em;text-transform:uppercase">Recent</div>
+<div style="height:48px;display:flex;align-items:center;justify-content:space-between"><span style="font-size:22px">The Count of Monte Cristo</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">12 h 40</span></div>
+<div style="height:48px;display:flex;align-items:center;justify-content:space-between;border-top:1px solid #000"><span style="font-size:22px">Meditations</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">1 h 05</span></div>
+<div style="height:48px;display:flex;align-items:center;justify-content:space-between;border-top:1px solid #000"><span style="font-size:22px">The Time Machine</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">finished</span></div>
+</div>
+<div style="position:absolute;right:2px;top:500px;writing-mode:vertical-rl;font-family:'JetBrains Mono',monospace;font-size:18px;background:#fff;padding:4px 0">Drop</div>
+<div style="position:absolute;right:2px;top:600px;writing-mode:vertical-rl;font-family:'JetBrains Mono',monospace;font-size:18px;background:#fff;padding:4px 0">Stats</div>
+<div style="position:absolute;left:0;right:0;bottom:0;height:40px;border-top:4px solid #000;background:#fff;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Library</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Close</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Continue</div>
+<div style="display:flex;align-items:center;justify-content:center">Bookshop</div>
+</div>
+</div>
+</div>
+
+<!-- sig 2: edge labels + compass -->
+<div>
+<div style="font:12px 'JetBrains Mono',monospace;color:#666;margin-bottom:10px">2 · edge labels and the compass — choices sit where the keys are · GC open/close</div>
+<div style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden">
+<div style="position:absolute;top:24px;left:32px;right:44px;display:flex;justify-content:space-between;font-size:18px;letter-spacing:.08em;text-transform:uppercase"><span>Middlemarch</span><span>Chapter 1</span></div>
+<div lang="en" style="position:absolute;left:32px;right:44px;top:76px;bottom:317px;overflow:hidden;font-family:Literata,serif;font-size:26px;line-height:1.45;text-align:justify;hyphens:auto">
+<p>Miss Brooke had that kind of beauty which seems to be thrown into relief by poor dress. Her hand and wrist were so finely formed that she could wear sleeves not less bare of style than those in which the Blessed Virgin appeared to Italian painters; and her profile as well as her stature and bearing seemed to gain the more dignity from her plain garments.</p>
+</div>
+<div style="position:absolute;left:0;right:0;top:0;bottom:317px;background:conic-gradient(#fff 0 25%,#0000 0 50%,#fff 0 75%,#0000 0) 0 0/4px 4px"></div>
+<div style="position:absolute;right:2px;top:340px;writing-mode:vertical-rl;font-family:'JetBrains Mono',monospace;font-size:18px;background:#fff;padding:4px 0;border:1px solid #000">Type</div>
+<div style="position:absolute;right:2px;top:430px;writing-mode:vertical-rl;font-family:'JetBrains Mono',monospace;font-size:18px;background:#fff;padding:4px 0;border:1px solid #000">More</div>
+<div style="position:absolute;left:0;right:0;bottom:0;height:317px;background:#fff;border-top:2px solid #000;display:flex;flex-direction:column">
+<div style="padding:24px 28px 0;font-family:'JetBrains Mono',monospace;font-size:18px">Middlemarch · Chapter 1 · p 9 of 1408</div>
+<div style="flex:1;display:flex;align-items:center;justify-content:center;gap:10px;font-size:18px"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><path d="M7,3 h10 v18 l-5,-4.5 -5,4.5 z"></path></svg>hold Confirm — bookmark this page</div>
+<div style="height:104px;border-top:4px solid #000;display:grid;grid-template-columns:1fr 1fr 1fr 1fr">
+<div style="border-right:1px solid #000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:0 6px"><span style="font-size:23px;text-align:center">Contents</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">Ch 1 of 86</span></div>
+<div style="border-right:1px solid #000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:0 6px"><span style="font-size:23px;text-align:center">Close</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">—</span></div>
+<div style="border-right:1px solid #000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:0 6px"><span style="font-size:23px;text-align:center">Bookmark</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">not set</span></div>
+<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:0 6px"><span style="font-size:23px;text-align:center">Go to</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">1% · p 9</span></div>
+</div>
+</div>
+</div>
+</div>
+
+<!-- sig 6: jump -->
+<div>
+<div style="font:12px 'JetBrains Mono',monospace;color:#666;margin-bottom:10px">6 · jump — long-press Back anywhere · the whole device in one list · DU</div>
+<div style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden;padding:24px 24px 0">
+<div style="height:64px;border-bottom:2px solid #000;display:flex;align-items:center;justify-content:space-between"><div style="display:flex;align-items:center;gap:4px"><span style="display:inline-block;width:2px;height:30px;background:#000"></span></div><span style="font-size:18px">Type on your phone</span></div>
+<div style="font-size:18px;letter-spacing:.08em;text-transform:uppercase;margin:14px 0 4px">Recent</div>
+<sc-for list="{{ jumpRecent }}" as="r" hint-placeholder-count="2">
+<div style="height:56px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #000"><span style="font-size:26px">{{ r.t }}</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">{{ r.v }}</span></div>
+</sc-for>
+<div style="font-size:18px;letter-spacing:.08em;text-transform:uppercase;margin:14px 0 4px">Everything</div>
+<sc-for list="{{ jumpAll }}" as="r" hint-placeholder-count="8">
+<div style="height:56px;display:flex;align-items:center;justify-content:space-between;padding:0 8px;border-bottom:1px solid #000;background:{{ r.bg }};color:{{ r.fg }}"><span style="font-size:26px">{{ r.t }}</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">{{ r.v }}</span></div>
+</sc-for>
+<div style="position:absolute;left:0;right:0;bottom:0;height:40px;border-top:4px solid #000;background:#fff;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="15,4 7,12 15,20"></polyline></svg></div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Close</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Open</div>
+<div style="display:flex;align-items:center;justify-content:center"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="9,4 17,12 9,20"></polyline></svg></div>
+</div>
+<div style="position:absolute;right:24px;bottom:48px;font-family:'JetBrains Mono',monospace;font-size:14px;background:#fff;padding:2px 4px">1 / 2</div>
+</div>
+</div>
+
+<!-- sig 3: spine three states -->
+<div>
+<div style="font:12px 'JetBrains Mono',monospace;color:#666;margin-bottom:10px">3 · the spine, three states — reading · skim · contents</div>
+<div style="display:flex;gap:44px;background:#fff;outline:1px solid #C9C5BC;padding:32px;height:792px">
+<div style="display:flex;flex-direction:column;gap:12px"><div style="font:11px 'JetBrains Mono',monospace;color:#666">reading · 62%</div>
+<div style="position:relative;width:12px;height:688px">
+<div style="position:absolute;top:0;left:0;width:12px;height:426px;background:repeating-linear-gradient(180deg,#000 0 1px,#0000 1px 4px)"></div>
+<div style="position:absolute;top:426px;left:0;width:6px;height:262px;background:repeating-linear-gradient(180deg,#000 0 1px,#0000 1px 4px)"></div>
+<div style="position:absolute;top:425px;left:0;width:12px;height:2px;background:#000"></div>
+<sc-for list="{{ notchesA }}" as="n" hint-placeholder-count="13"><div style="position:absolute;right:0;width:3px;height:3px;background:#000;top:{{ n.y }}px"></div></sc-for>
+</div></div>
+<div style="display:flex;flex-direction:column;gap:12px"><div style="font:11px 'JetBrains Mono',monospace;color:#666">skim · hold Right, 5 pages/s</div>
+<div style="position:relative;width:240px;height:688px">
+<div style="position:absolute;right:0;top:0;width:12px;height:688px">
+<div style="position:absolute;top:0;left:0;width:12px;height:351px;background:repeating-linear-gradient(180deg,#000 0 1px,#0000 1px 4px)"></div>
+<div style="position:absolute;top:351px;left:0;width:6px;height:337px;background:repeating-linear-gradient(180deg,#000 0 1px,#0000 1px 4px)"></div>
+<div style="position:absolute;top:350px;left:0;width:12px;height:2px;background:#000"></div>
+<sc-for list="{{ notchesA }}" as="n" hint-placeholder-count="13"><div style="position:absolute;right:0;width:3px;height:3px;background:#000;top:{{ n.y }}px"></div></sc-for>
+</div>
+<div style="position:absolute;right:32px;top:322px;border:2px solid #000;background:#fff;padding:8px 12px;font-family:'JetBrains Mono',monospace;font-size:18px;line-height:1.4;white-space:nowrap">Ch 14 · 51%<br>2 h 03 left</div>
+<div style="position:absolute;right:12px;top:351px;width:20px;height:1px;background:#000"></div>
+</div></div>
+<div style="display:flex;flex-direction:column;gap:12px"><div style="font:11px 'JetBrains Mono',monospace;color:#666">contents · list and fore-edge agree</div>
+<div style="display:flex;gap:20px">
+<div style="width:340px">
+<sc-for list="{{ tocRows }}" as="row" hint-placeholder-count="5">
+<div style="height:56px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #000">
+<span style="font-family:'JetBrains Mono',monospace;font-size:18px;width:24px">{{ row.n }}</span>
+<span style="font-size:22px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ row.t }}</span>
+<sc-if value="{{ row.cur }}" hint-placeholder-val="{{ false }}"><svg width="20" height="20" viewBox="0 0 24 24" fill="#000" stroke="#000" stroke-width="2"><path d="M7,3 h10 v18 l-5,-4.5 -5,4.5 z"></path></svg></sc-if>
+<span style="font-family:'JetBrains Mono',monospace;font-size:18px">{{ row.v }}</span>
+</div>
+</sc-for>
+</div>
+<div style="position:relative;width:12px;height:336px">
+<div style="position:absolute;top:0;left:0;width:12px;height:100px;background:repeating-linear-gradient(180deg,#000 0 1px,#0000 1px 4px)"></div>
+<div style="position:absolute;top:100px;left:0;width:6px;height:236px;background:repeating-linear-gradient(180deg,#000 0 1px,#0000 1px 4px)"></div>
+<div style="position:absolute;top:99px;left:0;width:12px;height:2px;background:#000"></div>
+<sc-for list="{{ notchesC }}" as="n" hint-placeholder-count="8"><div style="position:absolute;right:0;width:3px;height:3px;background:#000;top:{{ n.y }}px"></div></sc-for>
+</div>
+</div></div>
+</div>
+</div>
+
+<!-- sig 4: poster group -->
+<div>
+<div style="font:12px 'JetBrains Mono',monospace;color:#666;margin-bottom:10px">4 · time, not percent — the poster voice</div>
+<div style="width:480px;background:#fff;outline:1px solid #C9C5BC;display:grid;grid-template-columns:1fr 1fr">
+<div style="padding:28px 32px;border-right:2px solid #000;border-bottom:2px solid #000"><div style="font-family:Literata,serif;font-size:44px">1 h 42</div><div style="font-size:18px;letter-spacing:.08em;text-transform:uppercase;margin-top:4px">Read today</div></div>
+<div style="padding:28px 32px;border-bottom:2px solid #000"><div style="font-family:Literata,serif;font-size:44px">86</div><div style="font-size:18px;letter-spacing:.08em;text-transform:uppercase;margin-top:4px">Pages</div></div>
+<div style="padding:28px 32px;border-right:2px solid #000;border-bottom:2px solid #000"><div style="font-family:Literata,serif;font-size:44px">31</div><div style="font-size:18px;letter-spacing:.08em;text-transform:uppercase;margin-top:4px">Pages / hour</div></div>
+<div style="padding:28px 32px;border-bottom:2px solid #000"><div style="font-family:Literata,serif;font-size:44px">12</div><div style="font-size:18px;letter-spacing:.08em;text-transform:uppercase;margin-top:4px">Streak days</div></div>
+<div style="padding:28px 32px;border-right:2px solid #000"><div style="font-family:Literata,serif;font-size:44px">Thu</div><div style="font-size:18px;letter-spacing:.08em;text-transform:uppercase;margin-top:4px">Finish by</div></div>
+<div style="padding:28px 32px"><div style="font-family:Literata,serif;font-size:44px">4 h 10</div><div style="font-size:18px;letter-spacing:.08em;text-transform:uppercase;margin-top:4px">Left in book</div></div>
+</div>
+<div style="font:11px 'JetBrains Mono',monospace;color:#666;margin-top:6px">percent appears only in Go to and Book info</div>
+</div>
+
+<!-- sig 5: phone window -->
+<div>
+<div style="font:12px 'JetBrains Mono',monospace;color:#666;margin-bottom:10px">5 · phone as window and keyboard — lives on the Drop page, same 1-bit system</div>
+<div style="width:420px;background:#fff;outline:1px solid #C9C5BC;padding:28px">
+<div style="display:flex;justify-content:space-between;align-items:baseline;border-bottom:2px solid #000;padding-bottom:10px"><span style="font-family:Literata,serif;font-size:26px">Quire</span><span style="font-family:'JetBrains Mono',monospace;font-size:14px">quire.local</span></div>
+<div style="display:flex;justify-content:center;margin-top:24px">
+<div style="position:relative;padding:22px 30px 34px 10px">
+<div style="position:absolute;top:0;left:60px;width:56px;height:12px;border:2px solid #000;display:flex;align-items:center;justify-content:center"></div>
+<div style="position:absolute;top:-4px;left:122px;font:10px 'JetBrains Mono',monospace;color:#666">power</div>
+<div style="position:absolute;right:8px;top:120px;width:12px;height:44px;border:2px solid #000"></div>
+<div style="position:absolute;right:8px;top:174px;width:12px;height:44px;border:2px solid #000"></div>
+<div style="position:absolute;right:-16px;top:130px;font:10px 'JetBrains Mono',monospace;color:#666;writing-mode:vertical-rl">up · down</div>
+<div style="width:264px;height:396px;border:2px solid #000;position:relative;overflow:hidden">
+<div style="position:absolute;top:10px;left:14px;right:18px;display:flex;justify-content:space-between;font-size:9px;letter-spacing:.08em;text-transform:uppercase"><span>Middlemarch</span><span>Ch 1</span></div>
+<div lang="en" style="position:absolute;top:32px;left:14px;right:24px;bottom:10px;overflow:hidden;font-family:Literata,serif;font-size:13px;line-height:1.45;text-align:justify;hyphens:auto">Miss Brooke had that kind of beauty which seems to be thrown into relief by poor dress. Her hand and wrist were so finely formed that she could wear sleeves not less bare of style than those in which the Blessed Virgin appeared to Italian painters; and her profile as well as her stature and bearing seemed to gain the more dignity from her plain garments, which by the side of provincial fashion gave her the impressiveness of a fine quotation from the Bible.</div>
+<div style="position:absolute;right:4px;top:32px;width:6px;height:340px"><div style="width:6px;height:120px;background:repeating-linear-gradient(180deg,#000 0 1px,#0000 1px 3px)"></div><div style="width:3px;height:220px;background:repeating-linear-gradient(180deg,#000 0 1px,#0000 1px 3px)"></div><div style="position:absolute;top:119px;left:0;width:6px;height:2px;background:#000"></div></div>
+</div>
+<div style="display:flex;gap:10px;margin-top:10px;margin-left:2px">
+<div style="width:56px;height:28px;border:2px solid #000;display:flex;align-items:center;justify-content:center;font:12px 'JetBrains Mono',monospace">‹</div>
+<div style="width:56px;height:28px;border:2px solid #000;display:flex;align-items:center;justify-content:center;font:12px 'JetBrains Mono',monospace">back</div>
+<div style="width:56px;height:28px;border:2px solid #000;display:flex;align-items:center;justify-content:center;font:12px 'JetBrains Mono',monospace">ok</div>
+<div style="width:56px;height:28px;border:2px solid #000;display:flex;align-items:center;justify-content:center;font:12px 'JetBrains Mono',monospace">›</div>
+</div>
+</div>
+</div>
+<div style="height:44px;border:2px solid #000;margin-top:18px;display:flex;align-items:center;padding:0 12px"><span style="font-family:'JetBrains Mono',monospace;font-size:16px">Dorothea</span><span style="display:inline-block;width:2px;height:22px;background:#000;margin-left:2px"></span></div>
+<div style="font-family:'JetBrains Mono',monospace;font-size:13px;margin-top:8px;display:flex;align-items:center;gap:6px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="3"><polyline points="4,13 10,19 20,6"></polyline></svg>sent to reader</div>
+<div style="margin-top:14px">
+<sc-for list="{{ kbMini }}" as="row" hint-placeholder-count="3">
+<div style="display:flex;justify-content:center">
+<sc-for list="{{ row.keys }}" as="k" hint-placeholder-count="10">
+<div style="width:34px;height:34px;border:1px solid #000;margin:-1px 0 0 -1px;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:14px">{{ k.c }}</div>
+</sc-for>
+</div>
+</sc-for>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+</div>
+
+</div>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  componentDidMount() {
+    document.querySelectorAll('canvas[data-qr]').forEach((c) => {
+      const m = +(c.dataset.mods || 25), s = +(c.dataset.px || 6), q = 4, W = (m + 2 * q) * s;
+      c.width = W; c.height = W;
+      const x = c.getContext('2d');
+      x.fillStyle = '#fff'; x.fillRect(0, 0, W, W); x.fillStyle = '#000';
+      let seed = +(c.dataset.seed || 7);
+      const rnd = () => { seed = (seed * 1103515245 + 12345) >>> 0; return seed / 4294967296; };
+      const F = (r, co) => (r < 7 && co < 7) || (r < 7 && co >= m - 7) || (r >= m - 7 && co < 7);
+      for (let r = 0; r < m; r++) for (let co = 0; co < m; co++) {
+        let b;
+        if (F(r, co)) {
+          const rr = r >= m - 7 ? r - (m - 7) : r, cc = co >= m - 7 ? co - (m - 7) : co;
+          b = (rr === 0 || rr === 6 || cc === 0 || cc === 6) || (rr >= 2 && rr <= 4 && cc >= 2 && cc <= 4);
+        } else if (r === 6 || co === 6) { b = (r + co) % 2 === 0; }
+        else { b = rnd() < 0.44; }
+        if (b) x.fillRect((co + q) * s, (r + q) * s, s, s);
+      }
+    });
+  }
+  renderVals() {
+    const mk = (str, f) => str.split('').map(c => ({ c, bg: c === f ? '#000' : '#fff', fg: c === f ? '#fff' : '#000' }));
+    return {
+      kbRows: [{ keys: mk('1234567890') }, { keys: mk('QWERTYUIOP') }, { keys: mk('ASDFGHJKL', 'S') }, { keys: mk('ZXCVBNM') }],
+      kbMini: [{ keys: mk('QWERTYUIOP') }, { keys: mk('ASDFGHJKL') }, { keys: mk('ZXCVBNM') }],
+      t9: ['abc', 'def', 'ghi', 'jkl', 'mno', 'pqrs', 'tuv', 'wxyz'].map((c, i) => ({ c, bg: i === 3 ? '#000' : '#fff', fg: i === 3 ? '#fff' : '#000' })),
+      jumpRecent: [{ t: 'Middlemarch', v: '4 h 12 left' }, { t: 'The Count of Monte Cristo', v: '12 h 40 left' }],
+      jumpAll: [
+        { t: 'Bookshop', v: '' }, { t: 'Clock', v: '21:47' }, { t: 'Drop', v: '' },
+        { t: 'Library', v: '212 books', bg: '#000', fg: '#fff' },
+        { t: 'News', v: '14 unread' }, { t: 'Settings', v: '' }, { t: 'Stats', v: '12-day streak' }, { t: 'Weather', v: '21°' }
+      ].map(r => Object.assign({ bg: '#fff', fg: '#000' }, r)),
+      tocRows: [
+        { n: '1', t: 'Marseilles—The Arrival', v: '32 min', cur: false },
+        { n: '2', t: 'Father and Son', v: '24 min', cur: false },
+        { n: '3', t: 'The Catalans', v: '28 min', cur: true },
+        { n: '4', t: 'Conspiracy', v: '22 min', cur: false },
+        { n: '5', t: 'The Marriage Feast', v: '31 min', cur: false }
+      ],
+      notchesA: [22, 64, 118, 170, 232, 286, 340, 398, 446, 502, 556, 614, 668].map(y => ({ y })),
+      notchesC: [18, 58, 96, 140, 186, 232, 272, 310].map(y => ({ y }))
+    };
+  }
+}
+</script>
+</body>
+</html>

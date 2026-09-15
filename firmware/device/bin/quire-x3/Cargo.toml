@@ -1,0 +1,38 @@
+[package]
+name = "quire-x3"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Quire e-reader firmware for the Xteink X3 (ESP32-C3)"
+
+[[bin]]
+name = "quire-x3"
+test = false
+bench = false
+
+[dependencies]
+esp-hal.workspace = true
+esp-rtos.workspace = true
+esp-radio.workspace = true
+esp-alloc.workspace = true
+esp-println.workspace = true
+esp-backtrace.workspace = true
+esp-bootloader-esp-idf.workspace = true
+esp-storage.workspace = true
+embassy-executor.workspace = true
+embassy-time.workspace = true
+embassy-futures.workspace = true
+static_cell.workspace = true
+log.workspace = true
+embedded-hal.workspace = true
+heapless.workspace = true
+nb.workspace = true
+quire-board = { path = "../../crates/quire-board" }
+quire-net = { path = "../../crates/quire-net" }
+quire-epd = { path = "../../crates/quire-epd" }
+quire-ui = { path = "../../../crates/quire-ui", default-features = false }
+quire-gfx = { path = "../../../crates/quire-gfx", default-features = false }
+quire-fs = { path = "../../../crates/quire-fs" }
+quire-library = { path = "../../../crates/quire-library" }
+quire-fonts = { path = "../../../crates/quire-fonts" }

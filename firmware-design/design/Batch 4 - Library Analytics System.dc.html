@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
+<link href="https://fonts.googleapis.com/css2?family=Literata:ital,opsz,wght@0,7..72,400..700;1,7..72,400..700&amp;family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&amp;family=JetBrains+Mono:wght@400;500;700&amp;display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#EDEBE6;font-family:'Atkinson Hyperlegible',sans-serif;color:#000}
+a{color:#000}a:hover{color:#444}
+p{margin:0}
+</style>
+</helmet>
+<section id="batch4" style="padding:64px;display:flex;flex-direction:column;gap:40px;align-items:flex-start">
+
+<div style="background:#fff;outline:1px solid #C9C5BC;padding:32px 40px;max-width:1060px">
+<div style="font-family:Literata,serif;font-size:30px">Quire — Batch 4 · Library, analytics, system</div>
+<div style="font:12px/1.7 'JetBrains Mono',monospace;color:#666;margin-top:8px">11 library ×4 · 12 book info · 13 folders · 2A end of book · 42 jump filtered · 50 settings (home · keys · sleep &amp; power · battery · night jobs · about) · 51 OTA ×2 · 60a–e (+dark, empty) · 61 year in review · charts board 1:1. Numbers agree: today 1 h 42 = 53 pages at 31 pages/hour; Monte Cristo 62% read, 4 h 12 left, finish Thu.</div>
+<div style="font:12px/1.7 'JetBrains Mono',monospace;margin-top:14px;border-top:1px solid #000;padding-top:10px">audit — 60a's brief pairs 86 pages with 1 h 42 and 31 pages/hour, which contradict; 53 pages keeps the arithmetic honest. 11's long-Confirm compass needs six actions in five slots: Collection folded into the Move side label. 60a side labels are Rhythm / Calendar; Books and Goals ride the rail per the add-on.</div>
+</div>
+
+<!-- g1 -->
+<div id="b4g1" style="display:flex;gap:40px">
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">11-library-grid · GC · 3 × 2 covers, tab line</div>
+<div data-screen-label="11-library-grid" style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden;padding:32px 24px 0">
+<div style="font-family:Literata,serif;font-size:32px;padding:0 8px 10px;border-bottom:4px solid #000">Library</div>
+<div style="display:flex;align-items:center;gap:14px;border-bottom:2px solid #000;padding:10px 8px;font-size:18px;letter-spacing:.08em;text-transform:uppercase"><span>Recent</span><span style="background:#000;color:#fff;padding:2px 8px">All</span><span>Authors</span><span>Series ›</span><span style="margin-left:auto;font-family:'JetBrains Mono',monospace;text-transform:none;letter-spacing:0;flex:none">1/36</span></div>
+<div style="display:grid;grid-template-columns:repeat(3,152px);gap:20px 12px;margin-top:20px;justify-content:center">
+<sc-for list="{{ libGrid }}" as="b" hint-placeholder-count="6">
+<div><div style="width:152px;height:228px;border:{{ b.frame }} solid #000;background:repeating-linear-gradient(180deg,#000 0 1px,#fff 1px 6px);position:relative;overflow:hidden"><div style="position:absolute;left:10px;right:10px;top:34px;background:#fff;border:1px solid #000;padding:10px 4px;text-align:center;max-height:160px;overflow:hidden"><div style="font-family:Literata,serif;font-size:17px;line-height:1.15;overflow-wrap:break-word">{{ b.t }}</div><div style="font-size:14px;margin-top:6px">{{ b.a }}</div></div></div><div style="font-size:16px;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ b.t }}</div><div style="font-family:'JetBrains Mono',monospace;font-size:13px">{{ b.v }}</div></div>
+</sc-for>
+</div>
+<div style="position:absolute;left:0;right:0;bottom:0;height:40px;border-top:4px solid #000;background:#fff;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="15,4 7,12 15,20"></polyline></svg></div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Back</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Open</div>
+<div style="display:flex;align-items:center;justify-content:center"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="9,4 17,12 9,20"></polyline></svg></div>
+</div>
+</div></div>
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">11-library-list · DU · list view, 88 px rows</div>
+<div data-screen-label="11-library-list" style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden;padding:32px 24px 0">
+<div style="font-family:Literata,serif;font-size:32px;padding:0 8px 10px;border-bottom:4px solid #000">Library</div>
+<div style="display:flex;align-items:center;gap:14px;border-bottom:2px solid #000;padding:10px 8px;font-size:18px;letter-spacing:.08em;text-transform:uppercase"><span style="background:#000;color:#fff;padding:2px 8px">Recent</span><span>All</span><span>Authors</span><span>Series ›</span><span style="margin-left:auto;font-family:'JetBrains Mono',monospace;text-transform:none;letter-spacing:0;flex:none">1/31</span></div>
+<sc-for list="{{ libList }}" as="b" hint-placeholder-count="7">
+<div style="height:88px;display:flex;align-items:center;gap:16px;border-bottom:1px solid #000;padding:0 8px;background:{{ b.bg }};color:{{ b.fg }}">
+<div style="width:48px;height:72px;border:1px solid currentColor;background:repeating-linear-gradient(180deg,currentColor 0 1px,transparent 1px 6px);flex:none"></div>
+<div style="flex:1;min-width:0"><div style="font-size:26px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ b.t }}</div><div style="font-size:18px">{{ b.a }}</div></div>
+<span style="font-family:'JetBrains Mono',monospace;font-size:18px;flex:none">{{ b.v }}</span>
+</div>
+</sc-for>
+<div style="position:absolute;left:0;right:0;bottom:0;height:40px;border-top:4px solid #000;background:#fff;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="15,4 7,12 15,20"></polyline></svg></div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Back</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Open</div>
+<div style="display:flex;align-items:center;justify-content:center"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="9,4 17,12 9,20"></polyline></svg></div>
+</div>
+</div></div>
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">11-library-compass · GC · long-Confirm on a book</div>
+<div data-screen-label="11-library-compass" style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden">
+<div style="padding:32px 24px 0">
+<div style="font-family:Literata,serif;font-size:32px;padding:0 8px 10px;border-bottom:4px solid #000">Library</div>
+<div style="height:88px;display:flex;align-items:center;gap:16px;border-bottom:1px solid #000;background:#000;color:#fff;padding:0 8px;margin-top:12px">
+<div style="width:48px;height:72px;border:1px solid #fff;flex:none"></div>
+<div style="flex:1"><div style="font-size:26px">The Count of Monte Cristo</div><div style="font-size:18px">Alexandre Dumas</div></div>
+<span style="font-family:'JetBrains Mono',monospace;font-size:18px">62%</span>
+</div>
+</div>
+<div style="position:absolute;left:0;right:0;top:0;bottom:317px;background:conic-gradient(#fff 0 25%,#0000 0 50%,#fff 0 75%,#0000 0) 0 0/4px 4px"></div>
+<div style="position:absolute;right:2px;top:340px;writing-mode:vertical-rl;font-family:'JetBrains Mono',monospace;font-size:18px;background:#fff;padding:4px 0;border:1px solid #000">Delete</div>
+<div style="position:absolute;right:2px;top:436px;writing-mode:vertical-rl;font-family:'JetBrains Mono',monospace;font-size:18px;background:#fff;padding:4px 0;border:1px solid #000">Move</div>
+<div style="position:absolute;left:0;right:0;bottom:0;height:317px;background:#fff;border-top:2px solid #000;display:flex;flex-direction:column">
+<div style="padding:20px 48px 0 28px;font-family:'JetBrains Mono',monospace;font-size:18px;width:fit-content">The Count of Monte Cristo</div>
+<div style="flex:1;display:flex;align-items:center;justify-content:center;font-size:18px;margin-right:48px">Move also files into a collection</div>
+<div style="height:104px;border-top:4px solid #000;display:grid;grid-template-columns:1fr 1fr 1fr 1fr">
+<div style="border-right:1px solid #000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:0 6px"><span style="font-size:23px;text-align:center">Open</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">p 873</span></div>
+<div style="border-right:1px solid #000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:0 6px"><span style="font-size:23px;text-align:center">Close</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">—</span></div>
+<div style="border-right:1px solid #000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:0 6px"><span style="font-size:23px;text-align:center">Info</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">4 h 12 left</span></div>
+<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:0 6px"><span style="font-size:23px;text-align:center">Finished</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">mark ✓</span></div>
+</div>
+</div>
+</div></div>
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">11-library-empty · GC</div>
+<div data-screen-label="11-library-empty" style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden;padding:32px 32px 0">
+<div style="font-family:Literata,serif;font-size:32px;padding-bottom:10px;border-bottom:4px solid #000">Library</div>
+<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;margin-top:240px">
+<div style="font-family:Literata,serif;font-size:32px">No books yet</div>
+<div style="font-size:18px;margin-top:10px">The Bookshop is free, or drop files from your phone.</div>
+</div>
+<div style="position:absolute;left:0;right:0;bottom:0;height:40px;border-top:4px solid #000;background:#fff;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><div style="width:2px;height:2px;background:#000"></div></div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Back</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Bookshop</div>
+<div style="display:flex;align-items:center;justify-content:center">Drop</div>
+</div>
+</div></div>
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">12-bookinfo · GC · the one place percent sits beside time</div>
+<div data-screen-label="12-bookinfo" style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden;padding:32px 32px 0">
+<div style="display:flex;gap:24px">
+<div style="width:152px;height:228px;border:2px solid #000;background:repeating-linear-gradient(180deg,#000 0 1px,#fff 1px 6px);position:relative;flex:none"><div style="position:absolute;left:10px;right:10px;top:34px;background:#fff;border:1px solid #000;padding:10px 4px;text-align:center;max-height:160px;overflow:hidden"><div style="font-family:Literata,serif;font-size:17px;line-height:1.15;overflow-wrap:break-word">The Count of Monte Cristo</div><div style="font-size:14px;margin-top:6px">Alexandre Dumas</div></div></div>
+<div style="min-width:0">
+<div style="font-family:Literata,serif;font-size:32px;line-height:1.1">The Count of Monte Cristo</div>
+<div style="font-size:22px;margin-top:6px">Alexandre Dumas</div>
+<div style="font-family:'JetBrains Mono',monospace;font-size:18px;margin-top:8px">1846 · no series</div>
+</div>
+</div>
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;margin-top:22px;border-top:2px solid #000">
+<div style="padding:18px 8px 14px;border-right:2px solid #000"><div style="font-family:Literata,serif;font-size:44px;line-height:1">4 h 12</div><div style="font-size:18px;letter-spacing:.08em;text-transform:uppercase;margin-top:4px">Time left</div></div>
+<div style="padding:18px 8px 14px;border-right:2px solid #000"><div style="font-family:Literata,serif;font-size:44px;line-height:1">Thu</div><div style="font-size:18px;letter-spacing:.08em;text-transform:uppercase;margin-top:4px">Finish by</div></div>
+<div style="padding:18px 8px 14px"><div style="font-family:Literata,serif;font-size:44px;line-height:1">62%</div><div style="font-size:18px;letter-spacing:.08em;text-transform:uppercase;margin-top:4px">Read</div></div>
+</div>
+<div style="border-top:2px solid #000;padding-top:14px"><div style="font-size:18px;letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px">Last 30 days</div>
+<div style="display:flex;align-items:flex-end;gap:2px;height:64px;border-bottom:2px solid #000"><sc-for list="{{ bookBars }}" as="b" hint-placeholder-count="30"><div style="width:12px;background:#000;height:{{ b.h }}px"></div></sc-for></div>
+<div style="font-family:'JetBrains Mono',monospace;font-size:14px;margin-top:6px">forecast from the last seven sessions' pace</div>
+</div>
+<div style="font-family:'JetBrains Mono',monospace;font-size:18px;margin-top:16px;line-height:1.7">adventure · revenge · EPUB · 2.6 MB · added 2 Sep</div>
+<div style="position:absolute;left:0;right:0;bottom:0;height:40px;border-top:4px solid #000;background:#fff;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><div style="width:2px;height:2px;background:#000"></div></div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Back</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Open</div>
+<div style="display:flex;align-items:center;justify-content:center">More</div>
+</div>
+</div></div>
+</div>
+
+<!-- g2 -->
+<div id="b4g2" style="display:flex;gap:40px">
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">13-folders · GC · SD browser, breadcrumb in mono</div>
+<div data-screen-label="13-folders" style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden;padding:32px 32px 0">
+<div style="font-family:Literata,serif;font-size:32px;padding-bottom:10px;border-bottom:4px solid #000">Folders</div>
+<div style="font-family:'JetBrains Mono',monospace;font-size:18px;margin-top:14px">/books/victorian/</div>
+<div style="margin-top:8px">
+<div style="height:56px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #000"><span style="font-size:26px">../</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px"></span></div>
+<div style="height:56px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #000;background:#000;color:#fff;padding:0 8px"><span style="font-size:26px">eliot/</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">7 files</span></div>
+<div style="height:56px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #000"><span style="font-size:26px">gaskell/</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">4 files</span></div>
+<div style="height:56px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #000"><span style="font-size:26px">middlemarch.epub</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">1.8 MB</span></div>
+<div style="height:56px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #000"><span style="font-size:26px">notes.txt</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">4 KB</span></div>
+</div>
+<div style="position:absolute;left:0;right:0;bottom:0;height:40px;border-top:4px solid #000;background:#fff;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="15,4 7,12 15,20"></polyline></svg></div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Back</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Open</div>
+<div style="display:flex;align-items:center;justify-content:center"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="9,4 17,12 9,20"></polyline></svg></div>
+</div>
+</div></div>
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">2A-endofbook · GC · poster page</div>
+<div data-screen-label="2A-endofbook" style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden;padding:40px 32px 0">
+<div style="font-size:18px;letter-spacing:.08em;text-transform:uppercase">Finished</div>
+<div style="font-family:Literata,serif;font-size:32px;margin-top:4px">A Study in Scarlet</div>
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;margin-top:24px;border-top:2px solid #000;border-bottom:2px solid #000">
+<div style="padding:18px 8px 14px;border-right:2px solid #000"><div style="font-family:Literata,serif;font-size:44px;line-height:1">6 h 40</div><div style="font-size:18px;letter-spacing:.08em;text-transform:uppercase;margin-top:4px">Reading time</div></div>
+<div style="padding:18px 8px 14px;border-right:2px solid #000"><div style="font-family:Literata,serif;font-size:44px;line-height:1">9 days</div><div style="font-size:18px;letter-spacing:.08em;text-transform:uppercase;margin-top:4px">Start to finish</div></div>
+<div style="padding:18px 8px 14px"><div style="font-family:Literata,serif;font-size:44px;line-height:1">28</div><div style="font-size:18px;letter-spacing:.08em;text-transform:uppercase;margin-top:4px">Pages / hour</div></div>
+</div>
+<div style="display:flex;align-items:center;justify-content:space-between;margin-top:26px"><span style="font-size:22px">Rate it</span><span style="font-family:Literata,serif;font-size:34px;letter-spacing:6px">★★★★<span style="-webkit-text-stroke:1px #000;color:#fff">★</span></span></div>
+<div style="border-top:2px solid #000;margin-top:24px">
+<div style="height:88px;display:flex;align-items:center;gap:16px;border-bottom:1px solid #000;background:#000;color:#fff;margin:0 -32px;padding:0 32px">
+<div style="width:48px;height:72px;border:1px solid #fff;background:repeating-linear-gradient(180deg,#fff 0 1px,#000 1px 6px);flex:none"></div>
+<div style="flex:1"><div style="font-size:18px;letter-spacing:.08em;text-transform:uppercase">Next in series</div><div style="font-size:26px">The Sign of the Four</div></div>
+<span style="font-family:'JetBrains Mono',monospace;font-size:18px">5 h</span>
+</div>
+<div style="height:56px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #000"><span style="font-size:26px">Mark finished</span><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="4,13 10,19 20,6"></polyline></svg></div>
+<div style="height:56px;display:flex;align-items:center;justify-content:space-between"><span style="font-size:26px">Library</span><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="9,4 17,12 9,20"></polyline></svg></div>
+</div>
+<div style="position:absolute;left:0;right:0;bottom:0;height:40px;border-top:4px solid #000;background:#fff;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Library</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Back</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Next book</div>
+<div style="display:flex;align-items:center;justify-content:center">Rate</div>
+</div>
+</div></div>
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">42-jump-filtered · DU · "st" typed from the phone</div>
+<div data-screen-label="42-jump-filtered" style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden;padding:24px 24px 0">
+<div style="height:64px;border-bottom:2px solid #000;display:flex;align-items:center;justify-content:space-between"><div style="display:flex;align-items:center;gap:4px"><span style="font-family:'JetBrains Mono',monospace;font-size:26px">st</span><span style="display:inline-block;width:2px;height:30px;background:#000"></span></div><span style="font-family:'JetBrains Mono',monospace;font-size:14px">from phone</span></div>
+<sc-for list="{{ jumpFiltered }}" as="r" hint-placeholder-count="6">
+<div style="height:56px;display:flex;align-items:center;justify-content:space-between;padding:0 12px;border-bottom:1px solid #000;background:{{ r.bg }};color:{{ r.fg }}"><span style="font-size:26px">{{ r.t }}</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">{{ r.v }}</span></div>
+</sc-for>
+<div style="font-size:18px;margin-top:18px;padding:0 12px">Every screen, app and book answers here. New features register a row, never a menu.</div>
+<div style="position:absolute;left:0;right:0;bottom:0;height:40px;border-top:4px solid #000;background:#fff;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="15,4 7,12 15,20"></polyline></svg></div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Close</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Open</div>
+<div style="display:flex;align-items:center;justify-content:center"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="9,4 17,12 9,20"></polyline></svg></div>
+</div>
+</div></div>
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">50-settings-home · GC · groups as a list</div>
+<div data-screen-label="50-settings-home" style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden;padding:32px 32px 0">
+<div style="font-family:Literata,serif;font-size:32px;padding-bottom:10px;border-bottom:4px solid #000">Settings</div>
+<sc-for list="{{ settingsGroups }}" as="r" hint-placeholder-count="11">
+<div style="height:56px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #000;padding:0 8px;background:{{ r.bg }};color:{{ r.fg }}"><span style="font-size:26px">{{ r.t }}</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">{{ r.v }}</span></div>
+</sc-for>
+<div style="position:absolute;left:0;right:0;bottom:0;height:40px;border-top:4px solid #000;background:#fff;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><div style="width:2px;height:2px;background:#000"></div></div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Back</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Open</div>
+<div style="display:flex;align-items:center;justify-content:center"><div style="width:2px;height:2px;background:#000"></div></div>
+</div>
+</div></div>
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">50-keys · GC · the device drawn in 2 px strokes</div>
+<div data-screen-label="50-keys" style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden;padding:32px 32px 0">
+<div style="font-family:Literata,serif;font-size:32px;padding-bottom:10px;border-bottom:4px solid #000">Keys</div>
+<div style="display:flex;gap:24px;margin-top:20px;align-items:center">
+<div style="position:relative;width:170px;height:250px;flex:none">
+<div style="position:absolute;left:10px;top:14px;width:150px;height:224px;border:2px solid #000"></div>
+<div style="position:absolute;left:30px;top:34px;width:110px;height:158px;border:1px solid #000"></div>
+<div style="position:absolute;left:40px;top:6px;width:36px;height:8px;border:2px solid #000;background:#fff"></div>
+<div style="position:absolute;right:2px;top:74px;width:8px;height:30px;border:2px solid #000;background:#fff"></div>
+<div style="position:absolute;right:2px;top:112px;width:8px;height:30px;border:2px solid #000;background:#fff"></div>
+<div style="position:absolute;left:28px;bottom:14px;display:flex;gap:6px"><div style="width:24px;height:14px;border:2px solid #000"></div><div style="width:24px;height:14px;border:2px solid #000"></div><div style="width:24px;height:14px;border:2px solid #000"></div><div style="width:24px;height:14px;border:2px solid #000"></div></div>
+</div>
+<div style="font-family:'JetBrains Mono',monospace;font-size:16px;line-height:2">Power — sleep · hold: menu<br>Up — page back<br>Down — page forward<br>Left · Back · OK · Right<br>long Back — Jump</div>
+</div>
+<div style="border-top:2px solid #000;margin-top:18px">
+<div style="height:52px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #000;padding:0 8px"><span style="font-size:22px">Remap a key</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">›</span></div>
+<div style="height:52px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #000;padding:0 8px"><span style="font-size:22px">Swap Up and Down</span><div style="width:56px;height:28px;border:2px solid #000"><div style="width:24px;height:24px;background:#000"></div></div></div>
+<div style="height:52px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #000;padding:0 8px"><span style="font-size:22px">Follow orientation</span><div style="width:56px;height:28px;border:2px solid #000;display:flex;justify-content:flex-end"><div style="width:24px;height:24px;background:#000"></div></div></div>
+<div style="height:52px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #000;padding:0 8px;background:#000;color:#fff"><span style="font-size:22px">Tap to turn</span><span style="font-family:'JetBrains Mono',monospace;font-size:20px">‹ medium ›</span></div>
+<div style="height:52px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #000;padding:0 8px"><span style="font-size:22px">Tilt · Shake to turn</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">off · off</span></div>
+<div style="height:52px;display:flex;align-items:center;justify-content:space-between;padding:0 8px"><span style="font-size:22px">Remote</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">not paired ›</span></div>
+</div>
+<div style="position:absolute;left:0;right:0;bottom:0;height:40px;border-top:4px solid #000;background:#fff;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="15,4 7,12 15,20"></polyline></svg></div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Back</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Change</div>
+<div style="display:flex;align-items:center;justify-content:center"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="9,4 17,12 9,20"></polyline></svg></div>
+</div>
+</div></div>
+</div>
+
+<!-- g3 -->
+<div id="b4g3" style="display:flex;gap:40px">
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">50-sleepandpower · GC · opens 44 picker; battery row opens its page</div>
+<div data-screen-label="50-sleepandpower" style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden;padding:32px 32px 0">
+<div style="font-family:Literata,serif;font-size:32px;padding-bottom:10px;border-bottom:4px solid #000">Sleep and power</div>
+<sc-for list="{{ sleepRows }}" as="r" hint-placeholder-count="8">
+<div style="height:56px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #000;padding:0 8px;background:{{ r.bg }};color:{{ r.fg }}"><span style="font-size:22px">{{ r.t }}</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">{{ r.v }}</span></div>
+</sc-for>
+<div style="display:flex;align-items:baseline;gap:16px;margin-top:24px"><div style="font-family:Literata,serif;font-size:44px">19 days</div><div style="font-size:18px;letter-spacing:.08em;text-transform:uppercase">Left · 62% · at your pace</div></div>
+<div style="position:absolute;left:0;right:0;bottom:0;height:40px;border-top:4px solid #000;background:#fff;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="15,4 7,12 15,20"></polyline></svg></div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Back</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Change</div>
+<div style="display:flex;align-items:center;justify-content:center"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="9,4 17,12 9,20"></polyline></svg></div>
+</div>
+</div></div>
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">50-battery · GC · from the BQ27220 gauge</div>
+<div data-screen-label="50-battery" style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden;padding:32px 32px 0">
+<div style="font-family:Literata,serif;font-size:32px;padding-bottom:10px;border-bottom:4px solid #000">Battery</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;border-bottom:2px solid #000">
+<div style="padding:20px 8px 16px;border-right:2px solid #000;border-bottom:2px solid #000"><div style="font-family:Literata,serif;font-size:44px;line-height:1">19 days</div><div style="font-size:18px;letter-spacing:.08em;text-transform:uppercase;margin-top:4px">Left</div></div>
+<div style="padding:20px 8px 16px;border-bottom:2px solid #000"><div style="font-family:Literata,serif;font-size:44px;line-height:1">62%</div><div style="font-size:18px;letter-spacing:.08em;text-transform:uppercase;margin-top:4px">Charge</div></div>
+<div style="padding:20px 8px 16px;border-right:2px solid #000"><div style="font-family:Literata,serif;font-size:44px;line-height:1">41</div><div style="font-size:18px;letter-spacing:.08em;text-transform:uppercase;margin-top:4px">Cycles</div></div>
+<div style="padding:20px 8px 16px"><div style="font-family:Literata,serif;font-size:44px;line-height:1">Good</div><div style="font-size:18px;letter-spacing:.08em;text-transform:uppercase;margin-top:4px">Health</div></div>
+</div>
+<div style="font-size:18px;letter-spacing:.08em;text-transform:uppercase;margin:20px 0 8px">Daily use · 30 days</div>
+<div style="display:flex;align-items:flex-end;gap:2px;height:72px;border-bottom:2px solid #000"><sc-for list="{{ battBars }}" as="b" hint-placeholder-count="30"><div style="width:12px;background:#000;height:{{ b.h }}px"></div></sc-for></div>
+<div style="font-family:'JetBrains Mono',monospace;font-size:14px;margin-top:6px">tallest: 11% — the Bookshop day</div>
+<div style="font-family:'JetBrains Mono',monospace;font-size:18px;margin-top:22px;line-height:1.7">Charging · 0.42 A · pogo 5 V<br>Estimate from your last 30 days of reading.</div>
+<div style="position:absolute;left:0;right:0;bottom:0;height:40px;border-top:4px solid #000;background:#fff;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><div style="width:2px;height:2px;background:#000"></div></div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Back</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><div style="width:2px;height:2px;background:#000"></div></div>
+<div style="display:flex;align-items:center;justify-content:center"><div style="width:2px;height:2px;background:#000"></div></div>
+</div>
+</div></div>
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">50-nightjobs · GC · timer wake at a chosen hour</div>
+<div data-screen-label="50-nightjobs" style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden;padding:32px 32px 0">
+<div style="font-family:Literata,serif;font-size:32px;padding-bottom:10px;border-bottom:4px solid #000">Night jobs</div>
+<div style="font-size:18px;margin-top:12px;line-height:1.5">The reader wakes once, quietly, fetches what you chose, and goes back to sleep.</div>
+<div style="border-top:2px solid #000;margin-top:16px">
+<div style="height:56px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #000;padding:0 8px"><span style="font-size:22px">Night jobs</span><div style="width:56px;height:28px;border:2px solid #000;display:flex;justify-content:flex-end"><div style="width:24px;height:24px;background:#000"></div></div></div>
+<div style="height:56px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #000;padding:0 8px;background:#000;color:#fff"><span style="font-size:22px">Hour</span><span style="font-family:'JetBrains Mono',monospace;font-size:22px">‹ 6:00 ›</span></div>
+<div style="height:56px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #000;padding:0 8px"><span style="font-size:22px">News</span><div style="width:56px;height:28px;border:2px solid #000;display:flex;justify-content:flex-end"><div style="width:24px;height:24px;background:#000"></div></div></div>
+<div style="height:56px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #000;padding:0 8px"><span style="font-size:22px">Bookshop shelves</span><div style="width:56px;height:28px;border:2px solid #000;display:flex;justify-content:flex-end"><div style="width:24px;height:24px;background:#000"></div></div></div>
+<div style="height:56px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #000;padding:0 8px"><span style="font-size:22px">Sync positions and stats</span><div style="width:56px;height:28px;border:2px solid #000;display:flex;justify-content:flex-end"><div style="width:24px;height:24px;background:#000"></div></div></div>
+<div style="height:56px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #000;padding:0 8px"><span style="font-size:22px">Catalog refresh</span><div style="width:56px;height:28px;border:2px solid #000"><div style="width:24px;height:24px;background:#000"></div></div></div>
+</div>
+<div style="font-family:'JetBrains Mono',monospace;font-size:18px;margin-top:22px;line-height:1.7">Last run · Today 06:02<br>3 articles · shelves updated · synced</div>
+<div style="position:absolute;left:0;right:0;bottom:0;height:40px;border-top:4px solid #000;background:#fff;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="15,4 7,12 15,20"></polyline></svg></div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Back</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Change</div>
+<div style="display:flex;align-items:center;justify-content:center"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="9,4 17,12 9,20"></polyline></svg></div>
+</div>
+</div></div>
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">50-about · GC · storage bars as hatched rules</div>
+<div data-screen-label="50-about" style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden;padding:32px 32px 0">
+<div style="font-family:Literata,serif;font-size:32px;padding-bottom:10px;border-bottom:4px solid #000">About</div>
+<div style="font-family:'JetBrains Mono',monospace;font-size:18px;margin-top:16px;line-height:1.9">Quire 0.4.0 · rust 1.90 · esp-idf 5.3<br>Xteink X3 · UC8253 panel · 16 MB flash<br>Serial QX3-2609-0412</div>
+<div style="font-size:18px;letter-spacing:.08em;text-transform:uppercase;margin:26px 0 8px">Card · 16 GB</div>
+<div style="height:20px;border:2px solid #000;padding:2px"><div style="height:12px;width:34%;background:#000"></div></div>
+<div style="font-family:'JetBrains Mono',monospace;font-size:14px;margin-top:6px">5.4 GB books and covers · 10.6 GB free</div>
+<div style="font-size:18px;letter-spacing:.08em;text-transform:uppercase;margin:20px 0 8px">Flash · 16 MB</div>
+<div style="height:20px;border:2px solid #000;padding:2px"><div style="height:12px;width:70%;background:repeating-linear-gradient(90deg,#000 0 1px,#fff 1px 5px)"></div><div style="height:0"></div></div>
+<div style="font-family:'JetBrains Mono',monospace;font-size:14px;margin-top:6px">firmware ×2 · fonts · dictionary · sample book</div>
+<div style="border-top:2px solid #000;margin-top:24px">
+<div style="height:56px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #000;padding:0 8px;background:#000;color:#fff"><span style="font-size:22px">Check for update</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">0.4.2 ready ›</span></div>
+<div style="height:56px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #000;padding:0 8px"><span style="font-size:22px">Licences</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">›</span></div>
+<div style="height:56px;display:flex;align-items:center;justify-content:space-between;padding:0 8px"><span style="font-size:22px">Crash log to card</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">empty</span></div>
+</div>
+<div style="position:absolute;left:0;right:0;bottom:0;height:40px;border-top:4px solid #000;background:#fff;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><div style="width:2px;height:2px;background:#000"></div></div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Back</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Open</div>
+<div style="display:flex;align-items:center;justify-content:center"><div style="width:2px;height:2px;background:#000"></div></div>
+</div>
+</div></div>
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">51-ota-available · GC · signed, verified, rolls back</div>
+<div data-screen-label="51-ota-available" style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden;padding:32px 32px 0">
+<div style="font-family:Literata,serif;font-size:32px;padding-bottom:10px;border-bottom:4px solid #000">Update</div>
+<div style="display:flex;align-items:baseline;gap:16px;margin-top:22px"><div style="font-family:Literata,serif;font-size:44px">0.4.2</div><div style="font-family:'JetBrains Mono',monospace;font-size:18px">1.9 MB · signed · 12 Sep</div></div>
+<div style="font-size:18px;letter-spacing:.08em;text-transform:uppercase;margin:22px 0 8px">What changed · 1/2</div>
+<div lang="en" style="font-family:Literata,serif;font-size:22px;line-height:1.5">
+<p>— The Spine now marks bookmarks as dots on the inner edge.</p>
+<p style="margin-top:10px">— Faster page turns on UC8279d panels.</p>
+<p style="margin-top:10px">— Wordle learns British spellings.</p>
+</div>
+<div style="font-size:18px;margin-top:26px;line-height:1.5">Installs to the spare slot. If the new firmware fails to start, the reader returns to this version by itself.</div>
+<div style="position:absolute;left:0;right:0;bottom:0;height:40px;border-top:4px solid #000;background:#fff;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="15,4 7,12 15,20"></polyline></svg></div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Back</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000;background:#000;color:#fff">Install</div>
+<div style="display:flex;align-items:center;justify-content:center">Skip</div>
+</div>
+</div></div>
+</div>
+
+<!-- g4 -->
+<div id="b4g4" style="display:flex;gap:40px">
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">51-ota-working · GC · never touch Power</div>
+<div data-screen-label="51-ota-working" style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden;padding:32px 32px 0">
+<div style="font-family:Literata,serif;font-size:32px;padding-bottom:10px;border-bottom:4px solid #000">Update</div>
+<div style="border:2px solid #000;margin-top:160px;padding:28px">
+<div style="font-family:Literata,serif;font-size:32px">Installing 0.4.2</div>
+<div style="height:16px;border:2px solid #000;margin-top:18px;padding:2px"><div style="height:8px;width:72%;background:repeating-linear-gradient(90deg,#000 0 10px,#fff 10px 12px)"></div></div>
+<div style="font-family:'JetBrains Mono',monospace;font-size:18px;margin-top:12px">verifying signature · slot B · 1.4 of 1.9 MB</div>
+<div style="font-size:22px;margin-top:16px">Keep the reader awake. It restarts by itself.</div>
+</div>
+<div style="position:absolute;left:0;right:0;bottom:0;height:40px;border-top:4px solid #000;background:#fff;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><div style="width:2px;height:2px;background:#000"></div></div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><div style="width:2px;height:2px;background:#000"></div></div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><div style="width:2px;height:2px;background:#000"></div></div>
+<div style="display:flex;align-items:center;justify-content:center"><div style="width:2px;height:2px;background:#000"></div></div>
+</div>
+</div></div>
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">60a-overview · GC · numbers that agree</div>
+<div data-screen-label="60a-overview" style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden;padding:32px 32px 0">
+<div style="font-family:Literata,serif;font-size:32px;padding-bottom:10px;border-bottom:4px solid #000">Reading</div>
+<div style="display:flex;align-items:center;gap:20px;border-bottom:2px solid #000;padding:10px 4px;font-size:18px;letter-spacing:.08em;text-transform:uppercase"><span style="background:#000;color:#fff;padding:2px 8px">Today</span><span>Week</span><span>Month</span><span>Year</span><span>All</span></div>
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;border-bottom:2px solid #000">
+<div style="padding:16px 6px 12px;border-right:2px solid #000;border-bottom:2px solid #000"><div style="font-family:Literata,serif;font-size:40px;line-height:1">1 h 42</div><div style="font-size:16px;letter-spacing:.08em;text-transform:uppercase;margin-top:4px">Read</div></div>
+<div style="padding:16px 6px 12px;border-right:2px solid #000;border-bottom:2px solid #000"><div style="font-family:Literata,serif;font-size:40px;line-height:1">53</div><div style="font-size:16px;letter-spacing:.08em;text-transform:uppercase;margin-top:4px">Pages</div></div>
+<div style="padding:16px 6px 12px;border-bottom:2px solid #000"><div style="font-family:Literata,serif;font-size:40px;line-height:1">31</div><div style="font-size:16px;letter-spacing:.08em;text-transform:uppercase;margin-top:4px">Pages / hour</div></div>
+<div style="padding:16px 6px 12px;border-right:2px solid #000"><div style="font-family:Literata,serif;font-size:40px;line-height:1">12</div><div style="font-size:16px;letter-spacing:.08em;text-transform:uppercase;margin-top:4px">Streak days</div></div>
+<div style="padding:16px 6px 12px;border-right:2px solid #000"><div style="font-family:Literata,serif;font-size:40px;line-height:1">2</div><div style="font-size:16px;letter-spacing:.08em;text-transform:uppercase;margin-top:4px">Books this month</div></div>
+<div style="padding:16px 6px 12px"><div style="font-family:Literata,serif;font-size:40px;line-height:1">4 h 12</div><div style="font-size:16px;letter-spacing:.08em;text-transform:uppercase;margin-top:4px">Left in book</div></div>
+</div>
+<div style="margin-top:18px;position:relative">
+<div style="position:absolute;left:238px;top:-4px;font-family:'JetBrains Mono',monospace;font-size:16px">42 min</div>
+<div style="display:flex;align-items:flex-end;gap:4px;height:120px;border-bottom:2px solid #000;padding-top:18px"><sc-for list="{{ hourBars }}" as="b" hint-placeholder-count="24"><div style="width:14px;background:#000;height:{{ b.h }}px"></div></sc-for></div>
+<div style="display:flex;justify-content:space-between;font-family:'JetBrains Mono',monospace;font-size:14px;margin-top:4px"><span>0 h</span><span>12 h</span><span>23 h</span></div>
+</div>
+<div style="position:absolute;right:2px;top:330px;writing-mode:vertical-rl;font-family:'JetBrains Mono',monospace;font-size:18px;background:#fff;padding:4px 0;border:1px solid #000">Rhythm</div>
+<div style="position:absolute;right:2px;top:452px;writing-mode:vertical-rl;font-family:'JetBrains Mono',monospace;font-size:18px;background:#fff;padding:4px 0;border:1px solid #000">Calendar</div>
+<div style="position:absolute;left:0;right:0;bottom:0;height:40px;border-top:4px solid #000;background:#fff;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="15,4 7,12 15,20"></polyline></svg></div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Back</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Books</div>
+<div style="display:flex;align-items:center;justify-content:center">Goals</div>
+</div>
+</div></div>
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">60a-overview-dark · GC · inverted</div>
+<div data-screen-label="60a-overview-dark" style="position:relative;width:528px;height:792px;background:#000;color:#fff;outline:1px solid #C9C5BC;overflow:hidden;padding:32px 32px 0">
+<div style="font-family:Literata,serif;font-size:32px;padding-bottom:10px;border-bottom:4px solid #fff">Reading</div>
+<div style="display:flex;align-items:center;gap:20px;border-bottom:2px solid #fff;padding:10px 4px;font-size:18px;letter-spacing:.08em;text-transform:uppercase"><span style="background:#fff;color:#000;padding:2px 8px">Today</span><span>Week</span><span>Month</span><span>Year</span><span>All</span></div>
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;border-bottom:2px solid #fff">
+<div style="padding:16px 6px 12px;border-right:2px solid #fff;border-bottom:2px solid #fff"><div style="font-family:Literata,serif;font-size:40px;line-height:1">1 h 42</div><div style="font-size:16px;letter-spacing:.08em;text-transform:uppercase;margin-top:4px">Read</div></div>
+<div style="padding:16px 6px 12px;border-right:2px solid #fff;border-bottom:2px solid #fff"><div style="font-family:Literata,serif;font-size:40px;line-height:1">53</div><div style="font-size:16px;letter-spacing:.08em;text-transform:uppercase;margin-top:4px">Pages</div></div>
+<div style="padding:16px 6px 12px;border-bottom:2px solid #fff"><div style="font-family:Literata,serif;font-size:40px;line-height:1">31</div><div style="font-size:16px;letter-spacing:.08em;text-transform:uppercase;margin-top:4px">Pages / hour</div></div>
+<div style="padding:16px 6px 12px;border-right:2px solid #fff"><div style="font-family:Literata,serif;font-size:40px;line-height:1">12</div><div style="font-size:16px;letter-spacing:.08em;text-transform:uppercase;margin-top:4px">Streak days</div></div>
+<div style="padding:16px 6px 12px;border-right:2px solid #fff"><div style="font-family:Literata,serif;font-size:40px;line-height:1">2</div><div style="font-size:16px;letter-spacing:.08em;text-transform:uppercase;margin-top:4px">Books this month</div></div>
+<div style="padding:16px 6px 12px"><div style="font-family:Literata,serif;font-size:40px;line-height:1">4 h 12</div><div style="font-size:16px;letter-spacing:.08em;text-transform:uppercase;margin-top:4px">Left in book</div></div>
+</div>
+<div style="margin-top:18px;position:relative">
+<div style="position:absolute;left:238px;top:-4px;font-family:'JetBrains Mono',monospace;font-size:16px">42 min</div>
+<div style="display:flex;align-items:flex-end;gap:4px;height:120px;border-bottom:2px solid #fff;padding-top:18px"><sc-for list="{{ hourBars }}" as="b" hint-placeholder-count="24"><div style="width:14px;background:#fff;height:{{ b.h }}px"></div></sc-for></div>
+<div style="display:flex;justify-content:space-between;font-family:'JetBrains Mono',monospace;font-size:14px;margin-top:4px"><span>0 h</span><span>12 h</span><span>23 h</span></div>
+</div>
+<div style="position:absolute;left:0;right:0;bottom:0;height:40px;border-top:4px solid #fff;background:#000;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #fff"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><polyline points="15,4 7,12 15,20"></polyline></svg></div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #fff">Back</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #fff">Books</div>
+<div style="display:flex;align-items:center;justify-content:center">Goals</div>
+</div>
+</div></div>
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">60a-overview-empty · GC · no reading yet today</div>
+<div data-screen-label="60a-overview-empty" style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden;padding:32px 32px 0">
+<div style="font-family:Literata,serif;font-size:32px;padding-bottom:10px;border-bottom:4px solid #000">Reading</div>
+<div style="display:flex;align-items:center;gap:20px;border-bottom:2px solid #000;padding:10px 4px;font-size:18px;letter-spacing:.08em;text-transform:uppercase"><span style="background:#000;color:#fff;padding:2px 8px">Today</span><span>Week</span><span>Month</span><span>Year</span><span>All</span></div>
+<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;margin-top:200px">
+<div style="font-family:Literata,serif;font-size:32px">No reading yet today</div>
+<div style="font-size:18px;margin-top:10px">Middlemarch is 38 min from the next chapter mark.</div>
+</div>
+<div style="position:absolute;left:0;right:0;bottom:0;height:40px;border-top:4px solid #000;background:#fff;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="15,4 7,12 15,20"></polyline></svg></div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Back</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Continue</div>
+<div style="display:flex;align-items:center;justify-content:center">Goals</div>
+</div>
+</div></div>
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">60b-rhythm · GC · favourite column inverted</div>
+<div data-screen-label="60b-rhythm" style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden;padding:32px 32px 0">
+<div style="font-family:Literata,serif;font-size:32px;padding-bottom:10px;border-bottom:4px solid #000">Rhythm</div>
+<div style="font-size:18px;letter-spacing:.08em;text-transform:uppercase;margin:16px 0 6px">Time of day · all time</div>
+<div style="display:flex;align-items:flex-end;gap:3px;height:90px;border-bottom:2px solid #000"><sc-for list="{{ todBars }}" as="b" hint-placeholder-count="24"><div style="width:15px;height:{{ b.h }}px;background:{{ b.bg }};outline:{{ b.o }}"></div></sc-for></div>
+<div style="display:flex;justify-content:space-between;font-family:'JetBrains Mono',monospace;font-size:14px;margin-top:4px"><span>midnight</span><span>noon</span><span style="letter-spacing:.08em">9 PM ▮</span></div>
+<div style="font-size:18px;letter-spacing:.08em;text-transform:uppercase;margin:20px 0 6px">Weekday</div>
+<div style="display:flex;align-items:flex-end;gap:8px;height:70px;border-bottom:2px solid #000"><sc-for list="{{ wdBars }}" as="b" hint-placeholder-count="7"><div style="width:52px;height:{{ b.h }}px;background:{{ b.bg }}"></div></sc-for></div>
+<div style="display:flex;gap:8px;font-family:'JetBrains Mono',monospace;font-size:14px;margin-top:4px"><span style="width:52px;text-align:center">M</span><span style="width:52px;text-align:center">T</span><span style="width:52px;text-align:center">W</span><span style="width:52px;text-align:center">T</span><span style="width:52px;text-align:center">F</span><span style="width:52px;text-align:center">S</span><span style="width:52px;text-align:center;background:#000;color:#fff">S</span></div>
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;border-top:2px solid #000;border-bottom:2px solid #000;margin-top:18px">
+<div style="padding:14px 6px 10px;border-right:2px solid #000"><div style="font-family:Literata,serif;font-size:36px;line-height:1">9 pm</div><div style="font-size:15px;letter-spacing:.08em;text-transform:uppercase;margin-top:4px">Favourite hour</div></div>
+<div style="padding:14px 6px 10px;border-right:2px solid #000"><div style="font-family:Literata,serif;font-size:36px;line-height:1">Sun</div><div style="font-size:15px;letter-spacing:.08em;text-transform:uppercase;margin-top:4px">Favourite day</div></div>
+<div style="padding:14px 6px 10px"><div style="font-family:Literata,serif;font-size:36px;line-height:1">27 min</div><div style="font-size:15px;letter-spacing:.08em;text-transform:uppercase;margin-top:4px">Typical session</div></div>
+</div>
+<div style="font-family:'JetBrains Mono',monospace;font-size:16px;line-height:2;margin-top:12px">Sunday 7 Sep<br>21:04 · 44 min · Middlemarch<br>16:20 · 31 min · Middlemarch<br>09:12 · 18 min · Meditations</div>
+<div style="position:absolute;left:0;right:0;bottom:0;height:40px;border-top:4px solid #000;background:#fff;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="15,4 7,12 15,20"></polyline></svg></div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Back</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Day</div>
+<div style="display:flex;align-items:center;justify-content:center"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="9,4 17,12 9,20"></polyline></svg></div>
+</div>
+</div></div>
+</div>
+
+<!-- g5 -->
+<div id="b4g5" style="display:flex;gap:40px">
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">60c-calendar · GC · dot-screen heat map, streak joined</div>
+<div data-screen-label="60c-calendar" style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden;padding:32px 32px 0">
+<div style="display:flex;justify-content:space-between;align-items:baseline;border-bottom:4px solid #000;padding-bottom:10px"><span style="font-family:Literata,serif;font-size:32px">September</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">‹ 2026 ›</span></div>
+<div style="display:grid;grid-template-columns:repeat(7,56px);gap:4px;margin-top:16px;font-size:15px;letter-spacing:.08em;text-transform:uppercase;text-align:center"><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span></div>
+<div style="position:relative;display:grid;grid-template-columns:repeat(7,56px);gap:4px;margin-top:6px">
+<sc-for list="{{ calCells }}" as="c" hint-placeholder-count="35">
+<div style="width:56px;height:56px;border:{{ c.border }};background:{{ c.bg }};position:relative;display:flex;align-items:flex-start;justify-content:flex-end"><span style="font-family:'JetBrains Mono',monospace;font-size:13px;padding:3px 4px;background:{{ c.nbg }};color:{{ c.nfg }}">{{ c.n }}</span></div>
+</sc-for>
+<div style="position:absolute;left:88px;top:88px;right:130px;height:2px;background:#000;pointer-events:none"></div>
+<div style="position:absolute;left:88px;top:148px;right:70px;height:2px;background:#000;pointer-events:none"></div>
+</div>
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;border-top:2px solid #000;border-bottom:2px solid #000;margin-top:20px">
+<div style="padding:16px 6px 12px;border-right:2px solid #000"><div style="font-family:Literata,serif;font-size:40px;line-height:1">12</div><div style="font-size:15px;letter-spacing:.08em;text-transform:uppercase;margin-top:4px">Current streak</div></div>
+<div style="padding:16px 6px 12px;border-right:2px solid #000"><div style="font-family:Literata,serif;font-size:40px;line-height:1">41</div><div style="font-size:15px;letter-spacing:.08em;text-transform:uppercase;margin-top:4px">Longest</div></div>
+<div style="padding:16px 6px 12px"><div style="font-family:Literata,serif;font-size:40px;line-height:1">12 / 13</div><div style="font-size:15px;letter-spacing:.08em;text-transform:uppercase;margin-top:4px">Days so far</div></div>
+</div>
+<div style="font-family:'JetBrains Mono',monospace;font-size:14px;margin-top:12px">empty · sparse · dense · solid = 0 / 25 / 50 / 100% of the daily goal</div>
+<div style="position:absolute;left:0;right:0;bottom:0;height:40px;border-top:4px solid #000;background:#fff;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="15,4 7,12 15,20"></polyline></svg></div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Back</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Today</div>
+<div style="display:flex;align-items:center;justify-content:center"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="9,4 17,12 9,20"></polyline></svg></div>
+</div>
+</div></div>
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">60d-books · GC · sorted by time; long-Confirm a head to re-sort</div>
+<div data-screen-label="60d-books" style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden;padding:32px 24px 0">
+<div style="font-family:Literata,serif;font-size:32px;padding:0 8px 10px;border-bottom:4px solid #000">Books</div>
+<div style="display:grid;grid-template-columns:1fr 76px 64px 60px;border-bottom:2px solid #000;font-size:15px;letter-spacing:.08em;text-transform:uppercase;margin-top:10px"><span style="padding:8px">Title</span><span style="padding:8px 4px;background:#000;color:#fff">Time</span><span style="padding:8px 4px">Pages</span><span style="padding:8px 4px">P/h</span></div>
+<sc-for list="{{ bookTable }}" as="r" hint-placeholder-count="8">
+<div style="display:grid;grid-template-columns:1fr 76px 64px 60px;border-bottom:1px solid #000;align-items:center;background:{{ r.bg }};color:{{ r.fg }}"><span style="padding:14px 8px;font-size:20px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.t }}</span><span style="padding:14px 4px;font-family:'JetBrains Mono',monospace;font-size:16px">{{ r.h }}</span><span style="padding:14px 4px;font-family:'JetBrains Mono',monospace;font-size:16px">{{ r.p }}</span><span style="padding:14px 4px;font-family:'JetBrains Mono',monospace;font-size:16px">{{ r.ph }}</span></div>
+</sc-for>
+<div style="font-family:'JetBrains Mono',monospace;font-size:14px;margin-top:12px;padding:0 8px">started/finished on the row's second page · Confirm opens Book info</div>
+<div style="position:absolute;left:0;right:0;bottom:0;height:40px;border-top:4px solid #000;background:#fff;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="15,4 7,12 15,20"></polyline></svg></div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Back</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Open</div>
+<div style="display:flex;align-items:center;justify-content:center"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="9,4 17,12 9,20"></polyline></svg></div>
+</div>
+</div></div>
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">60e-goals · GC · the goal Spine fills as books finish</div>
+<div data-screen-label="60e-goals" style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden;padding:32px 32px 0">
+<div style="font-family:Literata,serif;font-size:32px;padding-bottom:10px;border-bottom:4px solid #000">Goals</div>
+<div style="display:flex;gap:28px;margin-top:20px">
+<div style="flex:1">
+<div style="height:56px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #000;background:#000;color:#fff;padding:0 8px"><span style="font-size:22px">Daily</span><span style="font-family:'JetBrains Mono',monospace;font-size:20px">‹ 30 min ›</span></div>
+<div style="height:56px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #000;padding:0 8px"><span style="font-size:22px">Count</span><span style="font-family:'JetBrains Mono',monospace;font-size:18px">minutes ›</span></div>
+<div style="height:56px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #000;padding:0 8px"><span style="font-size:22px">Yearly</span><span style="font-family:'JetBrains Mono',monospace;font-size:20px">‹ 40 books ›</span></div>
+<div style="margin-top:24px"><div style="font-family:Literata,serif;font-size:44px;line-height:1">31 / 40</div><div style="font-size:18px;letter-spacing:.08em;text-transform:uppercase;margin-top:4px">Books this year</div></div>
+<div style="font-size:18px;letter-spacing:.08em;text-transform:uppercase;margin:30px 0 10px">Awards</div>
+<div style="font-size:17px;letter-spacing:.08em;text-transform:uppercase;line-height:2.2">First book · 12 Jan<br>7-day streak · 3 Feb<br>100 hours · 18 Jun<br>Night owl · 9 Aug</div>
+</div>
+<div style="width:60px;flex:none;display:flex;flex-direction:column;align-items:center;gap:10px">
+<div style="position:relative;width:12px;height:560px"><div style="position:absolute;top:0;left:0;width:12px;height:126px;background:repeating-linear-gradient(180deg,#000 0 1px,#0000 1px 4px)"></div><div style="position:absolute;top:126px;left:0;width:12px;height:434px;background:#000"></div></div>
+<span style="font-family:'JetBrains Mono',monospace;font-size:13px;writing-mode:vertical-rl">31 of 40</span>
+</div>
+</div>
+<div style="position:absolute;left:0;right:0;bottom:0;height:40px;border-top:4px solid #000;background:#fff;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;font-family:'JetBrains Mono',monospace;font-size:18px">
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="15,4 7,12 15,20"></polyline></svg></div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Back</div>
+<div style="display:flex;align-items:center;justify-content:center;border-right:1px solid #000">Change</div>
+<div style="display:flex;align-items:center;justify-content:center"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2"><polyline points="9,4 17,12 9,20"></polyline></svg></div>
+</div>
+</div></div>
+<div style="width:528px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">61-yearinreview · GC · shareable as a screenshot</div>
+<div data-screen-label="61-yearinreview" style="position:relative;width:528px;height:792px;background:#fff;outline:1px solid #C9C5BC;overflow:hidden;padding:44px 40px 0">
+<div style="font-size:18px;letter-spacing:.08em;text-transform:uppercase">Quire · 2026</div>
+<div style="display:flex;align-items:baseline;gap:20px;margin-top:18px"><span style="font-family:Literata,serif;font-size:112px;line-height:1">31</span><span style="font-size:18px;letter-spacing:.08em;text-transform:uppercase">Books</span></div>
+<div style="display:grid;grid-template-columns:1fr 1fr;border-top:2px solid #000;border-bottom:2px solid #000;margin-top:24px">
+<div style="padding:18px 8px 14px;border-right:2px solid #000"><div style="font-family:Literata,serif;font-size:44px;line-height:1">212 h</div><div style="font-size:16px;letter-spacing:.08em;text-transform:uppercase;margin-top:4px">Read</div></div>
+<div style="padding:18px 8px 14px"><div style="font-family:Literata,serif;font-size:44px;line-height:1">9 pm</div><div style="font-size:16px;letter-spacing:.08em;text-transform:uppercase;margin-top:4px">Favourite hour</div></div>
+</div>
+<div style="display:flex;gap:10px;margin-top:26px">
+<sc-for list="{{ yirCovers }}" as="c" hint-placeholder-count="5">
+<div style="width:80px;height:120px;border:1px solid #000;background:repeating-linear-gradient(180deg,#000 0 1px,#fff 1px 6px);position:relative;overflow:hidden"><div style="position:absolute;left:6px;right:6px;top:18px;background:#fff;border:1px solid #000;padding:5px 2px;text-align:center;font-family:Literata,serif;font-size:10px;line-height:1.2;overflow-wrap:break-word;overflow:hidden">{{ c.t }}</div></div>
+</sc-for>
+</div>
+<div style="font-family:'JetBrains Mono',monospace;font-size:18px;line-height:2;margin-top:30px">Longest session · 2 h 51 · Monte Cristo<br>Longest streak · 41 days · spring</div>
+<div style="position:absolute;left:40px;right:40px;bottom:24px;display:flex;justify-content:space-between;align-items:center;font-family:'JetBrains Mono',monospace;font-size:14px"><span>read faithfully, in unvisited tombs of time</span><span>Power+Down saves it</span></div>
+</div></div>
+</div>
+
+<!-- g6: charts board -->
+<div id="b4g6" style="display:flex;gap:40px">
+<div style="width:1160px;flex:none"><div style="height:36px;font:11px/14px 'JetBrains Mono',monospace;color:#666">charts-board · 1:1 · ink line, histogram, heat map, goal spine</div>
+<div style="width:1160px;background:#fff;outline:1px solid #C9C5BC;padding:40px;display:flex;gap:48px">
+<div style="width:400px;flex:none">
+<div style="font-size:18px;letter-spacing:.08em;text-transform:uppercase;border-bottom:2px solid #000;padding-bottom:6px">Ink line</div>
+<div style="position:relative;margin-top:30px">
+<div style="position:absolute;left:180px;top:-6px;font-family:'JetBrains Mono',monospace;font-size:18px">42 min</div>
+<div style="display:flex;align-items:flex-end;gap:2px;height:140px;border-bottom:2px solid #000;padding-top:22px"><sc-for list="{{ hourBars }}" as="b" hint-placeholder-count="24"><div style="width:14px;background:#000;height:{{ b.hBig }}px"></div></sc-for></div>
+<div style="display:flex;justify-content:space-between;font-family:'JetBrains Mono',monospace;font-size:14px;margin-top:4px"><span>0 h</span><span>12 h</span><span>23 h</span></div>
+</div>
+<div style="font:12px/1.6 'JetBrains Mono',monospace;color:#666;margin-top:14px">solid bars · 4 px min width · 2 px gaps · 2 px baseline · tallest labelled · axis at first, middle, last</div>
+<div style="font-size:18px;letter-spacing:.08em;text-transform:uppercase;border-bottom:2px solid #000;padding-bottom:6px;margin-top:36px">Histogram</div>
+<div style="display:flex;align-items:flex-end;gap:3px;height:110px;border-bottom:2px solid #000;margin-top:20px"><sc-for list="{{ todBars }}" as="b" hint-placeholder-count="24"><div style="width:13px;height:{{ b.h }}px;background:{{ b.bg }}"></div></sc-for></div>
+<div style="display:flex;justify-content:space-between;font-family:'JetBrains Mono',monospace;font-size:14px;margin-top:4px"><span>midnight</span><span>noon</span><span style="background:#000;color:#fff;padding:0 4px">9 pm</span></div>
+<div style="font:12px/1.6 'JetBrains Mono',monospace;color:#666;margin-top:14px">favourite column inverted, labelled beneath in small caps</div>
+</div>
+<div style="width:440px;flex:none">
+<div style="font-size:18px;letter-spacing:.08em;text-transform:uppercase;border-bottom:2px solid #000;padding-bottom:6px">Heat map</div>
+<div style="display:grid;grid-template-columns:repeat(7,56px);gap:4px;margin-top:20px;font-size:15px;letter-spacing:.08em;text-transform:uppercase;text-align:center"><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span></div>
+<div style="position:relative;display:grid;grid-template-columns:repeat(7,56px);gap:4px;margin-top:6px">
+<sc-for list="{{ calCells }}" as="c" hint-placeholder-count="35">
+<div style="width:56px;height:56px;border:{{ c.border }};background:{{ c.bg }};position:relative;display:flex;align-items:flex-start;justify-content:flex-end"><span style="font-family:'JetBrains Mono',monospace;font-size:13px;padding:3px 4px;background:{{ c.nbg }};color:{{ c.nfg }}">{{ c.n }}</span></div>
+</sc-for>
+<div style="position:absolute;left:88px;top:88px;right:130px;height:2px;background:#000"></div>
+<div style="position:absolute;left:88px;top:148px;right:70px;height:2px;background:#000"></div>
+</div>
+<div style="font:12px/1.6 'JetBrains Mono',monospace;color:#666;margin-top:14px">56 px cells · 4 px gaps · fills 0/25/50/100% as empty / sparse dots / dense dots / solid · today 3 px outline · streak joined by a 2 px rule through centres</div>
+</div>
+<div style="flex:1">
+<div style="font-size:18px;letter-spacing:.08em;text-transform:uppercase;border-bottom:2px solid #000;padding-bottom:6px">Goal spine</div>
+<div style="display:flex;gap:24px;margin-top:20px;align-items:flex-start">
+<div style="position:relative;width:12px;height:480px"><div style="position:absolute;top:0;left:0;width:12px;height:108px;background:repeating-linear-gradient(180deg,#000 0 1px,#0000 1px 4px)"></div><div style="position:absolute;top:108px;left:0;width:12px;height:372px;background:#000"></div></div>
+<div><div style="font-family:Literata,serif;font-size:44px;line-height:1">31</div><div style="font-size:18px;letter-spacing:.08em;text-transform:uppercase;margin-top:4px">Of 40 books</div><div style="font:12px/1.6 'JetBrains Mono',monospace;color:#666;margin-top:16px">hairlines = the goal ·<br>solid fill = finished ·<br>fills upward like a<br>book being read</div></div>
+</div>
+</div>
+</div></div>
+</div>
+
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    const hourH = [0,0,0,0,0,0,4,10,16,8,0,6,18,12,6,0,0,10,22,34,64,100,52,10];
+    const todH = [2,1,0,0,0,0,4,10,16,10,6,8,18,14,8,6,8,14,26,40,58,88,46,12];
+    // September 2026: the 1st is a Tuesday; today the 13th (Sunday); streak days 2..13
+    const fills = {0:"#fff",1:"conic-gradient(#000 0 12%,#fff 0) 0 0/6px 6px",2:"conic-gradient(#000 0 25%,#fff 0 50%,#000 0 75%,#fff 0) 0 0/4px 4px",3:"#000"};
+    const dayFill = {2:2,3:3,4:1,5:3,6:3,7:2,8:3,9:1,10:3,11:2,12:3,13:3};
+    const cells = [];
+    cells.push({ n: "", bg: "#fff", border: "1px solid #C9C5BC", nbg: "#0000", nfg: "#000" });
+    for (let d = 1; d <= 30; d++) {
+      const lvl = d > 13 ? 0 : (dayFill[d] === undefined ? 0 : dayFill[d]);
+      const solid = lvl === 3;
+      cells.push({
+        n: String(d),
+        bg: fills[lvl],
+        border: d === 13 ? "3px solid #000" : "1px solid #000",
+        nbg: solid ? "#000" : "#fff",
+        nfg: solid ? "#fff" : "#000"
+      });
+    }
+    while (cells.length < 35) cells.push({ n: "", bg: "#fff", border: "1px solid #C9C5BC", nbg: "#0000", nfg: "#000" });
+    return {
+      libGrid: [
+        { t: "Middlemarch", a: "George Eliot", v: "4 h 12 left", frame: "6px" },
+        { t: "The Count of Monte Cristo", a: "Dumas", v: "62%", frame: "2px" },
+        { t: "Meditations", a: "Marcus Aurelius", v: "1 h 05", frame: "2px" },
+        { t: "The Time Machine", a: "H. G. Wells", v: "finished", frame: "2px" },
+        { t: "Pride and Prejudice", a: "Jane Austen", v: "new", frame: "2px" },
+        { t: "Moby-Dick", a: "Herman Melville", v: "31%", frame: "2px" }
+      ],
+      libList: [
+        { t: "Middlemarch", a: "George Eliot", v: "4 h 12", bg: "#000", fg: "#fff" },
+        { t: "The Count of Monte Cristo", a: "Alexandre Dumas", v: "62%" },
+        { t: "Meditations", a: "Marcus Aurelius", v: "1 h 05" },
+        { t: "The Time Machine", a: "H. G. Wells", v: "done" },
+        { t: "Pride and Prejudice", a: "Jane Austen", v: "new" },
+        { t: "Moby-Dick", a: "Herman Melville", v: "31%" },
+        { t: "Walden", a: "Henry David Thoreau", v: "new" }
+      ].map(r => Object.assign({ bg: "#fff", fg: "#000" }, r)),
+      bookBars: [4,10,0,16,22,8,0,0,12,20,26,14,0,18,10,0,22,30,16,8,0,14,26,34,20,12,28,40,32,24].map(h => ({ h: Math.max(2, Math.round(h * 1.4)) })),
+      battBars: [3,3,4,3,2,3,5,3,3,4,3,3,8,3,4,3,3,2,3,4,11,4,3,3,4,3,3,4,3,4].map(h => ({ h: Math.round(h * 6) })),
+      hourBars: hourH.map(h => ({ h: Math.max(h === 0 ? 1 : 4, Math.round(h)), hBig: Math.max(h === 0 ? 1 : 4, Math.round(h * 1.16)) })),
+      todBars: todH.map((h, i) => ({ h: Math.max(h === 0 ? 1 : 4, Math.round(h)), bg: i === 21 ? "#000" : "repeating-linear-gradient(180deg,#000 0 2px,#000 0 100%)", o: "none" })).map((b, i) => i === 21 ? b : Object.assign(b, { bg: "#000" })),
+      wdBars: [26,20,24,18,30,44,64].map((h, i) => ({ h, bg: "#000" })),
+      jumpFiltered: [
+        { t: "Stats", v: "1 h 42 today", bg: "#000", fg: "#fff" },
+        { t: "Settings", v: "" }, { t: "Sleep screen", v: "Poster" },
+        { t: "A Study in Scarlet", v: "finished" }, { t: "Standard Ebooks shelf", v: "Bookshop" },
+        { t: "Storage", v: "10.6 GB free" }
+      ].map(r => Object.assign({ bg: "#fff", fg: "#000" }, r)),
+      settingsGroups: [
+        { t: "Reading", v: "›" }, { t: "Display", v: "›" }, { t: "Keys", v: "›", bg: "#000", fg: "#fff" },
+        { t: "Sleep and power", v: "›" }, { t: "Wi-Fi and sync", v: "HomeNet ›" }, { t: "Library", v: "›" },
+        { t: "Bookshop", v: "EN ›" }, { t: "Language and time", v: "21:47 ›" }, { t: "Apps and games", v: "›" },
+        { t: "About", v: "0.4.0 ›" }, { t: "Developer", v: "›" }
+      ].map(r => Object.assign({ bg: "#fff", fg: "#000" }, r)),
+      sleepRows: [
+        { t: "Sleep after", v: "‹ 5 min ›", bg: "#000", fg: "#fff" },
+        { t: "Deep sleep after", v: "30 min" },
+        { t: "Sleep screen", v: "Poster ›" },
+        { t: "Lock keys when sleeping", v: "On" },
+        { t: "Night jobs", v: "6:00 ›" },
+        { t: "Panel off when idle", v: "On" },
+        { t: "Power key", v: "Sleep ›" },
+        { t: "Battery", v: "62% ›" }
+      ].map(r => Object.assign({ bg: "#fff", fg: "#000" }, r)),
+      calCells: cells,
+      bookTable: [
+        { t: "The Count of Monte Cristo", h: "11h40", p: "873", ph: "29", bg: "#000", fg: "#fff" },
+        { t: "Middlemarch", h: "8h10", p: "322", ph: "31" },
+        { t: "A Study in Scarlet", h: "6h40", p: "188", ph: "28" },
+        { t: "The Time Machine", h: "3h05", p: "118", ph: "38" },
+        { t: "Meditations", h: "2h55", p: "84", ph: "29" },
+        { t: "Walden", h: "1h20", p: "38", ph: "28" },
+        { t: "Moby-Dick", h: "0h48", p: "26", ph: "32" },
+        { t: "Pride and Prejudice", h: "0h00", p: "0", ph: "—" }
+      ].map(r => Object.assign({ bg: "#fff", fg: "#000" }, r)),
+      yirCovers: [{ t: "Middlemarch" }, { t: "Monte Cristo" }, { t: "Scarlet" }, { t: "Time Machine" }, { t: "Meditations" }]
+    };
+  }
+}
+</script>
+</body>
+</html>

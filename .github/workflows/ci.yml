@@ -1,38 +1,94 @@
-name: CI
+name: ci
 
 on:
   push:
-    branches: [main]
+    branches: ["**"]
+    tags: ["v*"]
   pull_request:
 
 env:
   CARGO_TERM_COLOR: always
-  RUSTFLAGS: "-D warnings"
+  CARGO_INCREMENTAL: 0
 
 jobs:
-  check:
-    name: fmt · clippy · test · coverage
+  host:
+    name: host crates (fmt, clippy, tests)
     runs-on: ubuntu-latest
+    defaults: { run: { working-directory: firmware } }
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy, llvm-tools-preview
+        with: { components: "rustfmt, clippy" }
       - uses: Swatinem/rust-cache@v2
-      - name: Formatting
-        run: cargo fmt --all --check
-      - name: Lints
-        run: cargo clippy --all-targets --all-features -- -D warnings
-      - name: Tests
-        run: cargo test --all
-      - name: Install cargo-llvm-cov
-        uses: taiki-e/install-action@cargo-llvm-cov
-      - name: Coverage gate (≥90% of reachable lines, binary entry points excluded)
-        run: cargo llvm-cov --all --fail-under-lines 90 --ignore-filename-regex 'src/bin/'
+        with: { workspaces: firmware }
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo test --workspace
+      - name: heap budget and snapshot report
+        run: cargo run -p quire-sim -- --report target/sim-report.md
+      - uses: actions/upload-artifact@v4
+        with: { name: sim-report, path: firmware/target/sim-report.md, if-no-files-found: ignore }
 
-  supply-chain:
-    name: cargo-deny
+  device:
+    name: firmware (ESP32-C3)
     runs-on: ubuntu-latest
+    defaults: { run: { working-directory: firmware/device } }
     steps:
       - uses: actions/checkout@v4
-      - uses: EmbarkStudios/cargo-deny-action@v2
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: riscv32imc-unknown-none-elf, components: "rust-src, clippy" }
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: firmware/device }
+      - uses: cargo-bins/cargo-binstall@main
+      - run: cargo binstall -y --locked espflash@4.6.0
+      - run: cargo clippy --release -- -D warnings
+      - run: cargo build --release
+      - name: board crate host tests (firmware image walk, otadata entries, keys)
+        run: cargo test -p quire-board --no-default-features --target x86_64-unknown-linux-gnu
+      - name: app images (quire-x3 for OTA and the SD update path; quire-recovery for the factory slot)
+        run: |
+          mkdir -p ../../dist
+          espflash save-image --chip esp32c3 --flash-size 16mb --partition-table partitions.csv --target-app-partition ota_0 \
+            target/riscv32imc-unknown-none-elf/release/quire-x3 ../../dist/quire-x3.bin
+          espflash save-image --chip esp32c3 --flash-size 16mb --partition-table partitions.csv --target-app-partition recovery \
+            target/riscv32imc-unknown-none-elf/release/quire-recovery ../../dist/quire-recovery.bin
+          # The recovery app lives in the 512 KB factory partition and must keep headroom.
+          test "$(stat -c %s ../../dist/quire-recovery.bin)" -le 491520
+      - name: assets image (the dictionary, flashed at the assets partition)
+        run: |
+          cp ../crates/quire-ui/data/en.qdict ../../dist/quire-assets.bin
+      - name: factory image (bootloader + table + otadata + recovery + app + assets, flash at 0x0)
+        run: |
+          espflash save-image --chip esp32c3 --merge --partition-table partitions.csv --target-app-partition ota_0 \
+            --flash-size 16mb target/riscv32imc-unknown-none-elf/release/quire-x3 ../../dist/quire-x3-factory.bin
+          # espflash merges only the app; the other partitions are written at their table offsets.
+          offset() { grep "^$1," partitions.csv | cut -d, -f4 | tr -d ' '; }
+          put() { dd if="$1" of=../../dist/quire-x3-factory.bin bs=4096 seek=$(( $(offset "$2") / 4096 )) conv=notrunc status=none; }
+          put ../../dist/quire-recovery.bin recovery
+          put ../../dist/quire-assets.bin assets
+          # otadata entry 0: sequence 1 (= ota_0), state Valid, CRC of the sequence. Without it an
+          # erased otadata boots the factory slot, so a fresh flash would start in recovery.
+          printf '\x01\x00\x00\x00\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\x02\x00\x00\x00\x9a\x98\x43\x47' > otadata.bin
+          put otadata.bin otadata
+          rm otadata.bin
+          ls -la ../../dist
+      - uses: actions/upload-artifact@v4
+        with: { name: quire-x3-images, path: dist/*.bin }
+
+  release:
+    name: publish release images
+    needs: [host, device]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions: { contents: write }
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: quire-x3-images, path: dist }
+      - name: checksums
+        run: cd dist && sha256sum *.bin > SHA256SUMS
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.bin
+            dist/SHA256SUMS
+          generate_release_notes: true

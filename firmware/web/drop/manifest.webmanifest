@@ -1,0 +1,18 @@
+{
+  "name": "Quire Drop",
+  "short_name": "Quire",
+  "start_url": "/?source=pwa",
+  "display": "standalone",
+  "background_color": "#f4f1ea",
+  "theme_color": "#1d1d1b",
+  "description": "Send books to your Quire reader",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ],
+  "share_target": {
+    "action": "/upload",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": { "title": "title", "text": "text", "url": "url", "files": [ { "name": "files", "accept": [ "application/epub+zip", ".epub", ".kepub", "text/plain", ".txt", ".md", ".fb2", ".cbz", ".html", ".qbk" ] } ] }
+  }
+}

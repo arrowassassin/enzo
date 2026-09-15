@@ -1,0 +1,50 @@
+[package]
+name = "embedded-sdmmc"
+# Upstream 0.10.0 plus Quire's long-file-name creation support; see VENDORED.md.
+version = "0.10.0-quire.1"
+authors = [
+    "Jonathan 'theJPster' Pallant <github@thejpster.org.uk>",
+    "Rust Embedded Community Developers",
+]
+edition = "2024"
+rust-version = "1.87"
+description = "A basic SD/MMC driver for Embedded Rust (Quire fork with long file name creation)."
+readme = "README.md"
+keywords = ["sdcard", "mmc", "embedded", "fat32"]
+categories = ["embedded", "no-std"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/rust-embedded-community/embedded-sdmmc-rs"
+publish = false
+
+# Stand-alone workspace root: keeps the host-only dev-dependencies, examples
+# and tests out of the device (riscv32imc) workspace, which uses this crate as
+# a path dependency and lists it under `workspace.exclude`.
+[workspace]
+
+[dependencies]
+byteorder = { version = "1", default-features = false }
+defmt = { version = "1", optional = true }
+embedded-hal = "1.0.0"
+embedded-io = "0.7"
+bitbybit = "2"
+arbitrary-int = "2"
+bitflags = "2"
+heapless = "0.9.1"
+log = { version = "0.4", default-features = false, optional = true }
+thiserror = { version = "2", default-features = false }
+embedded-sdmmc-types = "0.1"
+hex-literal = "1"
+
+[dev-dependencies]
+chrono = "0.4"
+embedded-hal-bus = "0.3.0"
+env_logger = "0.11.8"
+flate2 = "1.0"
+sha2 = "0.11"
+anyhow = "1"
+hex-literal = "1"
+
+[features]
+default = ["log"]
+defmt-log = ["dep:defmt", "arbitrary-int/defmt", "embedded-sdmmc-types/defmt"]
+log = ["dep:log"]

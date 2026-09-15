@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1d1d1b">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/icon.svg">
+<title>Quire Drop</title>
+<style>
+:root{--bg:#f4f1ea;--fg:#1d1d1b;--mut:#6b6860;--line:#d9d4c7;--card:#fffdf8;--acc:#1d1d1b;--ok:#2f7d4a;--err:#a8352b;--warn:#9a6a00}
+*{box-sizing:border-box}html,body{margin:0;padding:0}
+body{font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--fg);padding-bottom:env(safe-area-inset-bottom)}
+header{position:sticky;top:0;background:var(--bg);border-bottom:1px solid var(--line);z-index:5}
+.top{display:flex;align-items:baseline;gap:10px;padding:12px 16px 4px}
+.top h1{font-size:20px;margin:0;font-weight:700;letter-spacing:.2px}.top .host{color:var(--mut);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.strip{display:flex;flex-wrap:wrap;gap:6px 14px;padding:0 16px 8px;font-size:12px;color:var(--mut)}
+.strip b{color:var(--fg);font-weight:600}
+nav{display:flex;overflow-x:auto;scrollbar-width:none;border-top:1px solid var(--line)}nav::-webkit-scrollbar{display:none}
+nav button{flex:1 0 auto;background:none;border:0;border-bottom:2px solid transparent;padding:10px 14px;font:inherit;font-size:14px;color:var(--mut);cursor:pointer}
+nav button.on{color:var(--fg);border-bottom-color:var(--fg);font-weight:600}
+main{padding:14px 16px 40px;max-width:720px;margin:0 auto}
+section[hidden]{display:none}
+h2{font-size:15px;margin:18px 0 8px;text-transform:uppercase;letter-spacing:.6px;color:var(--mut)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:10px}
+.zone{border:2px dashed var(--line);border-radius:14px;padding:28px 16px;text-align:center;background:var(--card);cursor:pointer;transition:border-color .15s}
+.zone.over{border-color:var(--fg)}.zone p{margin:6px 0;color:var(--mut)}.zone strong{font-size:17px}
+.btn{display:inline-block;background:var(--fg);color:var(--bg);border:0;border-radius:8px;padding:9px 14px;font:inherit;font-size:14px;font-weight:600;cursor:pointer;text-decoration:none}
+.btn.sec{background:transparent;color:var(--fg);border:1px solid var(--line)}.btn.sm{padding:6px 10px;font-size:13px}.btn:disabled{opacity:.5}
+.row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}.row:last-child{border-bottom:0}
+.row .t{flex:1;min-width:0}.row .n{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.row .s{font-size:12px;color:var(--mut)}
+.bar{height:6px;background:var(--line);border-radius:3px;overflow:hidden;margin-top:6px}.bar i{display:block;height:100%;background:var(--fg);width:0;transition:width .2s}
+.st{font-size:12px;white-space:nowrap}.st.ok{color:var(--ok)}.st.err{color:var(--err)}.st.warn{color:var(--warn)}
+.acts{display:flex;gap:6px;flex-wrap:wrap}.acts button{background:none;border:1px solid var(--line);border-radius:6px;padding:4px 8px;font:inherit;font-size:12px;cursor:pointer;color:var(--fg)}
+input[type=text],input[type=url],input[type=number],input[type=password],textarea,select{font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--fg);width:100%}
+textarea{min-height:60px;font-family:ui-monospace,Menlo,monospace;font-size:12px}
+.f{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line)}.f label{font-size:14px}.f small{display:block;color:var(--mut);font-size:11px}
+.f.wide{grid-template-columns:1fr}
+.win{display:grid;grid-template-columns:264px 1fr;gap:16px}@media(max-width:600px){.win{grid-template-columns:1fr}}
+canvas#mir{width:264px;height:396px;border:1px solid var(--line);background:#fff;image-rendering:pixelated;display:block;margin:0 auto}
+.keys{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:10px}.keys button{padding:14px 0;font:inherit;font-size:14px;border:1px solid var(--line);background:var(--card);border-radius:10px;cursor:pointer;user-select:none;-webkit-user-select:none;touch-action:manipulation}
+.keys button:active{background:var(--fg);color:var(--bg)}.keys .w2{grid-column:span 2}
+.typing{display:flex;gap:8px;margin-top:12px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px}.tile{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px}.tile b{display:block;font-size:20px}.tile span{font-size:12px;color:var(--mut)}
+svg.ch{width:100%;height:auto;display:block}
+.mono{font-family:ui-monospace,Menlo,monospace;font-size:12px}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:10px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none;max-width:90vw}
+.toast.show{opacity:1}
+table{width:100%;border-collapse:collapse;font-size:13px}td,th{text-align:left;padding:6px 4px;border-bottom:1px solid var(--line)}th{color:var(--mut);font-weight:600;font-size:12px}
+.pv{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}.pv canvas{width:132px;height:198px;border:1px solid var(--line);background:#fff;image-rendering:pixelated}
+.dim{color:var(--mut)}
+</style>
+</head>
+<body>
+<header>
+ <div class="top"><h1>Quire</h1><span class="host" id="host">…</span></div>
+ <div class="strip" id="strip"><span>Connecting to the reader…</span></div>
+ <nav id="nav">
+  <button data-t="drop" class="on">Drop</button><button data-t="lib">Library</button><button data-t="set">Settings</button><button data-t="win">Window</button><button data-t="sleep">Sleep</button><button data-t="stats">Analytics</button>
+ </nav>
+</header>
+<main>
+<section id="t-drop">
+ <div class="zone" id="zone"><strong>Drop books here</strong><p>or tap to choose files · EPUB, TXT, MD, FB2, CBZ, QBK</p><input type="file" id="pick" multiple hidden></div>
+ <div id="queue"></div>
+ <div class="card" style="margin-top:10px"><strong>Fetch a link</strong><p class="dim" style="font-size:12px;margin:4px 0 8px">Paste the address of a book (EPUB, PDF, TXT…); the reader downloads it itself while it is on Wi-Fi.</p><div style="display:flex;gap:8px;align-items:center"><input type="url" id="furl" placeholder="https://…"><button class="btn sec sm" id="fetchbtn">Fetch</button></div><span id="fetchmsg" class="st"></span></div>
+ <p class="dim" id="dropnote" style="font-size:12px"></p>
+</section>
+<section id="t-lib" hidden>
+ <div style="display:flex;gap:8px;align-items:center"><input type="text" id="q" placeholder="Filter by title or author"><button class="btn sec sm" id="refresh">Refresh</button></div>
+ <div id="books" class="card" style="margin-top:10px"></div>
+</section>
+<section id="t-set" hidden>
+ <div class="card"><div class="f"><label>Drop page PIN<small>Empty means no PIN. Required for uploads and changes when set.</small></label><input type="password" id="pin" placeholder="not set" inputmode="numeric"></div></div>
+ <div class="card" id="setform"><span class="dim">Loading…</span></div>
+ <button class="btn" id="save">Save settings</button> <span id="setmsg" class="st"></span>
+</section>
+<section id="t-win" hidden>
+ <div class="win">
+  <div><canvas id="mir" width="264" height="396"></canvas><p class="dim" style="text-align:center;font-size:12px" id="mirst">Live mirror, half size</p></div>
+  <div>
+   <div class="keys">
+    <button data-k="Up" class="w2">▲ Up</button><button data-k="Down" class="w2">▼ Down</button>
+    <button data-k="Left">◀ Left</button><button data-k="Back">Back</button><button data-k="Confirm">Confirm</button><button data-k="Right">Right ▶</button>
+    <button data-k="Power" class="w2" style="grid-column:2/span 2">⏻ Power</button>
+   </div>
+   <p class="dim" style="font-size:12px">Hold a key for a long press.</p>
+   <div class="typing"><input type="text" id="txt" placeholder="Type here; it appears on the reader" autocomplete="off"><button class="btn" id="send">Send</button></div>
+   <p class="dim" style="font-size:12px" id="typst"></p>
+  </div>
+ </div>
+</section>
+<section id="t-sleep" hidden>
+ <div class="zone" id="szone"><strong>Sleep images</strong><p>Drop photos; they are dithered to 528 × 792 black and white here and saved to the reader's sleep folder.</p><input type="file" id="spick" accept="image/*" multiple hidden></div>
+ <div class="pv" id="spv"></div>
+ <div id="squeue"></div>
+</section>
+<section id="t-stats" hidden>
+ <div class="tiles" id="tiles"></div>
+ <h2>Last 30 days, minutes</h2><div class="card" id="c-days"></div>
+ <h2>Time of day</h2><div class="card" id="c-hours"></div>
+ <h2>Weekday</h2><div class="card" id="c-week"></div>
+ <h2>Recent sessions</h2><div class="card" id="sess"></div>
+ <p><button class="btn sec sm" id="xcsv">Export CSV</button> <button class="btn sec sm" id="xjson">Export JSON</button></p>
+</section>
+</main>
+<div class="toast" id="toast"></div>
+<script>
+'use strict';
+const $=s=>document.querySelector(s), $$=s=>Array.from(document.querySelectorAll(s));
+const CHUNK=1<<20, MIR_W=264, MIR_H=396;
+let pin=localStorage.getItem('quire-pin')||'', status=null, ws=null, wsTimer=null, tab='drop', mirrorOn=false;
+$('#fetchbtn').onclick=async()=>{const url=$('#furl').value.trim();if(!/^https?:\/\//.test(url)){$('#fetchmsg').textContent='Enter an http(s) address';return}$('#fetchmsg').textContent='queueing…';try{const r=await fetch('/api/fetch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url})});$('#fetchmsg').textContent=r.ok?'Queued; see Downloads on the reader':'Could not queue ('+r.status+')';if(r.ok)$('#furl').value=''}catch(e){$('#fetchmsg').textContent='Reader not reachable'}};
+function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),2600)}
+function fmtB(n){if(n==null)return '–';if(n<1024)return n+' B';if(n<1048576)return (n/1024).toFixed(0)+' KB';if(n<1073741824)return (n/1048576).toFixed(1)+' MB';return (n/1073741824).toFixed(2)+' GB'}
+function fmtT(s){s=Math.round(s);const h=Math.floor(s/3600),m=Math.floor(s%3600/60);return h?h+'h '+m+'m':m+'m'}
+function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+function hdr(extra){const h=Object.assign({},extra||{});if(pin)h['X-Pin']=pin;return h}
+async function api(method,path,body,extra){
+  const r=await fetch(path,{method,headers:hdr(extra),body});
+  if(r.status===403){const p=prompt('This reader asks for its PIN (shown in Settings on the device):');if(p!=null){pin=p.trim();localStorage.setItem('quire-pin',pin);return api(method,path,body,extra)}}
+  return r;
+}
+// ---- tabs
+function show(t){tab=t;$$('nav button').forEach(b=>b.classList.toggle('on',b.dataset.t===t));$$('main section').forEach(s=>s.hidden=s.id!=='t-'+t);
+  if(t==='lib')loadLib();if(t==='set')loadSettings();if(t==='stats')loadStats();setMirror(t==='win');history.replaceState(null,'',t==='drop'?'/':'/#'+t)}
+$('#nav').addEventListener('click',e=>{const b=e.target.closest('button');if(b)show(b.dataset.t)});
+// ---- status strip
+async function loadStatus(){try{const r=await fetch('/api/status');if(!r.ok)throw 0;status=await r.json();renderStatus()}catch(e){$('#strip').innerHTML='<span class="st err">Reader not reachable</span>'}}
+function renderStatus(){const s=status;if(!s)return;$('#host').textContent=(s.wifi&&s.wifi.host?s.wifi.host+'.local':'')+(s.wifi&&s.wifi.ip?' · '+s.wifi.ip:'');
+  const w=s.wifi||{};const wtxt=w.mode==='hotspot'?'Hotspot '+w.ssid:w.mode==='station'?w.ssid+' '+'▂▄▆█'.slice(0,Math.max(1,w.signal||1)):'off';
+  $('#strip').innerHTML=`<span>Battery <b>${s.battery?s.battery.percent+'%':'–'}${s.battery&&s.battery.charging?' ⚡':''}</b></span><span>Free <b>${fmtB(s.free)}</b></span><span>Firmware <b>${esc(s.version)}</b></span><span>Wi-Fi <b>${esc(wtxt)}</b></span>${s.book?`<span>Reading <b>${esc(s.book.title)}</b> ${s.book.percent}%</span>`:''}<span><a href="#" id="chk">Check for update</a></span>`;
+  $('#chk').onclick=e=>{e.preventDefault();toast('Update check is not available in this build yet')};
+  $('#dropnote').textContent=s.pin?'This reader asks for a PIN before accepting files.':''}
+// ---- upload queue
+const queue=[];let uploading=false;
+function addFiles(files,dir){for(const f of files){if(!f.size){continue}queue.push({file:f,name:f.name,dir:dir||'/Books',done:0,state:'queued',msg:''})}renderQueue();pump()}
+function renderQueue(){const q=$('#queue');if(!queue.length){q.innerHTML='';return}
+  q.innerHTML='<div class="card">'+queue.map((u,i)=>{const pct=u.file.size?Math.floor(u.done*100/u.file.size):0;const cls=u.state==='done'||u.state==='ready'?'ok':u.state==='failed'?'err':u.state==='uploading'?'':'warn';
+   const lab={queued:'queued',uploading:pct+'%',done:'sent · ingesting',ready:'ready',failed:'failed'}[u.state]+(u.msg?' · '+esc(u.msg):'');
+   return `<div class="row"><div class="t"><div class="n">${esc(u.name)}</div><div class="s">${fmtB(u.file.size)}</div><div class="bar"><i style="width:${pct}%"></i></div></div><span class="st ${cls}">${lab}</span>${u.state==='failed'?`<button class="btn sec sm" onclick="retry(${i})">Retry</button>`:''}</div>`}).join('')+'</div>'}
+window.retry=i=>{queue[i].state='queued';queue[i].done=0;queue[i].msg='';renderQueue();pump()};
+async function pump(){if(uploading)return;const u=queue.find(x=>x.state==='queued');if(!u)return;uploading=true;u.state='uploading';renderQueue();
+  try{await uploadOne(u);u.state='done';u.msg='';toast(u.name+' sent')}catch(e){u.state='failed';u.msg=e.message||String(e)}
+  renderQueue();uploading=false;pump()}
+async function uploadOne(u){const path='/api/files'+u.dir.replace(/\/$/,'')+'/'+encodeURIComponent(u.name);const total=u.file.size;let off=u.done,tries=0;
+  while(off<total){const end=Math.min(off+CHUNK,total);const blob=u.file.slice(off,end);let r;
+    try{r=await api('PUT',path,blob,{'Content-Range':`bytes ${off}-${end-1}/${total}`,'Content-Type':'application/octet-stream'})}
+    catch(e){if(++tries>6)throw new Error('connection lost');await new Promise(z=>setTimeout(z,800*tries));continue}
+    if(r.status===409){const j=await r.json().catch(()=>({}));off=j.received||0;u.done=off;renderQueue();if(++tries>6)throw new Error('cannot resume');continue}
+    if(r.status===507)throw new Error('card full');if(r.status===403)throw new Error('PIN refused');if(!r.ok)throw new Error('HTTP '+r.status);
+    tries=0;off=end;u.done=off;renderQueue()}}
+const zone=$('#zone');zone.onclick=()=>$('#pick').click();$('#pick').onchange=e=>{addFiles(e.target.files);e.target.value=''};
+['dragenter','dragover'].forEach(ev=>document.addEventListener(ev,e=>{e.preventDefault();zone.classList.add('over')}));
+['dragleave','drop'].forEach(ev=>document.addEventListener(ev,e=>{e.preventDefault();zone.classList.remove('over')}));
+document.addEventListener('drop',e=>{if(tab==='sleep'){addSleep(e.dataTransfer.files);return}addFiles(e.dataTransfer.files)});
+// ---- library
+let lib=null;
+async function loadLib(){try{const r=await fetch('/api/library');lib=await r.json();renderLib()}catch(e){$('#books').innerHTML='<span class="st err">Could not load the library</span>'}}
+function renderLib(){if(!lib)return;const q=($('#q').value||'').toLowerCase();const b=(lib.books||[]).filter(x=>!q||(x.title+' '+x.author).toLowerCase().includes(q));
+  $('#books').innerHTML=b.length?b.map(x=>`<div class="row" data-p="${esc(x.path)}"><div class="t"><div class="n">${esc(x.title)}</div><div class="s">${esc(x.author)} · ${fmtB(x.size)} · ${x.percent}%${x.ingest==='pending'?' · ingesting':x.ingest==='failed'?' · <span class="st err">'+esc(x.error||'failed')+'</span>':''}</div></div><div class="acts"><button data-a="dl">Download</button><button data-a="rn">Rename</button><button data-a="rm">Delete</button></div></div>`).join(''):'<span class="dim">No books yet.</span>';
+  for(const u of queue)if(u.state==='done'&&b.some(x=>x.path.endsWith('/'+u.name)&&x.ingest==='ready')){u.state='ready'}renderQueue()}
+$('#q').oninput=renderLib;$('#refresh').onclick=loadLib;
+$('#books').addEventListener('click',async e=>{const btn=e.target.closest('button');if(!btn)return;const p=btn.closest('.row').dataset.p;const enc='/api/files'+p.split('/').map(encodeURIComponent).join('/');
+  if(btn.dataset.a==='dl'){location.href=enc;return}
+  if(btn.dataset.a==='rm'){if(!confirm('Delete '+p+' from the reader?'))return;const r=await api('DELETE',enc);toast(r.ok?'Deleted':'Delete failed');loadLib();return}
+  if(btn.dataset.a==='rn'){const to=prompt('New file name',p.split('/').pop());if(!to)return;const r=await api('POST',enc+'/rename',JSON.stringify({to}),{'Content-Type':'application/json'});toast(r.ok?'Renamed':'Rename failed');loadLib()}});
+// ---- settings
+let settings=null;const HIDE=new Set(['version','saved_words','sync_key']);
+const HELP={hostname:'Name on the network (name.local)',sleep_after_min:'Minutes before the sleep screen',power_off_after_min:'Minutes asleep before powering off',gc_every_pages:'Full refresh every N pages',wifi_at_boot:'Join Wi-Fi when the reader starts',night_jobs_hour:'Hour for news, shelves and sync (null = off)',tz_minutes:'Time zone offset in minutes',opds:'Catalogs as [[name,url],…]',news_feeds:'RSS feed URLs',weather_place:'Shown in the weather app'};
+async function loadSettings(){try{const r=await fetch('/api/settings');settings=await r.json();$('#pin').value='';$('#pin').placeholder=settings.pin_set?'set (enter a new one to change)':'not set';renderSettings()}catch(e){$('#setform').innerHTML='<span class="st err">Could not load settings</span>'}}
+function renderSettings(){const f=$('#setform');f.innerHTML='';for(const k of Object.keys(settings)){if(HIDE.has(k)||k==='pin_set')continue;const v=settings[k];const row=document.createElement('div');row.className='f';let ctl;
+  if(typeof v==='boolean'){ctl=`<input type="checkbox" data-k="${k}" ${v?'checked':''} style="width:22px;height:22px">`}
+  else if(typeof v==='number'){ctl=`<input type="number" data-k="${k}" value="${v}">`}
+  else if(typeof v==='string'){ctl=`<input type="text" data-k="${k}" value="${esc(v)}">`}
+  else if(v===null){ctl=`<input type="text" data-k="${k}" data-json="1" value="null">`}
+  else{row.classList.add('wide');ctl=`<textarea data-k="${k}" data-json="1">${esc(JSON.stringify(v,null,1))}</textarea>`}
+  row.innerHTML=`<label>${esc(k.replace(/_/g,' '))}${HELP[k]?'<small>'+esc(HELP[k])+'</small>':''}</label>${ctl}`;f.appendChild(row)}}
+$('#save').onclick=async()=>{if(!settings)return;const out={};for(const el of $$('#setform [data-k]')){const k=el.dataset.k;let v;
+  if(el.type==='checkbox')v=el.checked;else if(el.type==='number')v=Number(el.value);else if(el.dataset.json){try{v=JSON.parse(el.value)}catch(e){$('#setmsg').textContent=k+': not valid JSON';$('#setmsg').className='st err';return}}else v=el.value;
+  if(JSON.stringify(v)!==JSON.stringify(settings[k]))out[k]=v}
+  if($('#pin').value!=='')out.pin=$('#pin').value.trim();
+  if(!Object.keys(out).length){$('#setmsg').textContent='Nothing changed';$('#setmsg').className='st';return}
+  const r=await api('PUT','/api/settings',JSON.stringify(out),{'Content-Type':'application/json'});
+  if(r.ok){if(out.pin!==undefined){pin=out.pin;localStorage.setItem('quire-pin',pin)}settings=await r.json();renderSettings();$('#setmsg').textContent='Saved';$('#setmsg').className='st ok';loadStatus()}else{$('#setmsg').textContent='Save failed ('+r.status+')';$('#setmsg').className='st err'}};
+// ---- window: mirror, keys, typing
+const mc=$('#mir').getContext('2d');const img=mc.createImageData(MIR_W,MIR_H);
+function drawMirror(buf){const b=new Uint8Array(buf);const stride=MIR_W>>3;const d=img.data;for(let y=0;y<MIR_H;y++)for(let x=0;x<MIR_W;x++){const ink=(b[y*stride+(x>>3)]>>(7-(x&7)))&1;const i=(y*MIR_W+x)*4;const v=ink?24:250;d[i]=d[i+1]=d[i+2]=v;d[i+3]=255}mc.putImageData(img,0,0);$('#mirst').textContent='Live mirror · '+new Date().toLocaleTimeString()}
+function setMirror(on){if(mirrorOn===on)return;mirrorOn=on;wsSend({mirror:on})}
+function wsSend(o){if(ws&&ws.readyState===1)ws.send(JSON.stringify(o))}
+function connectWs(){clearTimeout(wsTimer);try{ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws')}catch(e){wsTimer=setTimeout(connectWs,3000);return}
+  ws.binaryType='arraybuffer';
+  ws.onopen=()=>{if(mirrorOn)wsSend({mirror:true})};
+  ws.onmessage=e=>{if(e.data instanceof ArrayBuffer){drawMirror(e.data);return}let m;try{m=JSON.parse(e.data)}catch(x){return}
+    if(m.ev==='upload'){const u=queue.find(q=>q.name===m.name);if(u&&u.state==='uploading'){u.done=m.done;renderQueue()}}
+    else if(m.ev==='books'){toast(m.added===1?'1 book added':m.added+' books added');if(tab==='lib')loadLib();else loadLib()}
+    else if(m.ev==='typing'){$('#typst').textContent=m.on?'The reader is listening: type above.':'';if(m.on&&tab!=='win'){show('win');$('#txt').focus()}}
+    else if(m.ev==='status'){loadStatus()}};
+  ws.onclose=()=>{ws=null;wsTimer=setTimeout(connectWs,2000)};ws.onerror=()=>{try{ws.close()}catch(e){}}}
+for(const b of $$('.keys button')){let t=null,long=false;const down=e=>{e.preventDefault();long=false;t=setTimeout(()=>{long=true;wsSend({key:b.dataset.k,kind:'long'})},500)};const up=e=>{e.preventDefault();clearTimeout(t);if(!long&&t!==null)wsSend({key:b.dataset.k,kind:'press'});t=null};
+  b.addEventListener('pointerdown',down);b.addEventListener('pointerup',up);b.addEventListener('pointercancel',()=>{clearTimeout(t);t=null});b.addEventListener('pointerleave',()=>{clearTimeout(t);t=null})}
+$('#txt').addEventListener('input',()=>wsSend({text:$('#txt').value}));
+$('#txt').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('#send').click()}});
+$('#send').onclick=()=>{wsSend({text:$('#txt').value});wsSend({key:'Confirm',kind:'press'});$('#txt').value=''};
+// ---- sleep images: client-side dither to 528x792 1-bit PBM
+const SW=528,SH=792;const szone=$('#szone');szone.onclick=()=>$('#spick').click();$('#spick').onchange=e=>{addSleep(e.target.files);e.target.value=''};
+async function addSleep(files){for(const f of files){if(!f.type.startsWith('image/'))continue;const row=document.createElement('div');row.className='row';row.innerHTML=`<div class="t"><div class="n">${esc(f.name)}</div></div><span class="st warn">dithering</span>`;$('#squeue').appendChild(row);const st=row.querySelector('.st');
+  try{const pbm=await ditherFile(f);st.textContent='uploading';const name=f.name.replace(/\.[^.]+$/,'')+'.pbm';const r=await api('POST','/sleep?name='+encodeURIComponent(name),pbm,{'Content-Type':'image/x-portable-bitmap'});
+   if(r.ok){st.textContent='saved';st.className='st ok'}else{st.textContent='failed ('+r.status+')';st.className='st err'}}catch(e){st.textContent='failed';st.className='st err'}}}
+function loadImg(f){return new Promise((ok,no)=>{const u=URL.createObjectURL(f);const i=new Image();i.onload=()=>{URL.revokeObjectURL(u);ok(i)};i.onerror=no;i.src=u})}
+async function ditherFile(f){const im=await loadImg(f);const c=document.createElement('canvas');c.width=SW;c.height=SH;const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,SW,SH);
+  const s=Math.max(SW/im.width,SH/im.height);const w=im.width*s,h=im.height*s;x.drawImage(im,(SW-w)/2,(SH-h)/2,w,h);
+  const d=x.getImageData(0,0,SW,SH).data;const g=new Float32Array(SW*SH);for(let i=0;i<SW*SH;i++){g[i]=0.299*d[i*4]+0.587*d[i*4+1]+0.114*d[i*4+2]}
+  // simple contrast stretch, then Floyd–Steinberg
+  let lo=255,hi=0;for(let i=0;i<g.length;i+=97){if(g[i]<lo)lo=g[i];if(g[i]>hi)hi=g[i]}const k=hi>lo?255/(hi-lo):1;for(let i=0;i<g.length;i++)g[i]=(g[i]-lo)*k;
+  const stride=SW>>3;const out=new Uint8Array(stride*SH);
+  for(let y=0;y<SH;y++)for(let xx=0;xx<SW;xx++){const i=y*SW+xx;const o=g[i];const n=o<128?0:255;const e=o-n;if(n===0)out[y*stride+(xx>>3)]|=0x80>>(xx&7);
+    if(xx+1<SW)g[i+1]+=e*7/16;if(y+1<SH){if(xx>0)g[i+SW-1]+=e*3/16;g[i+SW]+=e*5/16;if(xx+1<SW)g[i+SW+1]+=e/16}}
+  const pv=document.createElement('canvas');pv.width=SW;pv.height=SH;const pc=pv.getContext('2d');const id=pc.createImageData(SW,SH);for(let y=0;y<SH;y++)for(let xx=0;xx<SW;xx++){const ink=(out[y*stride+(xx>>3)]>>(7-(xx&7)))&1;const j=(y*SW+xx)*4;id.data[j]=id.data[j+1]=id.data[j+2]=ink?0:255;id.data[j+3]=255}pc.putImageData(id,0,0);$('#spv').appendChild(pv);
+  const head=new TextEncoder().encode(`P4\n${SW} ${SH}\n`);const blob=new Uint8Array(head.length+out.length);blob.set(head);blob.set(out,head.length);return blob}
+// ---- analytics
+let stats=null;
+async function loadStats(){try{const r=await fetch('/api/stats');stats=await r.json();renderStats()}catch(e){$('#tiles').innerHTML='<span class="st err">Could not load statistics</span>'}}
+function dayName(d){return new Date(d*86400000).toLocaleDateString(undefined,{month:'short',day:'numeric'})}
+function bars(vals,labels,fmt){const n=vals.length,W=600,H=160,pad=24,bw=(W-pad)/n;const max=Math.max(1,...vals);let s=`<svg class="ch" viewBox="0 0 ${W} ${H+30}" role="img">`;
+  vals.forEach((v,i)=>{const h=Math.round(v/max*H);s+=`<rect x="${(pad+i*bw).toFixed(1)}" y="${H-h}" width="${Math.max(1,bw-2).toFixed(1)}" height="${h}" fill="#1d1d1b" rx="1"><title>${esc(labels[i])}: ${esc(fmt(v))}</title></rect>`;
+    if(n<=7||i%Math.ceil(n/8)===0)s+=`<text x="${(pad+i*bw+bw/2).toFixed(1)}" y="${H+18}" font-size="11" text-anchor="middle" fill="#6b6860">${esc(labels[i])}</text>`});
+  s+=`<text x="0" y="12" font-size="11" fill="#6b6860">${esc(fmt(max))}</text></svg>`;return s}
+function renderStats(){const s=stats;const t=s.totals||{};$('#tiles').innerHTML=[['Time read',fmtT(t.secs||0)],['Pages',t.pages||0],['Sessions',t.sessions||0],['Days',t.days||0],['Streak',(s.streak?s.streak.current:0)+' d'],['Longest streak',(s.streak?s.streak.longest:0)+' d']].map(([a,b])=>`<div class="tile"><b>${b}</b><span>${a}</span></div>`).join('');
+  const today=Math.floor(Date.now()/86400000);const byDay={};(s.days||[]).forEach(d=>byDay[d.day]=d);const dv=[],dl=[];for(let i=29;i>=0;i--){const d=today-i;dv.push(byDay[d]?byDay[d].secs/60:0);dl.push(dayName(d))}
+  $('#c-days').innerHTML=bars(dv,dl,v=>Math.round(v)+' min');
+  $('#c-hours').innerHTML=bars((s.hours||[]).map(v=>v/60),Array.from({length:24},(_,i)=>i+'h'),v=>Math.round(v)+' min');
+  $('#c-week').innerHTML=bars((s.weekdays||[]).map(v=>v/60),['Mon','Tue','Wed','Thu','Fri','Sat','Sun'],v=>Math.round(v)+' min');
+  const ss=s.sessions||[];$('#sess').innerHTML=ss.length?'<table><tr><th>When</th><th>Book</th><th>Active</th><th>Pages</th></tr>'+ss.map(x=>`<tr><td>${new Date(x.start*1000).toLocaleString()}</td><td>${esc(x.title||x.book)}</td><td>${fmtT(x.active)}</td><td>${x.pages}</td></tr>`).join('')+'</table>':'<span class="dim">No sessions yet.</span>'}
+function dl(name,type,data){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([data],{type}));a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},500)}
+$('#xjson').onclick=()=>{if(stats)dl('quire-stats.json','application/json',JSON.stringify(stats,null,1))};
+$('#xcsv').onclick=()=>{if(!stats)return;let c='day,date,seconds,pages,chars,sessions\n';for(const d of stats.days||[])c+=`${d.day},${new Date(d.day*86400000).toISOString().slice(0,10)},${d.secs},${d.pages},${d.chars},${d.sessions}\n`;c+='\nsession_start,session_end,book,title,active_seconds,pages,chars\n';for(const x of stats.sessions||[])c+=`${x.start},${x.end},${x.book},"${(x.title||'').replace(/"/g,'""')}",${x.active},${x.pages},${x.chars}\n`;dl('quire-stats.csv','text/csv',c)};
+// ---- boot
+if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(()=>{})}
+const params=new URLSearchParams(location.search);if(params.get('added'))toast(params.get('added')+' file(s) received');
+if(location.pathname==='/type'||location.hash==='#win')show('win');else if(location.hash.length>1)show(location.hash.slice(1));
+loadStatus();setInterval(loadStatus,30000);connectWs();
+</script>
+</body>
+</html>

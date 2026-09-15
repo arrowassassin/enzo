@@ -1,0 +1,13 @@
+[package]
+name = "quire-fs"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Storage abstraction: random-access reads and a small filesystem trait, with a std implementation for tests and the simulator"
+
+[dependencies]
+
+[features]
+default = []
+std = []

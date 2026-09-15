@@ -1,0 +1,12 @@
+[package]
+name = "quire-dict"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Builds Quire's built-in dictionary (crates/quire-ui/data/en.qdict) from WordNet"
+
+[dependencies]
+miniz_oxide = { workspace = true }
+anyhow = { workspace = true }
+clap = { workspace = true }

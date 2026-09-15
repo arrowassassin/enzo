@@ -1,23 +1,39 @@
-/target
+# Rust build output (host workspace and device workspace)
+/firmware/target/
+/firmware/device/target/
 **/*.rs.bk
-*.profraw
-/coverage
+
+# Built firmware images and release bundles (CI attaches them to releases)
+/dist/
+/firmware/dist/
+*.bin
+!/firmware/device/**/*.bin.keep
+# Data that is source, not build output
+!/firmware/device/crates/quire-net/roots/roots.bin
+!/firmware/device/crates/quire-net/testdata/*.bin
+!/bookshop/catalog.bin
+
+# Generated review artefacts
+/firmware/target/snapshots/
+/firmware/tools/sleepgen/out/
+
+# Website build output (site/ is a Vite app; the lockfile is tracked)
+/site/node_modules/
+/site/dist/
+
+# Editors and OS
+.vscode/
+.idea/
+*.swp
 .DS_Store
-.claude/settings.local.json
+Thumbs.db
 
-# never commit a real credential vault
-vault.enc
-*.vault.enc
-
-# VS Code — local machine paths; each dev gets their own
-.vscode/settings.json
-
-# egui_kittest transient snapshot artifacts (only the *.png baselines are tracked)
-**/tests/snapshots/*.new.png
-**/tests/snapshots/*.old.png
-**/tests/snapshots/*.diff.png
-
-# Transient tooling artifacts
-.playwright-mcp/
-/target-terminal.png
-/target-*.png
+# Local secrets (Wi-Fi credentials for the simulator, signing keys)
+/firmware/.env
+/firmware/keys/
+*.pem
+*.key
+!**/fixtures/**/*.key
+# Not a secret: the certificate authorities the TLS verifier trusts, and the
+# script that turns them into roots.bin.
+!/firmware/device/crates/quire-net/roots/roots.pem

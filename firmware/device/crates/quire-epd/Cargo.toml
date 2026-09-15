@@ -1,0 +1,15 @@
+[package]
+name = "quire-epd"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Xteink X3 e-paper panel driver (UC8253 / UC8279d_B, 792x528) over embedded-hal 1.0"
+
+# Portable on purpose: no esp-hal, no alloc, no target-specific code. The device
+# binary hands in esp-hal's SPI/GPIO/delay types; the host tests hand in fakes.
+#   host:   cd device/crates/quire-epd && cargo test --target x86_64-unknown-linux-gnu
+#   device: cd device && cargo build --release -p quire-epd
+
+[dependencies]
+embedded-hal.workspace = true

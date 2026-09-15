@@ -1,0 +1,30 @@
+[package]
+name = "quire-board"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Xteink X3 board support: keys, SD card filesystem, I²C peripherals, power, flash partitions and the OTA writer"
+
+[dependencies]
+quire-fs = { path = "../../../crates/quire-fs" }
+quire-gfx = { path = "../../../crates/quire-gfx", default-features = false }
+quire-ui = { path = "../../../crates/quire-ui", default-features = false }
+log = { workspace = true }
+heapless = { workspace = true }
+embedded-hal = { workspace = true }
+embedded-hal-bus = { workspace = true, optional = true }
+embedded-sdmmc = { workspace = true, optional = true }
+esp-hal = { workspace = true, optional = true }
+esp-alloc = { workspace = true, optional = true }
+esp-storage = { workspace = true, optional = true }
+esp-bootloader-esp-idf = { workspace = true, optional = true }
+embedded-storage = { version = "0.3.1", optional = true }
+critical-section = { workspace = true }
+sha2 = { workspace = true }
+static_cell = { workspace = true }
+
+[features]
+default = ["hal"]
+# Everything that needs the ESP32-C3 HAL. Off for host unit tests of the pure logic.
+hal = ["dep:esp-hal", "dep:embedded-sdmmc", "dep:embedded-hal-bus", "dep:esp-alloc", "dep:esp-storage", "dep:esp-bootloader-esp-idf", "dep:embedded-storage"]

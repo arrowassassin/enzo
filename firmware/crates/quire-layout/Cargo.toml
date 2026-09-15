@@ -1,0 +1,18 @@
+[package]
+name = "quire-layout"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Paragraph and page layout for e-ink: line breaking, hyphenation, justification, pagination"
+
+[dependencies]
+quire-gfx = { path = "../quire-gfx", default-features = false }
+quire-fonts = { path = "../quire-fonts" }
+quire-qtx = { path = "../quire-qtx" }
+hypher = { workspace = true }
+unicode-linebreak = { workspace = true }
+serde = { workspace = true }
+
+[dev-dependencies]
+quire-gfx = { path = "../quire-gfx", features = ["std"] }

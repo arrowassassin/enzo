@@ -1,0 +1,105 @@
+# Quire device workspace: everything here compiles for riscv32imc-unknown-none-elf.
+# Pinned as a consistent set: esp-hal 1.1.x is the newest line that esp-radio 0.18
+# (Wi-Fi) supports; esp-rtos 0.3, esp-alloc 0.10, esp-storage 0.9 and
+# esp-bootloader-esp-idf 0.5 are the matching releases.
+[workspace]
+resolver = "2"
+members = ["bin/*", "crates/*"]
+# The vendored crate is its own workspace root (host-only tests and dev-dependencies).
+exclude = ["vendor/embedded-sdmmc"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.95"
+license = "MIT OR Apache-2.0"
+
+[workspace.dependencies]
+esp-hal = { version = "1.1.2", features = ["esp32c3", "unstable", "rt"] }
+esp-rtos = { version = "0.3.0", features = ["esp32c3", "embassy", "esp-radio", "esp-alloc"] }
+esp-radio = { version = "0.18.0", features = ["esp32c3", "wifi", "esp-now", "unstable", "esp-alloc"] }
+esp-alloc = { version = "0.10.0" }
+esp-storage = { version = "0.9.0", features = ["esp32c3"] }
+esp-bootloader-esp-idf = { version = "0.5.0", features = ["esp32c3"] }
+esp-println = { version = "0.18.0", default-features = false, features = ["esp32c3", "jtag-serial", "log-04", "critical-section", "colors"] }
+esp-backtrace = { version = "0.20.0", features = ["esp32c3", "panic-handler", "println"] }
+embassy-executor = { version = "0.10.0" }
+embassy-time = { version = "0.5.1" }
+embassy-sync = { version = "0.8.0" }
+embassy-futures = { version = "0.1.2" }
+embassy-net = { version = "0.9.1", features = ["tcp", "udp", "dns", "dhcpv4", "dhcpv4-hostname", "medium-ethernet", "proto-ipv4", "multicast"] }
+picoserve = { version = "0.20.0", default-features = false, features = ["embassy", "ws", "alloc"] }
+embedded-hal = "1.0"
+embedded-hal-bus = { version = "0.3.0" }
+embedded-io-async = "0.7"
+# Vendored fork with long file name creation; see vendor/embedded-sdmmc/VENDORED.md.
+embedded-sdmmc = { path = "vendor/embedded-sdmmc", default-features = false }
+static_cell = "2.1"
+heapless = { version = "0.9", default-features = false }
+log = "0.4"
+critical-section = "1.2"
+nb = "1.1"
+# Pure codecs only (no `io` feature): the UDP loops run on embassy-net directly, because
+# edge-nal-embassy 0.8 targets embassy-net 0.8 and cannot adapt a 0.9 stack.
+edge-mdns = { version = "0.8.0", default-features = false }
+edge-captive = { version = "0.8.0", default-features = false }
+edge-dhcp = { version = "0.8.0", default-features = false }
+serde = { version = "1.0", default-features = false, features = ["derive", "alloc"] }
+serde_json = { version = "1.0.151", default-features = false, features = ["alloc"] }
+postcard = { version = "1.1", default-features = false, features = ["alloc"] }
+# Software SHA-256 for verifying firmware images (the OTA writer and the recovery app).
+# `force-soft-compact`: the smallest SHA-256/384/512 (image and TLS hashing are not hot).
+sha2 = { version = "0.10", default-features = false, features = ["force-soft-compact"] }
+# The HTTP client (framing only: request writer, response/chunked reader) and TLS 1.3.
+# reqwless 0.14 pairs with embedded-tls 0.18, whose verifier takes one CA and matches the
+# host against the CN only; quire-net brings its own verifier (chain + root store + SAN)
+# on embedded-tls 0.19, so reqwless is used without its TLS feature.
+reqwless = { version = "0.14.0", default-features = false }
+embedded-tls = { version = "0.19.0", default-features = false, features = ["alloc"] }
+rand_core = { version = "0.6.4", default-features = false }
+
+[profile.release]
+codegen-units = 1
+debug = 2
+debug-assertions = false
+incremental = false
+lto = "fat"
+opt-level = "s"
+overflow-checks = false
+
+[profile.dev]
+opt-level = "s"
+debug = 2
+
+[profile.dev.package.esp-radio]
+opt-level = 3
+[profile.release.package.esp-radio]
+opt-level = 3
+# The recovery app has to fit the 512 KB factory partition.
+[profile.release.package.quire-recovery]
+opt-level = "z"
+# The TLS stack and its arithmetic are cold code (one request at a time): smallest.
+[profile.release.package.embedded-tls]
+opt-level = "z"
+[profile.release.package.p256]
+opt-level = "z"
+[profile.release.package.primeorder]
+opt-level = "z"
+[profile.release.package.elliptic-curve]
+opt-level = "z"
+[profile.release.package.crypto-bigint]
+opt-level = "z"
+[profile.release.package.ecdsa]
+opt-level = "z"
+[profile.release.package.aes]
+opt-level = "z"
+[profile.release.package.aes-gcm]
+opt-level = "z"
+[profile.release.package.ghash]
+opt-level = "z"
+[profile.release.package.reqwless]
+opt-level = "z"
+[profile.release.package.httparse]
+opt-level = "z"
+[profile.release.package.quire-net]
+opt-level = "z"
