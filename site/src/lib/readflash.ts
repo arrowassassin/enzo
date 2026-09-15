@@ -65,12 +65,15 @@ export async function readFlashInto(
   let done = 0
   let lastTick = 0
 
-  const tick = (force: boolean): void => {
+  // `received` is the running total including the chunk in hand: a chunk is a
+  // sixteenth of the read, so reporting only finished chunks pins the bar at 0%
+  // for the whole first megabyte, which reads as a hang.
+  const tick = (received: number, force: boolean): void => {
     if (!onProgress) return
     const now = Date.now()
     if (force || now - lastTick >= 100) {
       lastTick = now
-      onProgress(done, size)
+      onProgress(received, size)
     }
   }
 
@@ -103,7 +106,7 @@ export async function readFlashInto(
       got += packet.length
       // The stub waits for a running total before it sends more.
       await loader.transport.write(loader._intToByteArray(got))
-      tick(false)
+      tick(done + got, false)
     }
 
     const digest = await loader.transport.read(loader.FLASH_READ_TIMEOUT)
@@ -121,7 +124,7 @@ export async function readFlashInto(
     }
 
     done += len
-    tick(true)
+    tick(done, true)
   }
 
   return out
