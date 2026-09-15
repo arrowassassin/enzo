@@ -2,7 +2,7 @@
 //! Up/Down) plus the Power GPIO, decoded into `quire_ui::KeyEvent`s with debouncing,
 //! long-press, repeat and release timing (brief §2). Pure logic: the HAL feeds samples.
 
-use quire_ui::{Key, KeyEvent, KeyKind};
+pub use quire_ui::{Key, KeyEvent, KeyKind};
 
 /// Ladder levels in millivolts (02-hardware.md §3); the ladders idle near full scale.
 pub mod levels {

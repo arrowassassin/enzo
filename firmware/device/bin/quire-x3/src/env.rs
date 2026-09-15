@@ -9,8 +9,8 @@ use quire_net::NetShared;
 use quire_ui::net::NetState;
 use quire_ui::{Battery, DeviceInfo, Env, SysRequest, WifiState};
 
-use crate::assets::FlashRegion;
-use crate::sdfs::{SdFs, LOCAL_NOW};
+use quire_board::assets::FlashRegion;
+use quire_board::sdfs::{SdFs, LOCAL_NOW};
 use quire_ui::dict::builtin::DictSource;
 
 /// Firmware version from the crate.
@@ -45,7 +45,7 @@ pub struct DeviceEnv {
 impl DeviceEnv {
     /// New, with the clock set so that `now()` returns `local_now`.
     pub fn new(fs: SdFs, local_now: u32, panel: &'static str, serial: String, build: &'static str) -> Self {
-        let up = crate::power::UPTIME_MS.load(Ordering::Relaxed) / 1000;
+        let up = quire_board::power::UPTIME_MS.load(Ordering::Relaxed) / 1000;
         LOCAL_NOW.store(local_now, Ordering::Relaxed);
         DeviceEnv {
             fs,
@@ -65,7 +65,7 @@ impl DeviceEnv {
 
     /// Re-base the clock (after the user sets the time or the RTC is read again).
     pub fn set_clock(&mut self, local_now: u32) {
-        let up = crate::power::UPTIME_MS.load(Ordering::Relaxed) / 1000;
+        let up = quire_board::power::UPTIME_MS.load(Ordering::Relaxed) / 1000;
         self.clock_base = local_now.wrapping_sub(up);
         LOCAL_NOW.store(local_now, Ordering::Relaxed);
     }
@@ -87,10 +87,10 @@ impl Env for DeviceEnv {
         &self.fs
     }
     fn now(&self) -> u32 {
-        self.clock_base.wrapping_add(crate::power::UPTIME_MS.load(Ordering::Relaxed) / 1000)
+        self.clock_base.wrapping_add(quire_board::power::UPTIME_MS.load(Ordering::Relaxed) / 1000)
     }
     fn millis(&self) -> u32 {
-        crate::power::UPTIME_MS.load(Ordering::Relaxed)
+        quire_board::power::UPTIME_MS.load(Ordering::Relaxed)
     }
     fn battery(&self) -> Battery {
         self.battery

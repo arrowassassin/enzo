@@ -237,6 +237,7 @@ fn main() {
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=ttf");
     let mut list = String::new();
+    let mut statics = String::new();
     let mut font_cache: std::collections::HashMap<&'static str, Vec<u8>> = Default::default();
     for (fam, sty, px, kind) in strikes() {
         let path = file(fam, sty);
@@ -327,11 +328,21 @@ fn main() {
         let data = pack(em_px, sf.ascent().round() as i16, sf.descent().round() as i16, sf.line_gap().round() as i16, glyphs, kerns);
         let n = name(fam, sty, px, kind);
         fs::write(Path::new(&out_dir).join(format!("{n}.qfp")), &data).unwrap();
-        list.push_str(&format!("    (\"{n}\", Font::from_bytes(include_bytes!(concat!(env!(\"OUT_DIR\"), \"/{n}.qfp\")))),\n"));
+        // One static per strike: a binary that names only the faces it uses (the
+        // recovery app) links only those packs; the registry below refers to them.
+        let ident = n.to_uppercase().replace('-', "_");
+        statics.push_str(&format!(
+            "    /// The `{n}` strike.\n    pub static {ident}: Font = Font::from_bytes(include_bytes!(concat!(env!(\"OUT_DIR\"), \"/{n}.qfp\")));\n"
+        ));
+        list.push_str(&format!("    (\"{n}\", &strikes::{ident}),\n"));
     }
     fs::write(
         Path::new(&out_dir).join("packs.rs"),
-        format!("/// Every baked strike, by name.\npub static PACKS: &[(&str, Font)] = &[\n{list}];\n"),
+        format!(
+            "/// Every baked strike as its own static, named after the pack (`ATKINSON_REGULAR_18`).\n\
+             pub mod strikes {{\n    use super::Font;\n{statics}}}\n\n\
+             /// Every baked strike, by name.\npub static PACKS: &[(&str, &Font)] = &[\n{list}];\n"
+        ),
     )
     .unwrap();
 }

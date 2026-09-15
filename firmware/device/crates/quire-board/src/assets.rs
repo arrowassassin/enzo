@@ -2,8 +2,8 @@
 //! the ESP32-C3 maps at most 4 MB of flash for code and constants. Today it holds the
 //! built-in dictionary (`en.qdict`, flashed at the partition's start); reads go through
 //! the SPI flash driver, so nothing here is memory-mapped and nothing is cached in RAM.
-
-use core::cell::RefCell;
+//! Opening the region registers the flash handle with [`crate::flash`], so the OTA
+//! writer shares it.
 
 use embedded_storage::ReadStorage;
 use esp_bootloader_esp_idf::partitions::{self, DataPartitionSubType, PartitionType};
@@ -15,31 +15,39 @@ pub const ASSETS_LABEL: &str = "assets";
 
 /// A window onto the flash, addressed from the partition's start.
 pub struct FlashRegion {
-    flash: RefCell<FlashStorage<'static>>,
+    flash: &'static crate::flash::Flash,
     base: u32,
     len: u32,
 }
 
 impl FlashRegion {
     /// Open the assets partition. The partition table is read from the flash, so the
-    /// offset follows whatever table was flashed, not a constant in the code.
+    /// offset follows whatever table was flashed, not a constant in the code. The flash
+    /// handle is shared through [`crate::flash::shared`] whether or not the partition
+    /// is found.
     pub fn assets(flash: FlashStorage<'static>) -> Option<FlashRegion> {
-        let mut flash = flash;
+        let flash = crate::flash::share(flash);
         let mut table = [0u8; partitions::PARTITION_TABLE_MAX_LEN];
         let (base, len) = {
-            let pt = partitions::read_partition_table(&mut flash, &mut table).ok()?;
+            let mut f = flash.borrow_mut();
+            let pt = partitions::read_partition_table(&mut *f, &mut table).ok()?;
             let entry = pt
                 .iter()
                 .find(|p| p.label_as_str() == ASSETS_LABEL)
                 .or_else(|| pt.iter().find(|p| p.partition_type() == PartitionType::Data(DataPartitionSubType::Spiffs)))?;
             (entry.offset(), entry.len())
         };
-        Some(FlashRegion { flash: RefCell::new(flash), base, len })
+        Some(FlashRegion { flash, base, len })
     }
 
     /// Absolute flash offset of the region.
     pub fn base(&self) -> u32 {
         self.base
+    }
+
+    /// The shared flash handle (the OTA writer borrows the same one).
+    pub fn flash(&self) -> &'static crate::flash::Flash {
+        self.flash
     }
 }
 

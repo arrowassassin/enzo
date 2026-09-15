@@ -1,0 +1,28 @@
+[package]
+name = "quire-recovery"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Quire recovery app for the Xteink X3: the factory image that reinstalls or rolls back the firmware"
+
+[[bin]]
+name = "quire-recovery"
+test = false
+bench = false
+
+[dependencies]
+esp-hal.workspace = true
+esp-alloc.workspace = true
+esp-println.workspace = true
+esp-bootloader-esp-idf.workspace = true
+esp-storage.workspace = true
+static_cell.workspace = true
+embedded-hal.workspace = true
+nb.workspace = true
+heapless.workspace = true
+quire-board = { path = "../../crates/quire-board" }
+quire-epd = { path = "../../crates/quire-epd" }
+quire-gfx = { path = "../../../crates/quire-gfx", default-features = false }
+quire-fonts = { path = "../../../crates/quire-fonts" }
+quire-fs = { path = "../../../crates/quire-fs" }

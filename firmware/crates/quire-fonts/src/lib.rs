@@ -3,6 +3,10 @@
 //! Families and sizes follow the design brief (§4): Literata for reading text, titles
 //! and numerals; Atkinson Hyperlegible for labels and lists; JetBrains Mono for edge
 //! labels, times and code.
+//!
+//! Every strike is its own static in [`strikes`]; [`PACKS`] lists them by name. A
+//! binary that only names the statics it draws with (the recovery app) links only
+//! those packs, because nothing else refers to the rest.
 #![no_std]
 #![forbid(unsafe_code)]
 
@@ -69,7 +73,7 @@ fn sty_name(s: Style) -> &'static str {
 }
 
 fn find(name: &str) -> Option<&'static Font> {
-    PACKS.iter().find(|(n, _)| *n == name).map(|(_, f)| f)
+    PACKS.iter().find(|(n, _)| *n == name).map(|(_, f)| *f)
 }
 
 /// Exact strike lookup.
@@ -98,11 +102,11 @@ pub fn nearest(family: Family, style: Style, px: u16) -> &'static Font {
         if n.starts_with(prefix) && !n.contains("dropcap") {
             let d = f.size().abs_diff(px);
             if best.is_none_or(|(_, bd)| d < bd) {
-                best = Some((f, d));
+                best = Some((*f, d));
             }
         }
     }
-    best.map(|(f, _)| f).unwrap_or(&PACKS[0].1)
+    best.map(|(f, _)| f).unwrap_or(PACKS[0].1)
 }
 
 /// Reading sizes with their own drop-cap strike; other sizes use the nearest of these.

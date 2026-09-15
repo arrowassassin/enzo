@@ -21,11 +21,15 @@ device:
 flash:
     cd device && cargo run --release
 
-# produce dist/quire-x3.bin (OTA / SD update) and dist/quire-x3-factory.bin (full flash)
+# produce dist/quire-x3.bin (OTA / SD update), dist/quire-recovery.bin (the factory slot)
+# and dist/quire-x3-factory.bin (full flash; CI also adds otadata and the assets partition)
 images:
     mkdir -p dist
     cd device && cargo build --release
     cd device && espflash save-image --chip esp32c3 --partition-table partitions.csv --target-app-partition ota_0 \
         target/riscv32imc-unknown-none-elf/release/quire-x3 ../dist/quire-x3.bin
+    cd device && espflash save-image --chip esp32c3 --partition-table partitions.csv --target-app-partition recovery \
+        target/riscv32imc-unknown-none-elf/release/quire-recovery ../dist/quire-recovery.bin
     cd device && espflash save-image --chip esp32c3 --merge --partition-table partitions.csv --target-app-partition ota_0 \
         --flash-size 16mb target/riscv32imc-unknown-none-elf/release/quire-x3 ../dist/quire-x3-factory.bin
+    cd device && dd if=../dist/quire-recovery.bin of=../dist/quire-x3-factory.bin bs=4096 seek=$((0x20000 / 4096)) conv=notrunc status=none

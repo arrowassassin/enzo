@@ -43,25 +43,34 @@ jobs:
       - run: cargo binstall -y --locked espflash@4.6.0
       - run: cargo clippy --release -- -D warnings
       - run: cargo build --release
-      - name: app image (for OTA and the SD update path)
+      - name: board crate host tests (firmware image walk, otadata entries, keys)
+        run: cargo test -p quire-board --no-default-features --target x86_64-unknown-linux-gnu
+      - name: app images (quire-x3 for OTA and the SD update path; quire-recovery for the factory slot)
         run: |
           mkdir -p ../../dist
           espflash save-image --chip esp32c3 --flash-size 16mb --partition-table partitions.csv --target-app-partition ota_0 \
             target/riscv32imc-unknown-none-elf/release/quire-x3 ../../dist/quire-x3.bin
-          if [ -f target/riscv32imc-unknown-none-elf/release/quire-recovery ]; then
-            espflash save-image --chip esp32c3 --flash-size 16mb --partition-table partitions.csv --target-app-partition recovery \
-              target/riscv32imc-unknown-none-elf/release/quire-recovery ../../dist/quire-recovery.bin
-          fi
+          espflash save-image --chip esp32c3 --flash-size 16mb --partition-table partitions.csv --target-app-partition recovery \
+            target/riscv32imc-unknown-none-elf/release/quire-recovery ../../dist/quire-recovery.bin
+          # The recovery app lives in the 512 KB factory partition and must keep headroom.
+          test "$(stat -c %s ../../dist/quire-recovery.bin)" -le 491520
       - name: assets image (the dictionary, flashed at the assets partition)
         run: |
           cp ../crates/quire-ui/data/en.qdict ../../dist/quire-assets.bin
-      - name: factory image (bootloader + table + app + assets, flash at 0x0)
+      - name: factory image (bootloader + table + otadata + recovery + app + assets, flash at 0x0)
         run: |
           espflash save-image --chip esp32c3 --merge --partition-table partitions.csv --target-app-partition ota_0 \
             --flash-size 16mb target/riscv32imc-unknown-none-elf/release/quire-x3 ../../dist/quire-x3-factory.bin
-          # espflash merges only the app; the assets partition is appended at its table offset.
-          assets_off=$(grep '^assets,' partitions.csv | cut -d, -f4 | tr -d ' ')
-          dd if=../../dist/quire-assets.bin of=../../dist/quire-x3-factory.bin bs=4096 seek=$((assets_off / 4096)) conv=notrunc status=none
+          # espflash merges only the app; the other partitions are written at their table offsets.
+          offset() { grep "^$1," partitions.csv | cut -d, -f4 | tr -d ' '; }
+          put() { dd if="$1" of=../../dist/quire-x3-factory.bin bs=4096 seek=$(( $(offset "$2") / 4096 )) conv=notrunc status=none; }
+          put ../../dist/quire-recovery.bin recovery
+          put ../../dist/quire-assets.bin assets
+          # otadata entry 0: sequence 1 (= ota_0), state Valid, CRC of the sequence. Without it an
+          # erased otadata boots the factory slot, so a fresh flash would start in recovery.
+          printf '\x01\x00\x00\x00\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\x02\x00\x00\x00\x9a\x98\x43\x47' > otadata.bin
+          put otadata.bin otadata
+          rm otadata.bin
           ls -la ../../dist
       - uses: actions/upload-artifact@v4
         with: { name: quire-x3-images, path: dist/*.bin }

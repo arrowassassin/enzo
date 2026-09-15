@@ -163,6 +163,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "cpufeatures"
+version = "0.2.17"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "59ed5838eebb26a2bb2e58f6d5b5316989ae9d08bab10e0e6d103e656d1b0280"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "crc32fast"
 version = "1.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1720,9 +1729,8 @@ dependencies = [
  "log",
  "quire-fs",
  "quire-gfx",
- "quire-library",
- "quire-net",
  "quire-ui",
+ "sha2",
  "static_cell",
 ]
 
@@ -1825,6 +1833,26 @@ version = "0.1.0"
 dependencies = [
  "postcard",
  "serde",
+]
+
+[[package]]
+name = "quire-recovery"
+version = "0.1.0"
+dependencies = [
+ "embedded-hal 1.0.0",
+ "esp-alloc",
+ "esp-bootloader-esp-idf",
+ "esp-hal",
+ "esp-println",
+ "esp-storage",
+ "heapless 0.9.3",
+ "nb 1.1.0",
+ "quire-board",
+ "quire-epd",
+ "quire-fonts",
+ "quire-fs",
+ "quire-gfx",
+ "static_cell",
 ]
 
 [[package]]
@@ -2061,6 +2089,17 @@ dependencies = [
  "ryu",
  "serde",
  "unsafe-libyaml",
+]
+
+[[package]]
+name = "sha2"
+version = "0.10.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a7507d819769d01a365ab707794a4084392c824f54a7a6a7862f8c3d0892b283"
+dependencies = [
+ "cfg-if",
+ "cpufeatures",
+ "digest",
 ]
 
 [[package]]

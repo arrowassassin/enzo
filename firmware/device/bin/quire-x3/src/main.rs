@@ -7,6 +7,7 @@
 extern crate alloc;
 
 mod display;
+mod env;
 
 use alloc::vec::Vec;
 use core::sync::atomic::Ordering;
@@ -27,7 +28,6 @@ use esp_hal::timer::timg::TimerGroup;
 use esp_hal::{ram, Blocking};
 use esp_println::println;
 use quire_board::bus::SharedBus;
-use quire_board::env::DeviceEnv;
 use quire_board::i2c;
 use quire_board::keys::KeyMachine;
 use quire_board::power::{self, UPTIME_MS};
@@ -39,6 +39,7 @@ use quire_ui::{Env, Event, Refresh, SysRequest, Ui};
 use static_cell::StaticCell;
 
 use crate::display::Display;
+use crate::env::DeviceEnv;
 
 esp_bootloader_esp_idf::esp_app_desc!();
 
@@ -229,6 +230,29 @@ async fn main(spawner: embassy_executor::Spawner) -> ! {
     if safe_mode {
         println!("safe mode after {crashes} crashes");
     }
+    // The flash handle (shared with the OTA code) and the assets partition that holds
+    // the dictionary; without it the Dictionary screen offers card dictionaries only.
+    let assets = quire_board::assets::FlashRegion::assets(esp_storage::FlashStorage::new(peripherals.FLASH));
+    match &assets {
+        Some(a) => println!("assets partition at {:#x}", a.base()),
+        None => println!("assets partition not found"),
+    }
+    // Repeated crashes on an image that was never confirmed: go back to the last good
+    // one ourselves, since the prebuilt bootloader does not do the app-rollback dance.
+    if safe_mode {
+        if let Some(f) = quire_board::flash::shared() {
+            use quire_board::otadata::ImageState;
+            if matches!(quire_board::ota::current_state(f), Ok(Some(ImageState::New | ImageState::PendingVerify))) {
+                match quire_board::ota::rollback(f, &mut |_| {}) {
+                    Ok(slot) => {
+                        println!("rolled back to {slot:?}");
+                        esp_hal::system::software_reset();
+                    }
+                    Err(e) => println!("rollback: {e}"),
+                }
+            }
+        }
+    }
 
     // Mount the card; without one, say so and wait for it. The card's CS pin is re-created
     // per attempt because a failed mount consumes it with the discarded card object.
@@ -267,13 +291,7 @@ async fn main(spawner: embassy_executor::Spawner) -> ! {
     if let Some(b) = battery {
         env.battery = b;
     }
-    // The dictionary lives in the assets partition; without it the Dictionary screen
-    // offers card dictionaries only.
-    env.assets = quire_board::assets::FlashRegion::assets(esp_storage::FlashStorage::new(peripherals.FLASH));
-    match &env.assets {
-        Some(a) => println!("assets partition at {:#x}", a.base()),
-        None => println!("assets partition not found"),
-    }
+    env.assets = assets;
 
     // The network task owns the radio and a clone of the card handle; it sleeps until a
     // screen asks for the radio.
@@ -295,6 +313,9 @@ async fn main(spawner: embassy_executor::Spawner) -> ! {
     let refresh = ui.draw(&mut env);
     display.show(ui.frame(), refresh.max(Refresh::Gc), ui.settings.gc_every_pages, || {});
     println!("ui up: {} free heap", esp_alloc::HEAP.free());
+    if let Some(e) = quire_board::flash::shared().and_then(|f| quire_board::ota::mark_valid(f).err()) {
+        println!("ota: mark valid: {e}"); // the booted image is confirmed: its otadata state becomes Valid
+    }
 
     let mut rtc = Rtc::new(peripherals.LPWR);
     let mut last_tick = uptime_ms();
@@ -353,8 +374,16 @@ async fn main(spawner: embassy_executor::Spawner) -> ! {
                     ui.flush(&mut env);
                     deep_sleep(&mut display, &mut sd_power, &mut rtc, &env);
                 }
-                SysRequest::Restart | SysRequest::Recovery => {
+                SysRequest::Restart => {
                     ui.flush(&mut env);
+                    esp_hal::system::software_reset();
+                }
+                SysRequest::Recovery => {
+                    ui.flush(&mut env);
+                    // An erased otadata makes the bootloader start the factory slot.
+                    if let Some(e) = quire_board::flash::shared().and_then(|f| quire_board::ota::boot_recovery(f).err()) {
+                        println!("recovery: {e}");
+                    }
                     esp_hal::system::software_reset();
                 }
                 SysRequest::RefreshFull => refresh = Refresh::Gc,
@@ -383,6 +412,13 @@ async fn main(spawner: embassy_executor::Spawner) -> ! {
                 SysRequest::WifiJoin { ssid, password } => net_send(NetCommand::Join { ssid, password }),
                 SysRequest::WifiForget(ssid) => net_send(NetCommand::Forget(ssid)),
                 SysRequest::Fetch(req) => net_send(NetCommand::Fetch(req)),
+                // A card path installs on this task (the flash handle is not shared with
+                // the network task); a URL is fetched to the card first by the network
+                // task, which reports back with `OtaProgress`.
+                SysRequest::Ota(src) if src.starts_with('/') => {
+                    ui.flush(&mut env);
+                    install_from_card(&mut ui, &mut env, &mut display, &src);
+                }
                 SysRequest::Ota(src) => net_send(NetCommand::Ota(src)),
             }
         }
@@ -395,7 +431,14 @@ async fn main(spawner: embassy_executor::Spawner) -> ! {
                     if let Event::Wifi(state) = &ev {
                         env.wifi = state.clone();
                     }
-                    refresh = refresh.max(ui.handle(&mut env, ev));
+                    refresh = refresh.max(ui.handle(&mut env, ev.clone()));
+                    // The update file is on the card: write it into the other slot.
+                    if let Event::Net(quire_ui::net::NetEvent::OtaProgress { finished: Some(Ok(())), .. }) = &ev {
+                        if let Some(path) = quire_board::ota::find_card_update(&env.fs) {
+                            ui.flush(&mut env);
+                            install_from_card(&mut ui, &mut env, &mut display, path);
+                        }
+                    }
                 }
                 NetToMain::SavedNetworks(names) => env.saved_networks = names,
                 NetToMain::SettingsChanged => {
@@ -484,6 +527,40 @@ async fn main(spawner: embassy_executor::Spawner) -> ! {
             Timer::after(Duration::from_millis(10)).await;
         } else {
             embassy_futures::yield_now().await;
+        }
+    }
+}
+
+/// Write an update file from the card into the other slot, showing progress on the
+/// page, then restart into it. Errors are reported through the same event.
+fn install_from_card(ui: &mut Ui<DeviceEnv>, env: &mut DeviceEnv, display: &mut Display, path: &str) {
+    use quire_ui::net::NetEvent;
+    let Some(flash) = quire_board::flash::shared() else {
+        refresh_after_idle(ui, env, display, Event::Net(NetEvent::OtaProgress { done: 0, total: 100, finished: Some(Err(alloc::string::String::from("flash unavailable"))) }));
+        return;
+    };
+    let mut shown = u32::MAX;
+    // The card handle is cloned so the progress closure can draw through `env`.
+    let fs = env.fs.clone();
+    let result = {
+        let mut progress = |pct: u32| {
+            if pct != shown && (pct == 100 || shown == u32::MAX || pct.wrapping_sub(shown) >= 5) {
+                shown = pct;
+                refresh_after_idle(ui, env, display, Event::Net(NetEvent::OtaProgress { done: pct as u64, total: 100, finished: None }));
+            }
+        };
+        quire_board::ota::install_from_card(flash, &fs, path, &mut progress)
+    };
+    match result {
+        Ok((slot, _)) => {
+            println!("installed {path} into {slot:?}");
+            refresh_after_idle(ui, env, display, Event::Net(NetEvent::OtaProgress { done: 100, total: 100, finished: Some(Ok(())) }));
+            ui.flush(env);
+            esp_hal::system::software_reset();
+        }
+        Err(e) => {
+            println!("ota: {e}");
+            refresh_after_idle(ui, env, display, Event::Net(NetEvent::OtaProgress { done: 0, total: 100, finished: Some(Err(alloc::format!("{e}"))) }));
         }
     }
 }
