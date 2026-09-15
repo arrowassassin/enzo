@@ -31,7 +31,7 @@ export function Guide() {
     path: '/guide',
   })
 
-  const active = useScrollSpy(IDS)
+  const active = useScrollSpy(IDS, 140)
 
   return (
     <>

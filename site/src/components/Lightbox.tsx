@@ -87,15 +87,14 @@ export function Lightbox({ items, index, onClose, onIndex }: LightboxProps) {
         >
           ←
         </button>
-        <div className="lightbox__img">
-          <img
-            src={shotUrl(current.file)}
-            alt={current.caption || current.title}
-            width={528}
-            height={792}
-            decoding="async"
-          />
-        </div>
+        <img
+          className="lightbox__img"
+          src={shotUrl(current.file)}
+          alt={current.caption || current.title}
+          width={528}
+          height={792}
+          decoding="async"
+        />
         <button
           type="button"
           className="lightbox__nav"

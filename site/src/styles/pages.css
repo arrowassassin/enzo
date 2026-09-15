@@ -469,7 +469,8 @@
   position: fixed;
   inset: 0;
   z-index: 120;
-  background: color-mix(in srgb, var(--ink) 88%, transparent);
+  background: color-mix(in srgb, var(--ink) 96%, transparent);
+  backdrop-filter: blur(2px);
   display: grid;
   grid-template-rows: auto 1fr auto;
   padding: var(--s-4);
@@ -526,19 +527,17 @@
 }
 
 .lightbox__img {
-  background: #fff;
-  border: 1px solid rgb(0 0 0 / 0.2);
-  max-height: 100%;
-  min-height: 0;
-  display: flex;
-}
-
-.lightbox__img img {
+  /* The stage is a grid row of 1fr, so it has a definite height and this
+     percentage resolves. Styling the <img> directly (rather than a wrapper)
+     keeps the frame exactly the size of the picture at its true aspect. */
+  display: block;
   max-height: 100%;
   max-width: 100%;
   width: auto;
   height: auto;
   object-fit: contain;
+  background: #fff;
+  border: 1px solid rgb(0 0 0 / 0.25);
 }
 
 .lightbox__nav {
@@ -687,7 +686,8 @@
 }
 
 .prose section {
-  scroll-margin-top: 6rem;
+  /* The scroll offset comes from html { scroll-padding-top }; adding
+     scroll-margin here as well would double it and desync the TOC. */
   padding-bottom: var(--s-8);
 }
 

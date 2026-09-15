@@ -102,9 +102,18 @@ main {
   margin-top: clamp(4rem, 2rem + 7vw, 8rem);
 }
 
+.split__body h2,
+.split__body h3 {
+  margin-bottom: var(--s-4);
+}
+
 .split__body h3 {
   font-size: var(--fs-h2);
-  margin-bottom: var(--s-4);
+}
+
+/* A second heading inside the same column needs air above it. */
+.split__body > h3:not(:first-child) {
+  margin-top: var(--s-6);
 }
 
 .split__body p {
