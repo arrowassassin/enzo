@@ -2,8 +2,19 @@
 
 export const REPO = 'https://github.com/arrowassassin/quire'
 export const RELEASES_URL = `${REPO}/releases`
+export const RELEASES_API = 'https://api.github.com/repos/arrowassassin/quire/releases/latest'
 export const ACTIONS_URL = `${REPO}/actions/workflows/ci.yml?query=branch%3Amain+is%3Asuccess`
 export const VERSION = '0.1.0'
+
+/** The X3 carries 16 MB of flash; a whole-flash image is exactly this long. */
+export const FLASH_BYTES = 16_777_216
+
+/** The complete flash image, written at 0x0. Also the asset name in a release. */
+export const FACTORY_IMAGE = 'quire-x3-factory.bin'
+
+/** The espflash version this project is tested against, and where to get it. */
+export const ESPFLASH_VERSION = '4.6.0'
+export const ESPFLASH_RELEASE_URL = `https://github.com/esp-rs/espflash/releases/tag/v${ESPFLASH_VERSION}`
 
 export interface NavLink {
   to: string
@@ -13,6 +24,7 @@ export interface NavLink {
 export const NAV: readonly NavLink[] = [
   { to: '/features', label: 'Features' },
   { to: '/screens', label: 'Screens' },
+  { to: '/install', label: 'Install' },
   { to: '/guide', label: 'Guide' },
   { to: '/downloads', label: 'Downloads' },
   { to: '/faq', label: 'FAQ' },
@@ -128,7 +140,7 @@ export const FAQ: readonly Faq[] = [
   },
   {
     q: 'Can I go back to the stock firmware?',
-    a: 'Only if you took a backup first. Reading the whole 16 MB flash to a file before you flash anything is the only way back to the factory firmware — the stock image is not published anywhere. The Guide has the exact commands, for both espflash and esptool.',
+    a: 'Only if you took a backup first. Reading the whole 16 MB flash to a file before you flash anything is the only way back to the factory firmware — the stock image is not published anywhere. The browser installer does the backup, and the restore, with one button each; the Guide also has the exact commands, for both espflash and esptool.',
   },
   {
     q: 'Which version is current?',

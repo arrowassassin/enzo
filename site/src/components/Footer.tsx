@@ -18,6 +18,7 @@ export function Footer() {
             <ul>
               <li><Link to="/features">Features</Link></li>
               <li><Link to="/screens">Screens</Link></li>
+              <li><Link to="/install">Install</Link></li>
               <li><Link to="/guide">Guide</Link></li>
               <li><Link to="/downloads">Downloads</Link></li>
               <li><Link to="/faq">FAQ</Link></li>

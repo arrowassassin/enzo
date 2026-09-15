@@ -970,3 +970,518 @@
 .guide > * {
   min-width: 0;
 }
+
+/* Install (the browser installer) --------------------------------------- */
+
+.install {
+  padding-block: var(--s-7) var(--s-10);
+  max-width: var(--content-narrow);
+}
+
+.install > .callout:first-child {
+  margin-top: 0;
+}
+
+.steps {
+  list-style: none;
+  margin: var(--s-8) 0 0;
+  padding: 0;
+  counter-reset: stepx;
+}
+
+.stepx {
+  margin: 0;
+  border: 1px solid var(--rule);
+  background: var(--paper);
+  padding: var(--s-5);
+  transition: border-color 200ms var(--ease), opacity 200ms var(--ease);
+}
+
+.stepx + .stepx {
+  margin-top: var(--s-5);
+}
+
+.stepx[data-state='locked'] {
+  opacity: 0.55;
+}
+
+.stepx[data-state='done'] {
+  border-color: var(--rule-strong);
+}
+
+/* Step 2 is the one that matters; it carries the weight on the page. */
+.stepx--feature {
+  border-color: var(--accent);
+  border-left-width: 3px;
+  background: var(--paper-2);
+  padding: var(--s-6) var(--s-5);
+}
+
+@media (min-width: 40rem) {
+  .stepx {
+    padding: var(--s-6);
+  }
+  .stepx--feature {
+    padding: var(--s-7) var(--s-6);
+  }
+}
+
+.stepx__head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--s-4);
+}
+
+.stepx__num {
+  font-family: var(--font-mono);
+  font-size: var(--fs-label);
+  letter-spacing: var(--tracking-label);
+  color: var(--accent);
+  flex: 0 0 auto;
+}
+
+.stepx__head h2 {
+  font-size: clamp(1.3rem, 1.1rem + 1vw, 1.75rem);
+  margin: 0;
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.stepx__flag {
+  font-family: var(--font-mono);
+  font-size: var(--fs-label);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--ink-3);
+  border: 1px solid var(--rule);
+  padding: 0.18rem 0.42rem;
+  border-radius: 2px;
+  flex: 0 0 auto;
+}
+
+.stepx__flag[data-state='done'] {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.stepx__body p,
+.stepx__body li {
+  color: var(--ink-2);
+  max-width: 40rem;
+}
+
+.stepx__body > p:first-child {
+  margin-top: 0;
+}
+
+.stepx__body .lead {
+  color: var(--ink);
+  font-size: var(--fs-lead);
+  max-width: 40rem;
+}
+
+.stepx__body .ticks {
+  margin-top: var(--s-4);
+  max-width: 40rem;
+}
+
+/* Action rows ----------------------------------------------------------- */
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-3);
+  margin: var(--s-5) 0 0;
+}
+
+.actions .btn {
+  flex: 0 1 auto;
+  max-width: 100%;
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.btn:disabled:hover {
+  transform: none;
+  background: var(--ink);
+  border-color: var(--ink);
+}
+
+.btn--ghost:disabled:hover {
+  background: transparent;
+  border-color: var(--rule-strong);
+}
+
+/* Status line, announced to assistive technology ------------------------ */
+
+.status {
+  margin: var(--s-4) 0 0;
+  font-size: var(--fs-sm);
+  color: var(--ink-3);
+  max-width: 40rem;
+}
+
+/* Notes: a result, good or bad ------------------------------------------ */
+
+.note {
+  margin: var(--s-5) 0 0;
+  border: 1px solid var(--rule-strong);
+  border-left-width: 3px;
+  background: var(--paper-2);
+  padding: var(--s-5);
+}
+
+.note p,
+.note li {
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+  max-width: 40rem;
+}
+
+.note > p + p,
+.note > ul {
+  margin-top: var(--s-3);
+}
+
+.note ul {
+  margin-bottom: 0;
+}
+
+.note--good {
+  border-left-color: var(--accent);
+}
+
+.note--bad {
+  border-left-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.note .actions {
+  margin-top: var(--s-4);
+}
+
+.hash code {
+  overflow-wrap: anywhere;
+}
+
+/* Progress bar ---------------------------------------------------------- */
+
+.bar {
+  margin: var(--s-5) 0 0;
+  max-width: 40rem;
+}
+
+.bar__track {
+  height: 0.6rem;
+  border: 1px solid var(--rule-strong);
+  background: var(--paper);
+  overflow: hidden;
+}
+
+.bar__fill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width 200ms linear;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bar__fill {
+    transition: none;
+  }
+}
+
+.bar__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2) var(--s-5);
+  margin: var(--s-3) 0 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+}
+
+.bar__meta .bar__pct {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+/* Device facts ---------------------------------------------------------- */
+
+.kv {
+  margin: var(--s-5) 0 0;
+  padding: 0;
+  border-top: 1px solid var(--rule);
+  max-width: 40rem;
+}
+
+.kv div {
+  display: flex;
+  gap: var(--s-4);
+  justify-content: space-between;
+  align-items: baseline;
+  padding: var(--s-3) 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.kv dt {
+  font-family: var(--font-mono);
+  font-size: var(--fs-label);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--ink-3);
+  flex: 0 0 auto;
+}
+
+.kv dd {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  text-align: right;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Choosing a file ------------------------------------------------------- */
+
+.pick {
+  display: grid;
+  gap: var(--s-5);
+  grid-template-columns: minmax(0, 1fr);
+  margin: var(--s-5) 0 0;
+  max-width: 40rem;
+}
+
+@media (min-width: 44rem) {
+  .pick:has(.pick__release) {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+
+.pick__file,
+.pick__release {
+  display: block;
+  min-width: 0;
+  border: 1px dashed var(--rule-strong);
+  padding: var(--s-4);
+}
+
+.pick__label {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: var(--fs-label);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin-bottom: var(--s-3);
+}
+
+.pick input[type='file'] {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  font-size: var(--fs-xs);
+  color: var(--ink-2);
+}
+
+.pick input[type='file']::file-selector-button {
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  color: var(--ink);
+  background: transparent;
+  border: 1px solid var(--rule-strong);
+  border-radius: 2px;
+  padding: 0.4rem 0.7rem;
+  margin-right: var(--s-3);
+  cursor: pointer;
+}
+
+.pick input[type='file']:disabled,
+.pick input[type='file']:disabled::file-selector-button {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pick__release p {
+  margin: 0;
+  font-size: var(--fs-sm);
+}
+
+.pick__release .btn {
+  width: 100%;
+  white-space: normal;
+  text-align: center;
+}
+
+.pick__release .bar {
+  margin-top: var(--s-4);
+}
+
+/* The confirmation before a write --------------------------------------- */
+
+.confirm {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-3);
+  margin: var(--s-5) 0 0;
+  padding: var(--s-4);
+  border: 1px solid var(--rule-strong);
+  background: var(--paper-2);
+  max-width: 40rem;
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.stepx--feature .confirm,
+.restore .confirm {
+  background: var(--paper);
+}
+
+.confirm input {
+  flex: 0 0 auto;
+  width: 1.05rem;
+  height: 1.05rem;
+  margin-top: 0.3rem;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.confirm input:disabled {
+  cursor: not-allowed;
+}
+
+/* Unsupported browser --------------------------------------------------- */
+
+.unsupported {
+  margin-top: var(--s-8);
+  border: 1px solid var(--rule-strong);
+  border-left: 3px solid var(--accent);
+  background: var(--paper-2);
+  padding: var(--s-6) var(--s-5);
+}
+
+@media (min-width: 40rem) {
+  .unsupported {
+    padding: var(--s-7) var(--s-6);
+  }
+}
+
+.unsupported h2 {
+  font-size: clamp(1.4rem, 1.15rem + 1.1vw, 2rem);
+  margin-bottom: var(--s-4);
+}
+
+.unsupported p,
+.unsupported li {
+  color: var(--ink-2);
+  max-width: 40rem;
+}
+
+.unsupported .lead {
+  color: var(--ink);
+}
+
+/* Restore --------------------------------------------------------------- */
+
+.restore {
+  margin-top: var(--s-9);
+  border-top: 1px solid var(--rule);
+  padding-top: var(--s-7);
+}
+
+.restore h2 {
+  font-size: clamp(1.4rem, 1.15rem + 1.1vw, 2rem);
+  margin-bottom: var(--s-4);
+}
+
+.restore p,
+.restore li {
+  color: var(--ink-2);
+  max-width: 40rem;
+}
+
+.restore .lead {
+  color: var(--ink);
+}
+
+.install__tail {
+  margin-top: var(--s-8);
+}
+
+/* Nothing inside a step may push the card wider than the page. */
+.stepx,
+.stepx__body,
+.unsupported,
+.restore {
+  min-width: 0;
+}
+
+/* A clearly secondary, folded-away alternative inside the guide ---------- */
+
+.prose .alt {
+  border: 1px solid var(--rule);
+  background: var(--paper-2);
+  margin: var(--s-5) 0 0;
+}
+
+.prose .alt > summary {
+  cursor: pointer;
+  list-style: none;
+  padding: var(--s-4) 2.5rem var(--s-4) var(--s-5);
+  position: relative;
+  font-family: var(--font-mono);
+  font-size: var(--fs-label);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+
+.prose .alt > summary::-webkit-details-marker {
+  display: none;
+}
+
+.prose .alt > summary::after {
+  content: '+';
+  position: absolute;
+  right: var(--s-5);
+  top: 50%;
+  transform: translateY(-50%);
+  font-family: var(--font-mono);
+  color: var(--accent);
+}
+
+.prose .alt[open] > summary::after {
+  content: '–';
+}
+
+.prose .alt[open] > summary {
+  border-bottom: 1px solid var(--rule);
+}
+
+.alt__body {
+  padding: var(--s-5) var(--s-5) var(--s-6);
+}
+
+.alt__body > h3:first-child {
+  margin-top: 0;
+}
+
+.alt__body h4 {
+  margin: var(--s-5) 0 var(--s-3);
+}
+
+.alt__body .code {
+  background: var(--paper);
+}
+
+.alt__body .callout {
+  background: var(--paper);
+}

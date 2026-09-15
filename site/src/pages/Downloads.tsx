@@ -34,7 +34,8 @@ export function Downloads() {
           <h1>Four files, and one thing to do first.</h1>
           <p>
             Everything below writes over the firmware your reader shipped with. Read the backup
-            step before you download anything.
+            step before you download anything — and if you would rather not handle these files
+            at all, the browser installer does the whole job for you.
           </p>
         </div>
       </header>
@@ -48,6 +49,10 @@ export function Downloads() {
               <strong>before you flash anything</strong> is the only way back to the reader you
               bought.
             </p>
+            <p>
+              The <Link to="/install">browser installer</Link> does this for you — one button,
+              and it checks the size and saves a checksum. From a terminal it is two commands:
+            </p>
             <CodeBlock
               lang="shell"
               code={`espflash read-flash 0x0 0x1000000 xteink-stock-16mb.bin
@@ -60,6 +65,32 @@ sha256sum xteink-stock-16mb.bin > xteink-stock-16mb.bin.sha256`}
               </Link>
             </p>
           </Callout>
+        </div>
+      </section>
+
+      {/* The primary route -------------------------------------------- */}
+      <section className="section section--tight">
+        <div className="wrap">
+          <div className="release">
+            <div>
+              <p className="eyebrow">Easiest way in</p>
+              <h2 style={{ fontSize: 'var(--fs-h2)' }}>Install from your browser</h2>
+              <p className="lead" style={{ marginTop: 'var(--s-4)' }}>
+                You do not have to download any of these files by hand. Open the installer in
+                Chrome or Edge, attach the cable, and it backs up the firmware your reader came
+                with, checks the Quire image and writes it — no terminal, nothing to install on
+                your computer.
+              </p>
+            </div>
+            <div className="release__actions">
+              <Link className="btn" to="/install">
+                Open the installer
+              </Link>
+              <Link className="btn btn--ghost" to="/install#restore">
+                Restore stock
+              </Link>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -156,7 +187,12 @@ sha256sum -c quire-images.sha256`}
             files; that is the checksum the reader itself verifies when it updates over Wi-Fi.
           </p>
 
-          <h3 style={{ marginTop: 'var(--s-7)' }}>Flashing, once the backup is safe</h3>
+          <h3 style={{ marginTop: 'var(--s-7)' }}>Flashing from a terminal, once the backup is safe</h3>
+          <p className="measure">
+            The <Link to="/install">browser installer</Link> writes{' '}
+            <code>quire-x3-factory.bin</code> for you. These are the same writes by hand, with{' '}
+            <code>espflash</code>.
+          </p>
           <CodeBlock
             lang="shell"
             code={`# first install: the complete 16 MB image
@@ -168,8 +204,8 @@ espflash write-bin 0x20000  quire-recovery.bin
 espflash write-bin 0xca0000 quire-assets.bin`}
           />
           <p className="measure">
-            <Link className="link-arrow" to="/guide#flash">
-              The whole flashing walkthrough
+            <Link className="link-arrow" to="/guide#terminal">
+              The whole terminal walkthrough
             </Link>
           </p>
         </div>

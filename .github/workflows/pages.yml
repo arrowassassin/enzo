@@ -39,6 +39,10 @@ jobs:
       - name: Build
         run: npm run build
 
+      # One-time repository setting this depends on: Settings -> Pages -> Build and
+      # deployment -> Source must be "GitHub Actions". The step cannot turn it on itself:
+      # creating a Pages site needs admin rights that the workflow token is not given, so
+      # enablement: true fails with "Resource not accessible by integration".
       - uses: actions/configure-pages@v5
 
       - uses: actions/upload-pages-artifact@v3
