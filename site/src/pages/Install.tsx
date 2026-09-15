@@ -19,7 +19,7 @@ import {
   type Progress,
 } from '../lib/flash'
 import { md5Hex } from '../lib/md5'
-import { readFlashInto } from '../lib/readflash'
+import { readFlashInto, SERIAL_BUFFER_BYTES } from '../lib/readflash'
 import { downloadAsset, probeLatestRelease, type ReleaseProbe } from '../lib/release'
 import { useSeo } from '../lib/useSeo'
 
@@ -221,7 +221,15 @@ export function Install() {
       // The second argument is Transport's `tracing` flag: it console.logs every
       // packet, which over a 16 MB read is tens of thousands of lines.
       transport = new SerialTransport(port, false)
-      const loader = new ESPLoader({ transport, baudrate: 921600 })
+      // Without serialOptions the port opens with Web Serial's 255-byte read
+      // buffer, far too small for the window the stub reads into; see
+      // SERIAL_BUFFER_BYTES. This is passed to every open the loader makes,
+      // including the one it redoes after changing the baud rate.
+      const loader = new ESPLoader({
+        transport,
+        baudrate: 921600,
+        serialOptions: { bufferSize: SERIAL_BUFFER_BYTES },
+      })
       const chip = await loader.main()
       const mac = await loader.chip.readMac(loader)
       const flashSize = await loader.detectFlashSize()
