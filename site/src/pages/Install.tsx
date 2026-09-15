@@ -150,6 +150,12 @@ export function Install() {
   const [backupError, setBackupError] = useState('')
   /** Set when someone says they already hold a backup, so step 2 can be passed. */
   const [backupHeld, setBackupHeld] = useState(false)
+  /**
+   * Step 2 is satisfied either by a backup read here or by someone saying they
+   * already have one. Everything downstream asks this, never `backup` itself,
+   * so the two answers cannot drift apart.
+   */
+  const backupSettled = backup !== null || backupHeld
 
   const [release, setRelease] = useState<ReleaseProbe | null>(null)
   const [image, setImage] = useState<ChosenImage | null>(null)
@@ -168,10 +174,10 @@ export function Install() {
 
   /* Ask GitHub whether a release exists, so step 3 never offers a button that
      cannot work. Today the answer is "none". This waits until the backup is
-     done and step 3 is actually in play: visiting the page should not fire a
+     settled and step 3 is actually in play: visiting the page should not fire a
      request at GitHub, and a 404 should not land in everyone's console. */
   useEffect(() => {
-    if (!supported || !backup || release !== null) return
+    if (!supported || !backupSettled || release !== null) return
     const ac = new AbortController()
     let live = true
     probeLatestRelease(ac.signal)
@@ -185,7 +191,7 @@ export function Install() {
       live = false
       ac.abort()
     }
-  }, [supported, backup, release])
+  }, [supported, backupSettled, release])
 
   const drop = useCallback(async () => {
     const transport = transportRef.current
@@ -409,8 +415,8 @@ export function Install() {
 
   const working = busy !== null
   const connectState: StepState = device ? 'done' : 'ready'
-  const backupState: StepState = !device ? 'locked' : backup || backupHeld ? 'done' : 'ready'
-  const imageState: StepState = !backup && !backupHeld ? 'locked' : image ? 'done' : 'ready'
+  const backupState: StepState = !device ? 'locked' : backupSettled ? 'done' : 'ready'
+  const imageState: StepState = !backupSettled ? 'locked' : image ? 'done' : 'ready'
   const installState: StepState = !image ? 'locked' : installed ? 'done' : 'ready'
 
   return (
@@ -571,7 +577,7 @@ export function Install() {
                 {/* Someone on their second reader, or coming back to a half-finished
                     install, already has the only file this step can produce. Reading
                     it again costs them five minutes and tells them nothing new. */}
-                {!backup && !backupHeld ? (
+                {!backupSettled ? (
                   <button
                     type="button"
                     className="btn btn--ghost"
@@ -671,7 +677,7 @@ export function Install() {
                   <input
                     type="file"
                     accept=".bin,application/octet-stream"
-                    disabled={working || !backup}
+                    disabled={working || !backupSettled}
                     onChange={(e) => {
                       const file = e.target.files?.[0]
                       e.target.value = ''
@@ -682,8 +688,8 @@ export function Install() {
 
                 <div className="pick__release">
                   <span className="pick__label">Or straight from a release</span>
-                  {!backup ? (
-                    <p className="muted">Checked once your backup is saved.</p>
+                  {!backupSettled ? (
+                    <p className="muted">Checked once step 2 is settled.</p>
                   ) : release === null ? (
                     <p className="muted">Checking whether a release has been published…</p>
                   ) : release.state === 'available' ? (
@@ -692,7 +698,7 @@ export function Install() {
                         type="button"
                         className="btn btn--ghost"
                         onClick={() => void getFromRelease()}
-                        disabled={working || !backup}
+                        disabled={working || !backupSettled}
                       >
                         <DownloadIcon />
                         {busy === 'image' ? 'Downloading…' : `Download ${release.asset} (${release.tag})`}
