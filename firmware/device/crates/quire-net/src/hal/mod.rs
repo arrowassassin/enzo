@@ -10,6 +10,7 @@ pub mod fetch;
 pub mod http;
 pub mod mdns;
 pub mod page;
+pub mod sntp;
 pub mod sync;
 pub mod task;
 pub mod tls;

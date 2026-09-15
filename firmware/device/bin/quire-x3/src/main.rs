@@ -469,6 +469,24 @@ async fn main(spawner: embassy_executor::Spawner) -> ! {
                     ui.settings = quire_ui::Settings::load(&env.fs);
                     refresh = refresh.max(ui.draw(&mut env));
                 }
+                NetToMain::TimeSync(utc) => {
+                    // The RTC keeps local time and there is no zone setting: keep the
+                    // offset the user's clock implies (rounded to a quarter hour) and
+                    // correct the drift. An unset clock (the fixed first-run epoch) is
+                    // left for the wizard, since the zone is unknown.
+                    let local = env.now();
+                    if local > 1_700_000_000 {
+                        let diff = local as i64 - utc as i64;
+                        let quarter = 15 * 60;
+                        let offset = ((diff + if diff >= 0 { quarter / 2 } else { -quarter / 2 }) / quarter) * quarter;
+                        let corrected = (utc as i64 + offset) as u32;
+                        if corrected.abs_diff(local) >= 2 {
+                            println!("clock: {local} -> {corrected} (sntp, zone {}h)", offset / 3600);
+                            env.set_clock(corrected);
+                            let _ = i2c::set_clock(&mut i2c_bus, corrected);
+                        }
+                    }
+                }
                 NetToMain::ScreenRequest => {
                     let r = ui.frame().as_bitmap();
                     let bm = quire_gfx::Bitmap { w: r.w, h: r.h, bits: r.bits.to_vec() };

@@ -6,7 +6,7 @@ use alloc::boxed::Box;
 use alloc::string::String;
 use core::net::Ipv4Addr;
 
-use embassy_futures::join::join4;
+use embassy_futures::join::{join4, join5};
 use embassy_futures::select::{select, Either};
 use embassy_net::{Config as NetConfigV4, DhcpConfig, Ipv4Cidr, Stack, StackResources, StaticConfigV4};
 use embassy_time::{Duration, Timer};
@@ -193,7 +193,13 @@ async fn session(wifi: &mut WIFI<'static>, fs: &'static dyn CardFs, seed: u64, m
                 }
             }
             Mode::Station { target } => {
-                let servers = join4(http, station_mdns(stack, &hostname), fetch::worker(stack, fs), calibre::run(stack, fs, &hostname));
+                let servers = join5(
+                    http,
+                    station_mdns(stack, &hostname),
+                    fetch::worker(stack, fs),
+                    calibre::run(stack, fs, &hostname),
+                    super::sntp::sync_once(stack),
+                );
                 match select(servers, station_commands(&mut controller, stack, fs, &mut cfg, &hostname, target, flags)).await {
                     Either::First(_) => Outcome::Off,
                     Either::Second(o) => o,

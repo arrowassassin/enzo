@@ -23,6 +23,7 @@ pub mod routes;
 pub mod rsa;
 pub mod settings_json;
 pub mod sleepidx;
+pub mod sntp;
 pub mod url;
 pub mod weather;
 pub mod wifi_bin;

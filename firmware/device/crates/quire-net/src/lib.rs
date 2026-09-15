@@ -81,6 +81,9 @@ pub enum NetToMain {
     /// The Drop page asked for the current frame: write `/.quire/screen.pbm` and call
     /// [`screen_ready`].
     ScreenRequest,
+    /// An SNTP fix: UTC seconds since 1970. The main loop keeps the zone the user's own
+    /// clock setting implies and corrects the drift.
+    TimeSync(u32),
 }
 
 /// Load `/.quire/wifi.bin`.
