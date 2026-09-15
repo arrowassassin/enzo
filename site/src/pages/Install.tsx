@@ -18,6 +18,8 @@ import {
   tracker,
   type Progress,
 } from '../lib/flash'
+import { md5Hex } from '../lib/md5'
+import { readFlashInto } from '../lib/readflash'
 import { downloadAsset, probeLatestRelease, type ReleaseProbe } from '../lib/release'
 import { useSeo } from '../lib/useSeo'
 
@@ -260,7 +262,7 @@ export function Install() {
     setBackupProgress({ done: 0, total: FLASH_BYTES, eta: null })
     const bump = tracker(setBackupProgress)
     try {
-      const data = await loader.readFlash(0, FLASH_BYTES, (_packet, read, total) => bump(read, total))
+      const data = await readFlashInto(loader, 0, FLASH_BYTES, bump)
 
       if (data.length !== FLASH_BYTES) {
         // A short read is not a backup, and the transport is still healthy —
@@ -367,7 +369,13 @@ export function Install() {
           flashFreq: 'keep',
           flashSize: 'keep',
           eraseAll: false,
+          // The padding in a 16 MB image deflates to almost nothing, so this is
+          // the difference between a couple of minutes and a great many.
           compress: true,
+          // Given this, writeFlash asks the chip for the MD5 of what actually
+          // landed and throws if it differs, so a bad write is caught here
+          // rather than by a reader that will not start.
+          calculateMD5Hash: (image: Uint8Array) => md5Hex(image),
           reportProgress: (_fileIndex, written, total) => bump(written, total),
         })
         await loader.after('hard_reset')
