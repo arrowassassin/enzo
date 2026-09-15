@@ -79,7 +79,7 @@ impl<E: Env> Screen<E> for FirstRun {
                     &SettingValue::Text(quire_library::time::fmt_clock(now, cx.settings.clock_24h)),
                     RowState::Focused,
                 );
-                rail(f, ["Back", "", "Set", "Next"], None);
+                rail(f, ["", "Back", "Set", "Next"], None);
             }
             2 => {
                 running_head(f, "This is your reader", Some("3 / 4"));
@@ -103,7 +103,7 @@ impl<E: Env> Screen<E> for FirstRun {
                     }
                     y += 4;
                 }
-                rail(f, ["Back", "", "", "Next"], None);
+                rail(f, ["", "Back", "", "Next"], None);
             }
             _ => {
                 running_head(f, "Add books", Some("4 / 4"));
@@ -131,16 +131,16 @@ impl<E: Env> Screen<E> for FirstRun {
                     q.draw(f, widgets::INSET, y, 4);
                 }
                 draw_text(f, fb, widgets::INSET + qr + 12, y + 30, &url.replace("http://", ""), TextStyle::INK);
-                draw_text(
-                    f,
-                    fl,
-                    widgets::INSET + qr + 12,
-                    y + 30 + line_h(fb),
-                    "Drop: scan, then drag books onto the page.",
-                    TextStyle::INK,
-                );
+                // Beside a QR of unknown width, so this wraps into whatever is left
+                // rather than running off the edge.
+                let hx = widgets::INSET + qr + 12;
+                let mut hy = y + 30 + line_h(fb);
+                for l in wrap(fl, "Drop: press Up, then scan and drag books onto the page.", w - hx - widgets::INSET) {
+                    draw_text(f, fl, hx, hy, &l, TextStyle::INK);
+                    hy += line_h(fl);
+                }
                 // "Start reading" does not fit a rail cell.
-                rail(f, ["Back", "Drop", "Bookshop", "Start"], None);
+                rail(f, ["", "Back", "Bookshop", "Start"], None);
             }
         }
         Refresh::Gc
@@ -165,11 +165,16 @@ impl<E: Env> Screen<E> for FirstRun {
                 Action::Redraw
             }
             (1, Key::Confirm) => Action::Push(Box::new(TimePicker::new())),
-            (3, Key::Back) | (2, Key::Back) | (1, Key::Back) => {
+            (3, Key::Back) | (2, Key::Back) | (1, Key::Back) | (2, Key::Left) | (1, Key::Left) => {
                 self.page -= 1;
                 Action::Redraw
             }
-            (3, Key::Right) | (3, Key::Confirm) => self.finish(cx),
+            (3, Key::Right) => self.finish(cx),
+            // Slot 2 of the rail is Confirm, and it says Bookshop.
+            (3, Key::Confirm) => {
+                self.finish(cx);
+                Action::Push(Box::new(super::bookshop::BookshopHome::new()))
+            }
             (_, Key::Right) if self.page < 3 => {
                 self.page += 1;
                 Action::Redraw
