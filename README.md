@@ -130,7 +130,8 @@ The rest of this section is the same job from a terminal, for people who prefer 
 
 ### Before you start, whichever way you install
 
-- You need the reader and the magnetic pogo cable it came with, and a computer with a USB port.
+- You need the reader and the magnetic pogo cable it came with, and a computer with a USB port. The cable ends in USB-A, so a machine with only USB-C ports (any recent MacBook, for one) needs a plain USB-C to USB-A adapter. A passive adapter is fine and is more reliable than a multi-port hub.
+- **The cable is needed once.** Installing and backing up talk to the ESP32-C3's ROM bootloader, which is burned into the chip and only reachable over that USB connection. There is no wireless way in while the reader is running the firmware it shipped with, and no wireless way to read the flash for a backup. Once Quire is installed, every update is over Wi-Fi or from the card, and the cable can go in a drawer.
 - **Power the X3 on before you attach the cable.** It has to be awake to appear.
 - **Back up first.** The firmware your reader shipped with is not published anywhere and cannot be redistributed by this project. The copy you take is the only way back.
 - Some X3 units left the factory with the "disable download mode" eFuse burned. Those readers never appear over USB, so they can be neither backed up nor flashed, and it cannot be undone. If the reader never shows up on any cable or port, that is probably why, and installing Quire on it is not something this project supports.

@@ -89,7 +89,11 @@ export function Guide() {
                 An <strong>Xteink X3</strong> and the pogo-pin cable that came with it — the one
                 with the spring-loaded pins that press against the back of the reader.
               </li>
-              <li>A computer with a USB port: Windows, macOS, Linux or ChromeOS.</li>
+              <li>
+                A computer with a USB port: Windows, macOS, Linux or ChromeOS. The cable ends in
+                USB-A, so a machine with only USB-C ports needs an adapter. A plain passive
+                USB-C to USB-A adapter works better than a multi-port dongle.
+              </li>
               <li>
                 <strong>Chrome, Edge, or another Chromium-based browser</strong> on that
                 computer. Firefox and Safari cannot talk to the cable. Neither can a phone or a
@@ -108,7 +112,21 @@ export function Guide() {
                 that is off or asleep does not announce itself to the computer, and nothing you
                 try afterwards will find it.
               </p>
+              <p>
+                When something asks you to choose a port, the reader is the one named{' '}
+                <code>usbmodem</code> and some digits on macOS, <code>ttyACM</code> on Linux, or
+                a COM port on Windows. Bluetooth devices and headphones show up in the same list
+                and are not it.
+              </p>
             </Callout>
+
+            <p>
+              The cable is needed once. Installing and backing up talk to the chip’s own ROM
+              bootloader, which is burned into the silicon and only reachable over that USB
+              connection, so there is no wireless way to do either while the reader still runs
+              the firmware it came with. Once Quire is on, updates arrive over Wi-Fi or from the
+              card and the cable can go in a drawer.
+            </p>
 
             <h3 id="locked">Some readers cannot be flashed at all</h3>
             <p>
