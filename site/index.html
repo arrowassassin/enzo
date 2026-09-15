@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+
+    <title>Quire — e-reader firmware for the Xteink X3</title>
+    <meta
+      name="description"
+      content="Quire is open-source e-reader firmware for the Xteink X3, written in Rust from scratch: black ink on white paper, seven keys, the book is the home screen."
+    />
+    <meta name="author" content="The Quire project" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#fbf9f5" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#121110" media="(prefers-color-scheme: dark)" />
+
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="canonical" href="https://arrowassassin.github.io/quire/" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Quire" />
+    <meta property="og:title" content="Quire — e-reader firmware for the Xteink X3" />
+    <meta
+      property="og:description"
+      content="Open-source e-reader firmware for the Xteink X3, written in Rust from scratch: black ink on white paper, seven keys, the book is the home screen."
+    />
+    <meta property="og:url" content="https://arrowassassin.github.io/quire/" />
+    <meta property="og:image" content="https://arrowassassin.github.io/quire/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="A page of Moby-Dick typeset by Quire on the Xteink X3's 528 by 792 e-ink panel." />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Quire — e-reader firmware for the Xteink X3" />
+    <meta
+      name="twitter:description"
+      content="Open-source e-reader firmware for the Xteink X3, written in Rust from scratch: black ink on white paper, seven keys, the book is the home screen."
+    />
+    <meta name="twitter:image" content="https://arrowassassin.github.io/quire/og.png" />
+
+    <script>
+      // Paint in the right palette from the first frame: read the stored choice
+      // before the stylesheet applies, and leave the attribute off for "system".
+      try {
+        var t = localStorage.getItem('quire-theme')
+        if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t)
+      } catch (e) {}
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <noscript>
+      <p style="padding: 2rem; font-family: Georgia, serif">
+        Quire is open-source e-reader firmware for the Xteink X3. This site needs JavaScript;
+        the source, the README and the release files are at
+        <a href="https://github.com/arrowassassin/quire">github.com/arrowassassin/quire</a>.
+      </p>
+    </noscript>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

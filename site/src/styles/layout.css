@@ -1,0 +1,186 @@
+/* Page frame, sections, rhythm ------------------------------------------ */
+
+.shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+main {
+  flex: 1 0 auto;
+}
+
+.wrap {
+  width: 100%;
+  max-width: var(--content);
+  margin-inline: auto;
+  padding-inline: var(--gutter);
+}
+
+.wrap--narrow {
+  max-width: var(--content-narrow);
+}
+
+.section {
+  padding-block: var(--section-y);
+}
+
+.section--tight {
+  padding-block: calc(var(--section-y) * 0.62);
+}
+
+.section--ruled {
+  border-top: 1px solid var(--rule);
+}
+
+.section--tinted {
+  background: var(--paper-2);
+  border-block: 1px solid var(--rule);
+}
+
+/* A section header: mono eyebrow, display heading, one lead paragraph. */
+.section-head {
+  max-width: 40rem;
+  margin-bottom: var(--s-8);
+}
+
+.section-head p {
+  color: var(--ink-2);
+  font-size: var(--fs-lead);
+  line-height: 1.55;
+  margin-top: var(--s-4);
+  max-width: var(--measure);
+}
+
+.eyebrow {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: var(--fs-label);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: var(--s-4);
+}
+
+.eyebrow--muted {
+  color: var(--ink-3);
+}
+
+.lead {
+  font-size: var(--fs-lead);
+  line-height: 1.55;
+  color: var(--ink-2);
+  max-width: var(--measure);
+}
+
+.muted {
+  color: var(--ink-3);
+}
+
+.measure {
+  max-width: var(--measure);
+}
+
+/* Alternating text / screenshot rows. */
+.split {
+  display: grid;
+  gap: clamp(2.5rem, 1rem + 5vw, 5.5rem);
+  grid-template-columns: minmax(0, 1fr);
+  align-items: center;
+}
+
+@media (min-width: 62rem) {
+  .split {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .split--flip .split__media {
+    order: -1;
+  }
+}
+
+.split + .split {
+  margin-top: clamp(4rem, 2rem + 7vw, 8rem);
+}
+
+.split__body h3 {
+  font-size: var(--fs-h2);
+  margin-bottom: var(--s-4);
+}
+
+.split__body p {
+  color: var(--ink-2);
+  max-width: var(--measure);
+}
+
+.split__media {
+  display: flex;
+  justify-content: center;
+}
+
+/* Small definition list used under feature copy. */
+.facts {
+  margin: var(--s-5) 0 0;
+  padding: 0;
+  border-top: 1px solid var(--rule);
+}
+
+.facts div {
+  display: flex;
+  gap: var(--s-4);
+  justify-content: space-between;
+  align-items: baseline;
+  padding: var(--s-3) 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.facts dt {
+  font-family: var(--font-mono);
+  font-size: var(--fs-label);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.facts dd {
+  margin: 0;
+  font-size: var(--fs-sm);
+  text-align: right;
+}
+
+/* Generic card grid. */
+.grid {
+  display: grid;
+  gap: var(--s-5);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr));
+}
+
+.card {
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  padding: var(--s-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+.section--tinted .card {
+  background: var(--paper);
+}
+
+.card h3,
+.card h4 {
+  font-family: var(--font-display);
+}
+
+.card p {
+  color: var(--ink-2);
+  font-size: var(--fs-sm);
+  margin: 0;
+}
+
+.card__num {
+  font-family: var(--font-mono);
+  font-size: var(--fs-label);
+  letter-spacing: var(--tracking-label);
+  color: var(--accent);
+}

@@ -17,6 +17,10 @@
 /firmware/target/snapshots/
 /firmware/tools/sleepgen/out/
 
+# Website build output (site/ is a Vite app; the lockfile is tracked)
+/site/node_modules/
+/site/dist/
+
 # Editors and OS
 .vscode/
 .idea/
@@ -30,3 +34,6 @@ Thumbs.db
 *.pem
 *.key
 !**/fixtures/**/*.key
+# Not a secret: the certificate authorities the TLS verifier trusts, and the
+# script that turns them into roots.bin.
+!/firmware/device/crates/quire-net/roots/roots.pem
