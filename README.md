@@ -143,7 +143,13 @@ cargo install espflash@4.6.0 --locked
 | `quire-recovery.bin` | partition `recovery` | 157,216 | The factory recovery app |
 | `quire-assets.bin` | partition `assets` | 1,548,664 | The WordNet dictionary blob |
 
-One warning before you start. Some X3 units, from some batches, ship with the "disable download mode" eFuse burned. Those units do not enumerate over USB at all and cannot be flashed this way; the change is irreversible and is not something Quire can undo. If the reader does not appear as a serial device, stop rather than looking for a workaround.
+One warning before you start. Some X3 units, from some batches, ship with the "disable download mode" eFuse burned. Those units do not enumerate over USB at all and cannot be flashed this way; the change is irreversible and is not something Quire can undo. If the reader does not appear as a serial device, stop rather than looking for a workaround. Check before you plan anything else:
+
+```sh
+espflash board-info
+```
+
+A working unit prints its chip, MAC and flash size.
 
 **Power the X3 on before you attach the pogo cable.** This is the order for every command below.
 

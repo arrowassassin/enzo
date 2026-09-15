@@ -99,6 +99,20 @@ export function Guide() {
                 to be awake for the connection to enumerate.
               </p>
             </Callout>
+
+            <h3>Check your unit is not flash-locked</h3>
+            <p>
+              Some X3 units, from some batches, left the factory with the ESP32-C3 "disable
+              download mode" eFuse burned. Those readers do not enumerate over USB at all, so
+              they can be neither backed up nor flashed over the cable, and the eFuse cannot be
+              undone. Find out before you plan anything else:
+            </p>
+            <CodeBlock lang="shell" code={`espflash board-info`} />
+            <p>
+              A working unit prints its chip, MAC and flash size. If nothing appears on any
+              cable or port, and the device is powered on, assume it is locked. Installing Quire
+              on a locked reader is not something this project supports today.
+            </p>
           </section>
 
           {/* 2 ---------------------------------------------------------- */}
@@ -148,7 +162,8 @@ stat -c %s xteink-stock-16mb.bin      # must print 16777216
 stat -f %z xteink-stock-16mb.bin      # must print 16777216
 
 # keep a checksum next to it
-sha256sum xteink-stock-16mb.bin > xteink-stock-16mb.bin.sha256`}
+sha256sum xteink-stock-16mb.bin > xteink-stock-16mb.bin.sha256
+# on macOS: shasum -a 256 xteink-stock-16mb.bin > xteink-stock-16mb.bin.sha256`}
             />
 
             <h3>Restoring it later</h3>
@@ -161,7 +176,7 @@ sha256sum xteink-stock-16mb.bin > xteink-stock-16mb.bin.sha256`}
               code={`espflash write-bin 0x0 xteink-stock-16mb.bin
 
 # or, with esptool
-esptool.py write_flash 0x0 xteink-stock-16mb.bin`}
+esptool.py --chip esp32c3 write_flash 0x0 xteink-stock-16mb.bin`}
             />
             <p>
               Copy the <code>.bin</code> and its <code>.sha256</code> off your machine — a second
