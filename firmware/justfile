@@ -21,15 +21,26 @@ device:
 flash:
     cd device && cargo run --release
 
-# produce dist/quire-x3.bin (OTA / SD update), dist/quire-recovery.bin (the factory slot)
-# and dist/quire-x3-factory.bin (full flash; CI also adds otadata and the assets partition)
+# produce the four release files in dist/: quire-x3.bin (OTA and SD update),
+# quire-recovery.bin (the factory slot), quire-assets.bin (the dictionary) and
+# quire-x3-factory.bin (the complete 16 MB flash image, written at 0x0)
 images:
     mkdir -p dist
     cd device && cargo build --release
-    cd device && espflash save-image --chip esp32c3 --partition-table partitions.csv --target-app-partition ota_0 \
+    cd device && espflash save-image --chip esp32c3 --flash-size 16mb --partition-table partitions.csv --target-app-partition ota_0 \
         target/riscv32imc-unknown-none-elf/release/quire-x3 ../dist/quire-x3.bin
-    cd device && espflash save-image --chip esp32c3 --partition-table partitions.csv --target-app-partition recovery \
+    cd device && espflash save-image --chip esp32c3 --flash-size 16mb --partition-table partitions.csv --target-app-partition recovery \
         target/riscv32imc-unknown-none-elf/release/quire-recovery ../dist/quire-recovery.bin
+    cp crates/quire-ui/data/en.qdict dist/quire-assets.bin
     cd device && espflash save-image --chip esp32c3 --merge --partition-table partitions.csv --target-app-partition ota_0 \
         --flash-size 16mb target/riscv32imc-unknown-none-elf/release/quire-x3 ../dist/quire-x3-factory.bin
-    cd device && dd if=../dist/quire-recovery.bin of=../dist/quire-x3-factory.bin bs=4096 seek=$((0x20000 / 4096)) conv=notrunc status=none
+    # espflash merges only the app; the other partitions go in at their table offsets, and the
+    # otadata entry (sequence 1 = ota_0, state Valid, CRC) keeps a fresh flash out of recovery.
+    cd device && offset() { grep "^$1," partitions.csv | cut -d, -f4 | tr -d ' '; }; \
+        put() { dd if="$1" of=../dist/quire-x3-factory.bin bs=4096 seek=$(( $(offset "$2") / 4096 )) conv=notrunc status=none; }; \
+        put ../dist/quire-recovery.bin recovery; \
+        put ../dist/quire-assets.bin assets; \
+        printf '\x01\x00\x00\x00\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\x02\x00\x00\x00\x9a\x98\x43\x47' > otadata.bin; \
+        put otadata.bin otadata; \
+        rm otadata.bin
+    ls -l dist

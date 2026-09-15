@@ -23,7 +23,7 @@ Open-source e-reader firmware for the Xteink X3, written in Rust. The design pac
 
 Host (tests, simulator): `cargo test --workspace` (CI runs `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D warnings` and the tests in debug mode, so integer overflow checks are on). `cargo run -p quire-sim -- --snapshots DIR` renders the 142-screen tour to PNG; `UPDATE_SNAPSHOTS=1 cargo test -p quire-sim --test screens` accepts changed hashes.
 
-Device: `cd device && cargo build --release` builds both binaries. `cargo run --release` flashes `quire-x3` into `ota_0` over the pogo cable (the X3 must be powered on before the cable is attached); the recovery app is flashed with `espflash flash --partition-table partitions.csv --target-app-partition recovery target/riscv32imc-unknown-none-elf/release/quire-recovery`. `just images` produces the release files; CI does the same on every push and attaches them to releases on `v*` tags.
+Device: `cd device && cargo build --release` builds both binaries. `cargo run --release` flashes `quire-x3` into `ota_0` over the pogo cable (the X3 must be powered on before the cable is attached); the recovery app is flashed with `espflash flash --partition-table partitions.csv --target-app-partition recovery target/riscv32imc-unknown-none-elf/release/quire-recovery`. `just images` produces the four release files; CI does the same on every push and attaches them to releases on `v*` tags.
 
 Toolchain: stable Rust (see `rust-toolchain.toml`), no ESP-IDF, no C toolchain. The device stack is esp-hal 1.1, esp-rtos 0.3, esp-radio 0.18, embassy-net 0.9 and picoserve 0.20, the newest set of those crates that agree with each other.
 
@@ -32,8 +32,8 @@ Toolchain: stable Rust (see `rust-toolchain.toml`), no ESP-IDF, no C toolchain. 
 | Partition | Offset | Size | Holds |
 |---|---|---|---|
 | `nvs`, `otadata`, `phy_init` | `0x9000` | 36 KB | ESP-IDF bootloader data. `otadata` selects the slot; the factory image ships it pointing at `ota_0`. |
-| `recovery` (factory) | `0x20000` | 512 KB | `quire-recovery` (161 KB): reinstall from the card, retry, roll back. |
-| `ota_0`, `ota_1` | `0xa0000`, `0x6a0000` | 6 MB each | `quire-x3` (3.97 MB). Updates go to the other slot. |
+| `recovery` (factory) | `0x20000` | 512 KB | `quire-recovery` (157,216 bytes): reinstall from the card, retry, roll back. |
+| `ota_0`, `ota_1` | `0xa0000`, `0x6a0000` | 6 MB each | `quire-x3` (4,171,392 bytes). Updates go to the other slot. |
 | `assets` | `0xca0000` | 3.25 MB | `en.qdict`, the dictionary, read through the SPI flash driver. |
 | `coredump` | `0xfe0000` | 128 KB | Reserved. |
 
