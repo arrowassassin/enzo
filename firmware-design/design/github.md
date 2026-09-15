@@ -1,4 +1,4 @@
-repo: arrowassassin/enzo
+repo: arrowassassin/quire
 branch: claude/laughing-noether-mido1e
 path: firmware-design/
 

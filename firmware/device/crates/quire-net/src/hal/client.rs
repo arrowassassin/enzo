@@ -324,7 +324,7 @@ async fn hop(
 
     // The request head.
     let mut head = String::with_capacity(256);
-    let _ = write!(head, "{} {} HTTP/1.1\r\nHost: {}\r\nUser-Agent: quire-x3/1 (+https://github.com/arrowassassin/enzo)\r\nConnection: close\r\nAccept-Encoding: identity\r\n", method.as_str(), url.path, url.host_header());
+    let _ = write!(head, "{} {} HTTP/1.1\r\nHost: {}\r\nUser-Agent: quire-x3/1 (+https://github.com/arrowassassin/quire)\r\nConnection: close\r\nAccept-Encoding: identity\r\n", method.as_str(), url.path, url.host_header());
     if let Some(from) = range_from {
         let _ = write!(head, "Range: bytes={from}-\r\n");
     }

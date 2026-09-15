@@ -26,7 +26,7 @@ use crate::proto::{feeds, github, opds, sleepidx, weather, wiki};
 use crate::{post, try_post, with, CardFs, DynFs, NetCommand, NetToMain};
 
 /// The Bookshop catalog, in the card's own format.
-const CATALOG_URL: &str = "https://raw.githubusercontent.com/arrowassassin/enzo/claude/laughing-noether-mido1e/bookshop/catalog.bin";
+const CATALOG_URL: &str = "https://raw.githubusercontent.com/arrowassassin/quire/main/bookshop/catalog.bin";
 /// Where an update image lands (the board's `install_from_card` reads it).
 pub const UPDATE_FILE: &str = "/quire/update.bin";
 /// Longest OPDS 2.0 JSON feed kept.

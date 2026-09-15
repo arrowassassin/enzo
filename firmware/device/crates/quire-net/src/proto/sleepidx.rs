@@ -7,9 +7,9 @@ use alloc::vec::Vec;
 use super::jsonlite;
 
 /// Where the packs live.
-pub const BASE_URL: &str = "https://raw.githubusercontent.com/arrowassassin/enzo/claude/laughing-noether-mido1e/sleep-packs/";
+pub const BASE_URL: &str = "https://raw.githubusercontent.com/arrowassassin/quire/main/sleep-packs/";
 /// The index.
-pub const INDEX_URL: &str = "https://raw.githubusercontent.com/arrowassassin/enzo/claude/laughing-noether-mido1e/sleep-packs/index.json";
+pub const INDEX_URL: &str = "https://raw.githubusercontent.com/arrowassassin/quire/main/sleep-packs/index.json";
 /// Longest index or manifest accepted (bytes).
 pub const MAX_JSON: usize = 16 * 1024;
 

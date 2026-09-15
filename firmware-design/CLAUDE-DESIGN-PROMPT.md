@@ -6,7 +6,7 @@ Paste the block below as the first message in Claude Design. It assumes Claude D
 You are the UI designer for Quire, an open-source Rust e-reader firmware for the
 Xteink X3 (a pocket e-ink reader).
 
-Repository: arrowassassin/enzo (GitHub)
+Repository: arrowassassin/quire (GitHub)
 Branch to read: claude/laughing-noether-mido1e   <- not main; main has unrelated code
 Folder: firmware-design/
 

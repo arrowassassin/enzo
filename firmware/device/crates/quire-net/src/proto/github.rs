@@ -1,4 +1,4 @@
-//! GitHub releases: the latest release of `arrowassassin/enzo` as an [`OtaInfo`], from
+//! GitHub releases: the latest release of `arrowassassin/quire` as an [`OtaInfo`], from
 //! the REST API's JSON (scanned, not parsed into a tree; a truncated document still
 //! yields what came before the cut, which for GitHub is everything but the notes).
 
@@ -9,11 +9,11 @@ use quire_ui::net::OtaInfo;
 use super::jsonlite::Value;
 
 /// The repository releases are read from.
-pub const REPO: &str = "arrowassassin/enzo";
+pub const REPO: &str = "arrowassassin/quire";
 /// The firmware asset name in a release.
 pub const ASSET: &str = "quire-x3.bin";
 /// The `releases/latest` endpoint.
-pub const LATEST_URL: &str = "https://api.github.com/repos/arrowassassin/enzo/releases/latest";
+pub const LATEST_URL: &str = "https://api.github.com/repos/arrowassassin/quire/releases/latest";
 /// Most of the release JSON kept in RAM (notes past this point are cut).
 pub const MAX_JSON: usize = 12 * 1024;
 
@@ -101,8 +101,8 @@ mod tests {
     use super::*;
 
     const JSON: &[u8] = br#"{"url":"x","tag_name":"v0.3.1","name":"Quire 0.3.1","draft":false,"assets":[
-      {"name":"quire-x3.bin.sha256","size":90,"browser_download_url":"https://github.com/arrowassassin/enzo/releases/download/v0.3.1/quire-x3.bin.sha256"},
-      {"name":"quire-x3.bin","size":3987872,"browser_download_url":"https://github.com/arrowassassin/enzo/releases/download/v0.3.1/quire-x3.bin"}],
+      {"name":"quire-x3.bin.sha256","size":90,"browser_download_url":"https://github.com/arrowassassin/quire/releases/download/v0.3.1/quire-x3.bin.sha256"},
+      {"name":"quire-x3.bin","size":3987872,"browser_download_url":"https://github.com/arrowassassin/quire/releases/download/v0.3.1/quire-x3.bin"}],
       "body":"* Bookshop\r\n* Sync"}"#;
 
     #[test]
