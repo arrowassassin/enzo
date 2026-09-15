@@ -4,6 +4,7 @@
 use alloc::boxed::Box;
 use alloc::string::String;
 use alloc::vec::Vec;
+use quire_fs::Fs;
 use quire_gfx::{draw_text, Frame, Ink, Pattern, Rect, TextStyle};
 
 use crate::keyboard::KeyboardScreen;
@@ -589,12 +590,28 @@ pub struct About {
     focus: usize,
     checking: bool,
     update: Option<Result<Option<OtaInfo>, String>>,
+    /// A firmware image found on the card (looked up once, when the screen opens).
+    card_update: Option<Option<String>>,
 }
+
+/// Where a firmware image on the card may sit, first match wins (the same list the
+/// recovery app and the board's installer use).
+pub const CARD_UPDATE_PATHS: [&str; 3] = ["/quire/update.bin", "/quire-x3.bin", "/quire-update.bin"];
 
 impl About {
     /// New.
     pub fn new() -> Self {
-        About { focus: 0, checking: false, update: None }
+        About { focus: 0, checking: false, update: None, card_update: None }
+    }
+    fn rows(&self) -> usize {
+        3 + usize::from(matches!(self.card_update, Some(Some(_))))
+    }
+    fn card_update<E: Env>(&mut self, cx: &mut Ctx<E>) -> Option<String> {
+        if self.card_update.is_none() {
+            let fs = cx.env.fs();
+            self.card_update = Some(CARD_UPDATE_PATHS.iter().find(|p| fs.exists(p)).map(|p| String::from(*p)));
+        }
+        self.card_update.clone().flatten()
     }
 }
 
@@ -673,19 +690,22 @@ impl<E: Env> Screen<E> for About {
         );
         draw_text(f, fb, x, y + fb.ascent(), &alloc::format!("{books} books in the library"), TextStyle::INK);
         y += line_h(fb) + 12;
-        let rows: [(&str, String); 2] = [
-            (
-                "Check for update",
-                match &self.update {
-                    None if self.checking => String::from("checking…"),
-                    None => String::new(),
-                    Some(Ok(None)) => String::from("up to date"),
-                    Some(Ok(Some(i))) => alloc::format!("{} available", i.version),
-                    Some(Err(e)) => ellipsis(quire_fonts::ui::label(), e, 200),
-                },
-            ),
-            ("Licences", String::from("MIT or Apache-2.0")),
-        ];
+        let card = self.card_update(cx);
+        let mut rows: Vec<(&str, String)> = alloc::vec![(
+            "Check for update",
+            match &self.update {
+                None if self.checking => String::from("checking…"),
+                None => String::new(),
+                Some(Ok(None)) => String::from("up to date"),
+                Some(Ok(Some(i))) => alloc::format!("{} available", i.version),
+                Some(Err(e)) => ellipsis(quire_fonts::ui::label(), e, 200),
+            },
+        )];
+        if let Some(path) = &card {
+            rows.push(("Install from card", path.trim_start_matches('/').into()));
+        }
+        rows.push(("Restart into recovery", String::new()));
+        rows.push(("Licences", String::from("MIT or Apache-2.0")));
         for (i, (t, v)) in rows.iter().enumerate() {
             setting_row(f, y, ROW_H, t, &SettingValue::Text(v.clone()), if self.focus == i { RowState::Focused } else { RowState::Normal });
             y += ROW_H;
@@ -699,24 +719,39 @@ impl<E: Env> Screen<E> for About {
         }
         match ev.key {
             Key::Back => Action::Pop,
-            Key::Up | Key::Down => {
-                self.focus ^= 1;
+            Key::Up => {
+                self.focus = self.focus.saturating_sub(1);
+                Action::Redraw
+            }
+            Key::Down => {
+                self.focus = (self.focus + 1).min(self.rows() - 1);
                 Action::Redraw
             }
             Key::Confirm => {
-                if self.focus == 0 {
-                    if let Some(Ok(Some(info))) = &self.update {
-                        return Action::Push(Box::new(OtaScreen::available(info.clone())));
+                let card = self.card_update(cx);
+                // Rows: check, [install from card], recovery, licences.
+                let row = if card.is_none() && self.focus >= 1 { self.focus + 1 } else { self.focus };
+                match row {
+                    0 => {
+                        if let Some(Ok(Some(info))) = &self.update {
+                            return Action::Push(Box::new(OtaScreen::available(info.clone())));
+                        }
+                        if !matches!(cx.env.wifi(), crate::WifiState::Connected { .. }) {
+                            return Action::Push(Box::new(super::wifi::WifiScreen::new_with_hint("Updates need Wi-Fi")));
+                        }
+                        self.checking = true;
+                        self.update = None;
+                        cx.env.request(SysRequest::Fetch(FetchRequest::OtaCheck));
+                        Action::Redraw
                     }
-                    if !matches!(cx.env.wifi(), crate::WifiState::Connected { .. }) {
-                        return Action::Push(Box::new(super::wifi::WifiScreen::new_with_hint("Updates need Wi-Fi")));
-                    }
-                    self.checking = true;
-                    self.update = None;
-                    cx.env.request(SysRequest::Fetch(FetchRequest::OtaCheck));
-                    Action::Redraw
-                } else {
-                    Action::Push(Box::new(Licences))
+                    1 => Action::Push(Box::new(OtaScreen::from_card(card.unwrap_or_else(|| String::from(CARD_UPDATE_PATHS[0]))))),
+                    2 => Action::Push(super::Dialog::new(
+                        "Restart into recovery?",
+                        "The recovery app can reinstall the firmware from the card or go back to the previous version.",
+                        "Cancel",
+                        "Restart",
+                    )),
+                    _ => Action::Push(Box::new(Licences)),
                 }
             }
             _ => Action::None,
@@ -729,6 +764,12 @@ impl<E: Env> Screen<E> for About {
             return Action::Redraw;
         }
         Action::None
+    }
+    fn result(&mut self, cx: &mut Ctx<E>, r: Result_) -> Action<E> {
+        if r == Result_::Choice(1) {
+            cx.env.request(SysRequest::Recovery);
+        }
+        Action::Redraw
     }
 }
 
@@ -763,6 +804,8 @@ impl<E: Env> Screen<E> for Licences {
 /// 51 OTA: available (paginated notes, Install), working, restart dialog.
 pub struct OtaScreen {
     info: Option<OtaInfo>,
+    /// The image on the card to install when there is no download.
+    card_path: String,
     page: usize,
     working: bool,
     done: u64,
@@ -774,11 +817,11 @@ pub struct OtaScreen {
 impl OtaScreen {
     /// An available update.
     pub fn available(info: OtaInfo) -> Self {
-        OtaScreen { info: Some(info), page: 0, working: false, done: 0, total: 0, error: None, finished: false }
+        OtaScreen { info: Some(info), card_path: String::new(), page: 0, working: false, done: 0, total: 0, error: None, finished: false }
     }
-    /// An SD-card update (`/quire-update.bin`).
-    pub fn from_card() -> Self {
-        OtaScreen { info: None, page: 0, working: false, done: 0, total: 0, error: None, finished: false }
+    /// An SD-card update at `path`.
+    pub fn from_card(path: String) -> Self {
+        OtaScreen { info: None, card_path: path, page: 0, working: false, done: 0, total: 0, error: None, finished: false }
     }
 }
 
@@ -816,7 +859,13 @@ impl<E: Env> Screen<E> for OtaScreen {
         let mut y = widgets::CONTENT_TOP;
         let (title, notes) = match &self.info {
             Some(i) => (alloc::format!("Version {}", i.version), alloc::format!("{}\n\n{}", i.notes, mb(i.size))),
-            None => (String::from("Update from the card"), String::from("A quire-update.bin file was found on the card. It is checked and verified before installing; the previous version stays as a fallback.")),
+            None => (
+                String::from("Update from the card"),
+                alloc::format!(
+                    "{} was found on the card. It is checked and verified before installing; the previous version stays as a fallback.",
+                    self.card_path.trim_start_matches('/')
+                ),
+            ),
         };
         draw_text(f, ft, widgets::INSET, y + ft.ascent(), &title, TextStyle::INK);
         y += ft.ascent() + ft.below() + 12;
@@ -854,7 +903,7 @@ impl<E: Env> Screen<E> for OtaScreen {
             Key::Confirm => {
                 self.working = true;
                 self.error = None;
-                let url = self.info.as_ref().map(|i| i.url.clone()).unwrap_or_else(|| String::from("/quire-update.bin"));
+                let url = self.info.as_ref().map(|i| i.url.clone()).unwrap_or_else(|| self.card_path.clone());
                 cx.env.request(SysRequest::Ota(url));
                 Action::Redraw
             }
@@ -1010,7 +1059,7 @@ impl<E: Env> Screen<E> for Recovery {
         }
         y += 16;
         let fb = quire_fonts::ui::body();
-        let text = alloc::format!("{}\n\nInstall quire-update.bin from the card, or restart the previous version.", self.reason);
+        let text = alloc::format!("{}\n\nInstall quire/update.bin from the card, or restart the previous version.", self.reason);
         for l in wrap(fb, &text, w - 2 * widgets::INSET) {
             draw_text(f, fb, widgets::INSET, y + fb.ascent(), &l, TextStyle::INK);
             y += line_h(fb);
@@ -1018,13 +1067,17 @@ impl<E: Env> Screen<E> for Recovery {
         rail(f, ["", "Restart", "Install", ""], None);
         Refresh::Gc
     }
-    fn key(&mut self, _cx: &mut Ctx<E>, ev: KeyEvent) -> Action<E> {
+    fn key(&mut self, cx: &mut Ctx<E>, ev: KeyEvent) -> Action<E> {
         if ev.kind != KeyKind::Press {
             return Action::None;
         }
         match ev.key {
             Key::Back => Action::System(SysRequest::Restart),
-            Key::Confirm => Action::Push(Box::new(OtaScreen::from_card())),
+            Key::Confirm => {
+                let fs = cx.env.fs();
+                let path = CARD_UPDATE_PATHS.iter().find(|p| fs.exists(p)).copied().unwrap_or(CARD_UPDATE_PATHS[0]);
+                Action::Push(Box::new(OtaScreen::from_card(String::from(path))))
+            }
             _ => Action::None,
         }
     }

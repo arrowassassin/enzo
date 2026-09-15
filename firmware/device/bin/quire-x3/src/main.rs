@@ -237,6 +237,28 @@ async fn main(spawner: embassy_executor::Spawner) -> ! {
         Some(a) => println!("assets partition at {:#x}", a.base()),
         None => println!("assets partition not found"),
     }
+
+    // Back held through power-on for a second boots the recovery app (the two ladder
+    // keys cannot be told apart when pressed together, so one key does it).
+    {
+        let mut held = 0u32;
+        for _ in 0..10 {
+            let (g1, _, _) = keys.raw();
+            if quire_board::keys::Ladders::decode(&quire_board::keys::levels::GROUP1, quire_board::keys::levels::IDLE_ABOVE, g1) == Some(quire_board::keys::Key::Back) {
+                held += 1;
+            } else {
+                break;
+            }
+            Timer::after(Duration::from_millis(100)).await;
+        }
+        if held >= 10 {
+            println!("Back held at boot: entering recovery");
+            if let Some(f) = quire_board::flash::shared() {
+                let _ = quire_board::ota::boot_recovery(f);
+                esp_hal::system::software_reset();
+            }
+        }
+    }
     // Repeated crashes on an image that was never confirmed: go back to the last good
     // one ourselves, since the prebuilt bootloader does not do the app-rollback dance.
     if safe_mode {
