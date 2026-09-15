@@ -8,6 +8,10 @@
 /firmware/dist/
 *.bin
 !/firmware/device/**/*.bin.keep
+# Data that is source, not build output
+!/firmware/device/crates/quire-net/roots/roots.bin
+!/firmware/device/crates/quire-net/testdata/*.bin
+!/bookshop/catalog.bin
 
 # Generated review artefacts
 /firmware/target/snapshots/
