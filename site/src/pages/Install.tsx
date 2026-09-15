@@ -18,6 +18,8 @@ import {
   tracker,
   type Progress,
 } from '../lib/flash'
+import { md5Hex } from '../lib/md5'
+import { readFlashInto } from '../lib/readflash'
 import { downloadAsset, probeLatestRelease, type ReleaseProbe } from '../lib/release'
 import { useSeo } from '../lib/useSeo'
 
@@ -260,7 +262,7 @@ export function Install() {
     setBackupProgress({ done: 0, total: FLASH_BYTES, eta: null })
     const bump = tracker(setBackupProgress)
     try {
-      const data = await loader.readFlash(0, FLASH_BYTES, (_packet, read, total) => bump(read, total))
+      const data = await readFlashInto(loader, 0, FLASH_BYTES, bump)
 
       if (data.length !== FLASH_BYTES) {
         // A short read is not a backup, and the transport is still healthy —
@@ -367,7 +369,13 @@ export function Install() {
           flashFreq: 'keep',
           flashSize: 'keep',
           eraseAll: false,
+          // The padding in a 16 MB image deflates to almost nothing, so this is
+          // the difference between a couple of minutes and a great many.
           compress: true,
+          // Given this, writeFlash asks the chip for the MD5 of what actually
+          // landed and throws if it differs, so a bad write is caught here
+          // rather than by a reader that will not start.
+          calculateMD5Hash: (image: Uint8Array) => md5Hex(image),
           reportProgress: (_fileIndex, written, total) => bump(written, total),
         })
         await loader.after('hard_reset')
@@ -426,7 +434,8 @@ export function Install() {
             {/* 1 ------------------------------------------------------- */}
             <Step n={1} title="Connect the reader" state={connectState}>
               <p>
-                Two things decide whether this works at all, and both come before the button:
+                Three things decide whether this works at all, and all of them come before the
+                button:
               </p>
               <ul className="ticks">
                 <li>
@@ -434,11 +443,26 @@ export function Install() {
                   that is off will not appear in the browser’s list of ports.
                 </li>
                 <li>
+                  <strong>The cable ends in USB-A.</strong> A computer with only USB-C ports
+                  needs an adapter. A plain passive USB-C to USB-A adapter is more reliable here
+                  than a multi-port dongle, some of which pass USB 2.0 devices poorly or carry
+                  power only.
+                </li>
+                <li>
                   Some X3 units left the factory with the chip’s <em>download mode</em> fuse
                   burned. Those readers never appear over the cable, in any tool, and it cannot
                   be undone. If nothing shows up on any cable or port, that is most likely why.
                 </li>
               </ul>
+
+              <p className="dim">
+                The browser will ask which port to use. The reader is the one named{' '}
+                <code>usbmodem</code> followed by digits on macOS, <code>ttyACM</code> on Linux,
+                or listed as a COM port on Windows. Bluetooth entries and anything named{' '}
+                <code>debug-console</code> are the computer’s own devices, not the reader: if
+                there is no <code>usbmodem</code> or <code>ttyACM</code> in the list, the reader
+                is not reaching the computer at all, and no choice here will help.
+              </p>
 
               <div className="actions">
                 <button
@@ -491,7 +515,11 @@ export function Install() {
                   <p>{connectError}</p>
                   <ul>
                     <li>Is the reader switched on? Turn it on, then attach the cable.</li>
-                    <li>Are the pogo pins seated squarely, and is the cable in a USB port on the computer rather than a hub?</li>
+                    <li>
+                      Are the pogo pins seated squarely? If the cable runs through a multi-port
+                      dongle, try a plain USB-C to USB-A adapter or a port on the computer
+                      itself.
+                    </li>
                     <li>Is another program holding the port — a serial monitor, an IDE, a second tab of this page?</li>
                     <li>
                       If no port ever appears, the unit may be one of the flash-locked ones.{' '}
