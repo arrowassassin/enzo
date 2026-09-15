@@ -39,11 +39,11 @@ jobs:
       - name: Build
         run: npm run build
 
-      # enablement: turn Pages on (with GitHub Actions as the source) the first time this
-      # runs, instead of needing someone to set it by hand in the repository settings.
+      # One-time repository setting this depends on: Settings -> Pages -> Build and
+      # deployment -> Source must be "GitHub Actions". The step cannot turn it on itself:
+      # creating a Pages site needs admin rights that the workflow token is not given, so
+      # enablement: true fails with "Resource not accessible by integration".
       - uses: actions/configure-pages@v5
-        with:
-          enablement: true
 
       - uses: actions/upload-pages-artifact@v3
         with:
