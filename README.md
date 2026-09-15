@@ -124,17 +124,34 @@ A new device therefore needs a board crate, a panel driver, and an `Env` impleme
 
 ## Install
 
-### What you need
+Two ways in. **The browser installer asks nothing of you but a Chrome or Edge window**: it connects to the reader, saves a backup of the firmware it shipped with, and writes Quire, with a progress bar for each. Open <https://arrowassassin.github.io/quire/install> and work down the four steps.
 
-- An Xteink X3 and the magnetic pogo cable it came with.
-- A computer with a USB port. The reader enumerates as an ESP32-C3 USB-Serial/JTAG device. On Linux your user needs permission to open the serial device.
-- A Rust toolchain, to install the flasher:
+The rest of this section is the same job from a terminal, for people who prefer one.
+
+### Before you start, whichever way you install
+
+- You need the reader and the magnetic pogo cable it came with, and a computer with a USB port.
+- **Power the X3 on before you attach the cable.** It has to be awake to appear.
+- **Back up first.** The firmware your reader shipped with is not published anywhere and cannot be redistributed by this project. The copy you take is the only way back.
+- Some X3 units left the factory with the "disable download mode" eFuse burned. Those readers never appear over USB, so they can be neither backed up nor flashed, and it cannot be undone. If the reader never shows up on any cable or port, that is probably why, and installing Quire on it is not something this project supports.
+
+### The terminal route
+
+The two steps below are the terminal equivalent of what the browser installer does for you. First run, after them, is the same either way.
+
+You need a flasher. The version this project is tested against, 4.6.0, publishes a prebuilt zip per platform on its [releases page](https://github.com/esp-rs/espflash/releases/tag/v4.6.0), which needs no Rust at all. If you would rather build it:
 
 ```sh
 cargo install espflash@4.6.0 --locked
 ```
 
-- The firmware images. There are no published releases yet, so take the `quire-x3-images` artifact from the most recent successful run of the [CI workflow](https://github.com/arrowassassin/quire/actions/workflows/ci.yml), watch the [Releases page](https://github.com/arrowassassin/quire/releases) for a tagged build, or [build them yourself](#building-from-source).
+Check the reader is talking to you before anything else. A working unit prints its chip, MAC and flash size:
+
+```sh
+espflash board-info
+```
+
+Get the images from the `quire-x3-images` artifact on the most recent successful run of the [CI workflow](https://github.com/arrowassassin/quire/actions/workflows/ci.yml), from the [Releases page](https://github.com/arrowassassin/quire/releases) once a build is tagged, or [build them yourself](#building-from-source).
 
 | File | Flash at | Bytes | What it is |
 |---|---|---|---|
@@ -143,28 +160,19 @@ cargo install espflash@4.6.0 --locked
 | `quire-recovery.bin` | partition `recovery` | 157,216 | The factory recovery app |
 | `quire-assets.bin` | partition `assets` | 1,548,664 | The WordNet dictionary blob |
 
-One warning before you start. Some X3 units, from some batches, ship with the "disable download mode" eFuse burned. Those units do not enumerate over USB at all and cannot be flashed this way; the change is irreversible and is not something Quire can undo. If the reader does not appear as a serial device, stop rather than looking for a workaround. Check before you plan anything else:
+#### 1. Back up the stock firmware
 
-```sh
-espflash board-info
-```
-
-A working unit prints its chip, MAC and flash size.
-
-**Power the X3 on before you attach the pogo cable.** This is the order for every command below.
-
-### 1. Back up the stock firmware
-
-Do this first, before writing anything. The stock firmware is not published anywhere, so the copy you take now is the only way back to the device you bought. It is a 16 MB read and takes a few minutes.
+A 16 MB read, a few minutes. Do not unplug it while it runs.
 
 ```sh
 espflash read-flash 0x0 0x1000000 xteink-stock-16mb.bin
 ```
 
-Check the file before you trust it. It must be exactly 16,777,216 bytes, and a truncated read is the common failure:
+Check the file before you trust it. It must be exactly 16,777,216 bytes; a short file is a truncated read, not a backup.
 
 ```sh
-stat -c %s xteink-stock-16mb.bin
+stat -c %s xteink-stock-16mb.bin      # Linux
+stat -f %z xteink-stock-16mb.bin      # macOS
 sha256sum xteink-stock-16mb.bin > xteink-stock-16mb.bin.sha256
 ```
 
@@ -174,14 +182,14 @@ If you would rather use esptool:
 esptool.py --chip esp32c3 -b 460800 read_flash 0x0 0x1000000 xteink-stock-16mb.bin
 ```
 
-Keep the file and its checksum somewhere that is not the reader. Restoring it puts the device back exactly as it was, at any point in the future:
+Keep the file and its checksum somewhere that is not the computer you are about to experiment on. Restoring it puts the reader back exactly as it was, at any point in the future:
 
 ```sh
 espflash write-bin 0x0 xteink-stock-16mb.bin
 # or: esptool.py --chip esp32c3 write_flash 0x0 xteink-stock-16mb.bin
 ```
 
-### 2. Flash Quire
+#### 2. Flash Quire
 
 The factory image writes the whole 16 MB: bootloader, partition table, recovery app, firmware, dictionary and the otadata block that points at `ota_0`.
 
@@ -208,7 +216,7 @@ The partition table the images are built against is `firmware/device/partitions.
 | `assets` | `0xca0000` | 3.25 MB | `en.qdict`, the dictionary |
 | `coredump` | `0xfe0000` | 128 KB | Reserved |
 
-### 3. First run
+### First run
 
 Detach the cable and press Power. Quire walks four pages: the interface language, the time, a short explanation that this is now your reader, and where your books are. Put a FAT32 card in with a `/Books` folder and it will find them, or skip that page and add books over Wi-Fi later from the Drop page or the Bookshop.
 
@@ -365,6 +373,9 @@ The design package in `firmware-design/` is where the intent is written down: `0
 Unless you say otherwise, a contribution is dual-licensed under MIT or Apache-2.0, matching the rest of the project.
 
 ## FAQ
+
+**Do I need to be a developer to install it?**
+No. The [browser installer](https://arrowassassin.github.io/quire/install) connects to the reader from a Chrome or Edge window, saves the backup and writes Quire, with nothing to install on your computer. The terminal route exists for people who want it.
 
 **Does installing Quire delete the stock firmware?**
 Yes. The factory image writes the whole 16 MB of flash, and the stock firmware is not published anywhere, so [back it up first](#1-back-up-the-stock-firmware). That backup is the only copy you will have.

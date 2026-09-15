@@ -40,12 +40,12 @@ export function Home() {
               stack, right down to the certificate verifier.
             </p>
             <div className="hero__cta">
-              <Link className="btn" to="/downloads">
-                <DownloadIcon />
-                Download
+              <Link className="btn" to="/install">
+                Install from your browser
               </Link>
-              <Link className="btn btn--ghost" to="/guide">
-                Read the guide
+              <Link className="btn btn--ghost" to="/downloads">
+                <DownloadIcon />
+                Downloads
               </Link>
             </div>
             <p className="hero__note">
@@ -393,13 +393,12 @@ export function Home() {
           <Reveal>
             <h2>Put it on a reader.</h2>
             <p>
-              Four files, one command, and a backup of your stock firmware taken first. The guide
-              walks the whole thing, including how to get back.
+              A backup of your stock firmware taken first, then one image written. It happens in
+              a browser tab; the guide walks the whole thing, including how to get back.
             </p>
             <div className="cta__row">
-              <Link className="btn" to="/downloads">
-                <DownloadIcon />
-                Downloads
+              <Link className="btn" to="/install">
+                Install from your browser
               </Link>
               <Link className="btn btn--ghost" to="/guide">
                 Read the guide
